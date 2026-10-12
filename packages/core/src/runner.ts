@@ -74,6 +74,15 @@ export async function migrateModule(pool: pg.Pool, registry: Registry, moduleId:
 }
 
 /**
+ * The migration files of `manifest` that are not applied yet, in order, without applying or locking anything.
+ * Throws when the files are unreadable or the history of an applied file was rewritten, as a run would.
+ */
+export async function pendingMigrations(db: Pick<pg.Pool, "query">, manifest: ModuleManifest, options: MigrateOptions = {}): Promise<MigrationFile[]> {
+  const files = readMigrationFiles(migrationsPath(manifest, options.moduleDirs ?? {}));
+  return planMigrations(files, await loadApplied(db, manifest.id));
+}
+
+/**
  * `migrateModule` for a caller that already holds the migration lock on `client` (the lifecycle service,
  * which keeps the lock for a whole action). Taking the lock again from another connection would wait on
  * itself, so this variant never locks; calling it without holding the lock is a bug.
@@ -166,7 +175,7 @@ function migrationsPath(manifest: ModuleManifest, moduleDirs: Record<string, str
   throw new Error(`relative migrationsDir "${manifest.migrationsDir}" and no module directory is known for it (pass moduleDirs)`);
 }
 
-async function loadApplied(client: pg.PoolClient, moduleId: string): Promise<Map<string, string>> {
+async function loadApplied(client: Pick<pg.Pool, "query">, moduleId: string): Promise<Map<string, string>> {
   const exists = await client.query("select to_regclass('core.schema_migrations') is not null as present");
   if (!exists.rows[0].present) return new Map();
   const rows = await client.query("select filename, checksum from core.schema_migrations where module_id = $1", [moduleId]);

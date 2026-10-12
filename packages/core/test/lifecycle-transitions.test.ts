@@ -120,6 +120,16 @@ describe("planTransition: dependency versions", () => {
     assert.equal(plan({ action: "install", moduleId: "app" }, statesOf({ base: "enabled" }, { base: "1.2.0" }), registry()).to, "enabled");
   });
 
+  it("does not let an installed prerelease satisfy an ordinary range, but accepts a range naming its line", () => {
+    // Same rule as the registry (semver's default): a release candidate never silently stands in for a stable dependency.
+    const prerelease = { base: "1.0.0-rc.1" };
+    const refused = refusal({ action: "install", moduleId: "app" }, statesOf({ base: "enabled" }, prerelease), registryOf(manifest("base", { version: "1.0.0-rc.1" }), manifest("app", { ranges: { base: "^1.0.0" } })));
+    assert.equal(refused.code, "dependency_version_mismatch");
+    assert.match(refused.message, /requires "base" \^1\.0\.0 but the installed version is 1\.0\.0-rc\.1/);
+    const named = registryOf(manifest("base", { version: "1.0.0-rc.1" }), manifest("app", { ranges: { base: "^1.0.0-rc.0" } }));
+    assert.equal(plan({ action: "install", moduleId: "app" }, statesOf({ base: "enabled" }, prerelease), named).to, "enabled");
+  });
+
   it("reports a dependency that is not enabled before one whose version is wrong", () => {
     const states = statesOf({ base: "disabled" }, { base: "2.0.0" });
     assert.equal(refusal({ action: "install", moduleId: "app" }, states, registry()).code, "dependency_not_enabled");

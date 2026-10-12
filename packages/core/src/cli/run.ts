@@ -6,7 +6,7 @@ import { discoverModules, resolveModulesDir } from "../discovery.ts";
 import { LifecycleRefusedError, LifecycleService, type ModuleStatus, fileHookLoader } from "../lifecycle/index.ts";
 import { createPool, resolveDatabaseUrl } from "../pool.ts";
 import { Registry } from "../registry.ts";
-import { MigrationRunError, migrate } from "../runner.ts";
+import { MigrationRunError, migrate, pendingMigrations } from "../runner.ts";
 
 /** Exit codes: a script can tell a refused action (the rules said no) from a bug or an environment problem. */
 export const EXIT_OK = 0;
@@ -31,7 +31,7 @@ commands:
   modules upgrade <id>             apply the package's newer version
   modules uninstall <id> --keep    leave the module's schema and migration history
   modules uninstall <id> --purge   drop the schema and the migration history
-  db:migrate                       apply the migrations of the core and of every module found
+  db:migrate                       apply the core migrations; report installed modules that need "modules upgrade"
   registry:generate [--dry-run] [--out <dir>]
                                    write the web app registration for the enabled modules
 
@@ -203,15 +203,34 @@ async function modulesCommand(parsed: Parsed, service: LifecycleService, io: Cli
   io.out(REMINDER);
 }
 
-async function migrateCommand(context: Context, pool: pg.Pool, io: CliIo): Promise<void> {
-  // The registry admits unsupported platforms so that they can be listed; migrating must never apply their migrations.
-  const unsupported = context.registry.all().filter((m) => m.id !== "core" && !context.registry.isPlatformSupported(m.id));
-  if (unsupported.length > 0) {
-    throw new Refusal(`db:migrate would apply migrations of modules that need another platform: ${unsupported.map((m) => `"${m.id}" (requires "${m.platform}")`).join(", ")}`);
-  }
-  const { applied } = await migrate(pool, context.registry);
+/**
+ * Applies the core's migrations. A module's schema changes only through the lifecycle: install applies its first
+ * migrations and upgrade applies later ones, so `core.modules.installed_version` always matches the schema. For
+ * the installed modules this command therefore only reports what is waiting for an upgrade, and what it cannot check.
+ */
+async function migrateCommand(context: Context, service: LifecycleService, pool: pg.Pool, io: CliIo): Promise<void> {
+  const coreOnly = new Registry();
+  coreOnly.registerCore();
+  const { applied } = await migrate(pool, coreOnly);
   if (applied.length === 0) io.out("nothing to apply");
   for (const { moduleId, filename } of applied) io.out(`applied ${moduleId}/${filename}`);
+
+  for (const status of (await service.list()).filter((s) => s.status !== "available")) {
+    const manifest = context.registry.get(status.id);
+    if (manifest === undefined) {
+      io.err(`warning: module "${status.id}" is installed but its package is not on disk; skipped`);
+      continue;
+    }
+    try {
+      const pending = await pendingMigrations(pool, manifest);
+      if (pending.length === 0) continue;
+      const names = pending.map((file) => file.filename).join(", ");
+      const next = status.upgradePending ? `run "modules upgrade ${status.id}"` : `its version is unchanged, so raise its version and then run "modules upgrade ${status.id}"`;
+      io.err(`warning: module "${status.id}" has ${pending.length} pending migration(s) (${names}); db:migrate does not apply them: ${next}`);
+    } catch (error) {
+      io.err(`warning: module "${status.id}": cannot check its migrations: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
 }
 
 async function generateCommand(parsed: Parsed, context: Context, service: LifecycleService, io: CliIo): Promise<void> {
@@ -253,7 +272,7 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
     pool = createPool(url, { connectionTimeoutMillis: 5000 });
     const service = new LifecycleService(pool, context.registry, { loadHooks: fileHookLoader(modulesDir) });
 
-    if (parsed.command === "db:migrate") await migrateCommand(context, pool, io);
+    if (parsed.command === "db:migrate") await migrateCommand(context, service, pool, io);
     else if (parsed.command === "registry:generate") await generateCommand(parsed, context, service, io);
     else await modulesCommand(parsed, service, io);
     return EXIT_OK;

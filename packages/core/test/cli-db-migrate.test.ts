@@ -44,12 +44,12 @@ describe("db:migrate command", () => {
     await assert.rejects(run([], {}), (error: { stderr: string; code: number }) => error.code === 1 && /DATABASE_URL is not set/.test(error.stderr));
   });
 
-  it("migrates the core and the modules in the directory it is given, and reports what it did", async (t) => {
+  it("migrates the core only: a module that is on disk but not installed is left alone", async (t) => {
     addModule("alpha", { "0001_create.sql": "create table items (x int);" });
     await inScratchDatabase(t, async (url) => {
       const first = await run(["--modules-dir", modulesDir], { DATABASE_URL: url });
       assert.match(first.stdout, /applied core\/0001_init\.sql/);
-      assert.match(first.stdout, /applied alpha\/0001_create\.sql/);
+      assert.doesNotMatch(first.stdout, /alpha/);
 
       const second = await run(["--modules-dir", modulesDir], { DATABASE_URL: url });
       assert.match(second.stdout, /nothing to apply/);
@@ -64,32 +64,13 @@ describe("db:migrate command", () => {
     });
   });
 
-  it("prints a warning for a dangling symlink and still migrates the other modules", async (t) => {
+  it("prints a warning for a dangling symlink and still migrates the core", async (t) => {
     addModule("alpha", { "0001_create.sql": "create table items (x int);" });
     symlinkSync(join(modulesDir, "gone"), join(modulesDir, "dangling"), "dir");
     await inScratchDatabase(t, async (url) => {
       const { stdout, stderr } = await run(["--modules-dir", modulesDir], { DATABASE_URL: url });
       assert.match(stderr, /warning: "dangling" is a symlink whose target cannot be read/);
-      assert.match(stdout, /applied alpha\/0001_create\.sql/);
-    });
-  });
-
-  it("lists what was already applied when a later file fails", async (t) => {
-    addModule("alpha", {
-      "0001_ok.sql": "create table items (x int);",
-      "0002_ok.sql": "create table more (x int);",
-      "0003_broken.sql": "select * from does_not_exist;",
-    });
-    await inScratchDatabase(t, async (url) => {
-      await assert.rejects(run(["--modules-dir", modulesDir], { DATABASE_URL: url }), (error: { stderr: string; code: number }) => {
-        assert.equal(error.code, 1);
-        assert.match(error.stderr, /migration alpha\/0003_broken\.sql failed/);
-        assert.match(error.stderr, /applied before the failure:/);
-        assert.match(error.stderr, /core\/0001_init\.sql/);
-        assert.match(error.stderr, /alpha\/0001_ok\.sql/);
-        assert.match(error.stderr, /alpha\/0002_ok\.sql/);
-        return true;
-      });
+      assert.match(stdout, /applied core\/0001_init\.sql/);
     });
   });
 
