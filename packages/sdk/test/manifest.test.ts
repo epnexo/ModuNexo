@@ -43,6 +43,12 @@ describe("validateManifest: base rules", () => {
     }
   });
 
+  it("accepts a prerelease version and rejects build metadata", () => {
+    assert.equal(validateManifest({ ...valid, version: "1.0.0-rc.1" }).version, "1.0.0-rc.1");
+    assert.throws(() => validateManifest({ ...valid, version: "1.0.0+build.5" }), /version must be semver MAJOR\.MINOR\.PATCH.*no build metadata/);
+    assert.throws(() => validateManifest({ ...valid, version: "1.0.0-rc.1+build.5" }), /no build metadata/);
+  });
+
   it("rejects an empty name", () => {
     assert.throws(() => validateManifest({ ...valid, name: " " }), /name must be a non-empty string/);
   });

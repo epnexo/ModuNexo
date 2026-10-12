@@ -74,6 +74,35 @@ describe("validateManifest: v2 sections", () => {
     assert.throws(() => validateManifest(withPages([{ path: "/x", entry: "./a.tsx", kind: "page", extra: 1 }])), /pages\[0\] has unknown field "extra"/);
   });
 
+  it("accepts normalised page paths, including Next.js dynamic segments", () => {
+    const paths = ["/", "/reports", "/reports/[id]", "/docs/[...slug]", "/docs/[[...slug]]", "/api/reports/v1"];
+    const pages = paths.map((path) => ({ path, entry: "./a.tsx", kind: "page" }));
+    assert.equal(validateManifest({ ...base, pages }).pages?.length, paths.length);
+  });
+
+  it("rejects page paths that are not normalised", () => {
+    const withPath = (path: string) => ({ ...base, pages: [{ path, entry: "./a.tsx", kind: "page" }] });
+    for (const path of ["/a//b", "//a", "/a/./b", "/a/../b", "/..", "/a b", "/a\tb", "/a?x=1", "/a#top", "/a/\u00a0", "//", "/a//"]) {
+      assert.throws(() => validateManifest(withPath(path)), /pages\[0\]\.path must be a normalised route path/, JSON.stringify(path));
+    }
+  });
+
+  it("treats a trailing slash as the same page path when detecting duplicates", () => {
+    const page = (path: string) => ({ path, entry: "./a.tsx", kind: "page" });
+    const withPages = (...paths: string[]) => ({ ...base, pages: paths.map(page) });
+    assert.throws(() => validateManifest(withPages("/a", "/a/")), /pages\[1\]\.path "\/a\/" is duplicated/);
+    assert.throws(() => validateManifest(withPages("/a/", "/a")), /pages\[1\]\.path "\/a" is duplicated/);
+    assert.equal(validateManifest(withPages("/", "/a")).pages?.length, 2);
+  });
+
+  it("rejects a parent-directory segment inside a relative entry", () => {
+    for (const entry of ["./web/../../secrets", "./../a.tsx", "./a/..", "./a/../b.tsx"]) {
+      const pages = [{ path: "/x", entry, kind: "page" }];
+      assert.throws(() => validateManifest({ ...base, pages }), /pages\[0\]\.entry must be a relative path/, entry);
+      assert.throws(() => validateManifest({ ...base, hooks: entry }), /hooks must be a relative path/, entry);
+    }
+  });
+
   it("validates setting keys and types", () => {
     const withSettings = (settings: unknown) => ({ ...base, settings });
     const setting = (extra: object) => withSettings([{ key: "k", label: "K", type: "string", ...extra }]);
@@ -104,10 +133,14 @@ describe("validateManifest: v2 sections", () => {
 
   it("validates setting defaults against their type", () => {
     const typed = (type: string, def: unknown) => ({ ...base, settings: [{ key: "k", label: "K", type, default: def }] });
-    assert.throws(() => validateManifest(typed("number", "5")), /settings\[0\]\.default must be a number/);
+    assert.throws(() => validateManifest(typed("number", "5")), /settings\[0\]\.default must be a finite number/);
     assert.throws(() => validateManifest(typed("boolean", "true")), /settings\[0\]\.default must be a boolean/);
     assert.throws(() => validateManifest(typed("string", 1)), /settings\[0\]\.default must be a string/);
     assert.throws(() => validateManifest(typed("path", 1)), /settings\[0\]\.default must be a string/);
+    for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      assert.throws(() => validateManifest(typed("number", value)), /settings\[0\]\.default must be a finite number/, String(value));
+    }
+    assert.equal(validateManifest(typed("number", -1.5)).settings?.[0]?.default, -1.5);
   });
 
   it("never allows a secret to declare a default", () => {

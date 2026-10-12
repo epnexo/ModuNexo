@@ -2,6 +2,9 @@
   "name": "epnexo-platform",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.9.0"
+  },
   "workspaces": ["packages/*", "modules/*", "apps/*"],
   "scripts": {
     "test": "node --env-file-if-exists=.env --import tsx --test \"packages/*/test/**/*.test.ts\"",
