@@ -280,7 +280,8 @@ async function adminCreateCommand(parsed: Parsed, pool: pg.Pool, io: CliIo): Pro
   if (!migrated.rows[0].present) throw new Error('the authentication tables do not exist yet: run "npm run db:migrate" first');
   const password = await readPassword();
   // The CLI serves no request, so the origin is never used; it is given only so the library does not warn about it.
-  const auth = createAuth({ pool, masterKey, baseURL: "http://localhost" });
+  // The background schema check is off: it would race the pool being closed when this command refuses and exits.
+  const auth = createAuth({ pool, masterKey, baseURL: "http://localhost", validateSchema: false });
   const user = await createAdministrator(auth, { email: parsed.values.email as string, name: parsed.values.name as string, password });
   io.out(`created administrator "${user.email}"`);
 }

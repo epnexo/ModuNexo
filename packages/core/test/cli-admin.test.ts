@@ -83,6 +83,7 @@ describe("cli: admin create", () => {
         const result = await cli(CREATE, { stdin });
         assert.equal(result.code, 3);
         assert.match(result.stderr, /refused: the password must be at least 12 characters/);
+        assert.ok(!result.stderr.includes("Better Auth"), `no library noise on a refusal: ${result.stderr}`);
       }
       assert.deepEqual(await users(db), []);
     });
