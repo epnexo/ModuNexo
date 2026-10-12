@@ -1,0 +1,162 @@
+# Shell core base (stage A1)
+
+Feature document for the first slice of the new epnexo platform shell. This file is the
+source of truth; the Engram mirror lives under topic `odd/shell-core-base/tasks`.
+
+## Objective
+
+Build the base of a professional module platform core in an empty repository: a versioned
+module contract with an SDK, a module lifecycle (install, enable, disable, upgrade,
+uninstall), per-module SQL migrations, and generated registration, all working with zero
+modules installed.
+
+## Problem
+
+The previous platform (repository `ai-usage-dashboard`) has a working core but no module
+lifecycle. A module is hard-wired by name in about twelve places, "install" is one CLI
+command that migrates every module at once, nothing can be disabled or uninstalled, and the
+web shell already contains module-specific code (`moduleId === "marketing"` in the sidebar).
+
+## Why
+
+The owner wants modules that live in their own repositories and are installed, disabled and
+uninstalled from the UI, with a restart allowed. That needs a contract and a lifecycle that
+do not depend on any particular module, proven first with no modules at all. Existing
+modules are adapted and installed one at a time afterwards, as the test of this core.
+
+## Scope
+
+In scope for this feature (A1):
+
+- Repository scaffold: npm workspaces, strict TypeScript, test runner, typecheck, local
+  Postgres 16.
+- `@epnexo/sdk`: module manifest v2 types, `defineModule`, validation.
+- `@epnexo/core`: registry with dependency resolution, migration runner, lifecycle state
+  and service, registration codegen, CLI.
+
+Out of scope here, planned as later features:
+
+- A2 shell UI and admin login. A3 settings service and appearance. A4 Apps screen and the
+  install pipeline (package upload, build, restart).
+- Stage B: adapting `ai-usage`, `documents` and `marketing`. Stage C: scaffold command,
+  packaging command, guide and creation skill.
+
+## Constraints
+
+- Stack stays TypeScript, Next.js and React (owner decision, 2026-10-12). Runtime loading of
+  module code is not attempted: Next.js resolves client components and server actions
+  against build-time manifests. Installing a module is package intake, build, restart.
+- One central Postgres 16 database, one schema per module, plain ordered SQL migrations
+  owned by each module.
+- Environment variables only for infrastructure. This feature reads `DATABASE_URL` and
+  `TEST_DATABASE_URL` and nothing else.
+- Core never imports a module by name. Modules never import each other's code.
+- Technical artifacts are written in English.
+
+## Decisions
+
+- **Port, do not rewrite.** `manifest.ts`, `registry.ts`, `migrations.ts`, `runner.ts`,
+  `discovery.ts`, `pool.ts` and `testing.ts` from `ai-usage-dashboard/packages/core/src` are
+  the starting point, with their tests. Known follow-ups from that code are fixed during
+  the port: bounded advisory-lock wait, migration errors that name module and file, an idle
+  error listener on the pool.
+- **Two packages.** `@epnexo/sdk` is what a module compiles against (types, `defineModule`,
+  validation, no database access). `@epnexo/core` is the platform (registry, migrations,
+  lifecycle, codegen, CLI) and depends on the SDK.
+- **Modules directory.** Installed module packages are unpacked under `modules/<id>/` and
+  linked by the workspace glob. The directory is not tracked in git.
+- **Manifest v2** adds to v1 (`id`, `version`, `name`, `schema`, `migrationsDir`, `nav`):
+  - `platform`: semver range of the SDK the module supports.
+  - `dependsOn`: map of module id to semver range (v1 was a list of ids).
+  - `nav` entries gain `group`, `order` and `permission`.
+  - `pages`: declared routes (`path`, `entry`, `kind: "page" | "route"`), consumed by the
+    codegen so route files are generated, not hand-written.
+  - `settings`: declared settings (`key`, `label`, `type`, `default`, `required`,
+    `options`, `description`); `type` includes `secret`.
+  - `permissions`: declared permission keys with labels.
+  - `hooks`: optional entry exporting `onInstall`, `onEnable`, `onDisable`, `onUpgrade`,
+    `onUninstall`.
+- **Lifecycle states**: `available` (package present, not installed), `enabled`,
+  `disabled`. An upgrade is pending when the package version is newer than the installed
+  version.
+  - install: `available` to `enabled`; runs migrations, `onInstall`, `onEnable`; requires
+    every dependency enabled and the `platform` range satisfied.
+  - disable: `enabled` to `disabled`; keeps data; blocked while an enabled module depends
+    on it.
+  - enable: `disabled` to `enabled`; requires dependencies enabled.
+  - upgrade: applies pending migrations, runs `onUpgrade`, records the new version.
+  - uninstall: to `available`; blocked while an installed module depends on it; the caller
+    must choose `keep` (schema and migration history stay) or `purge` (schema dropped,
+    migration history removed). There is no default.
+- **Audit.** Every lifecycle transition is recorded in `core.module_events` (module,
+  action, from, to, version, outcome, time).
+- **Registration codegen** reads the manifests of enabled modules and writes one registry
+  file plus thin route files for the web app. With zero modules it writes an empty
+  registry. Generated files carry a header and are not edited by hand.
+
+## Tooling
+
+- Test runner: Node built-in `node:test` through `tsx`. Command:
+  `node --env-file-if-exists=.env --import tsx --test "packages/*/test/**/*.test.ts"`
+  (wired as `npm test` by T1).
+- Typecheck: `npm run typecheck` (`tsc --noEmit -p tsconfig.json`).
+- Integration tests use a database whose name ends in `_test`; an unreachable database is
+  a skip, not a failure.
+- TDD mode: strict (source: owner's global configuration). RED observed before
+  implementation, then GREEN, then REFACTOR.
+
+## Tasks
+
+Route per task: delegated writer (trigger: two or more non-trivial files, and reading the
+previous repository to prepare the write).
+
+- [ ] **T1** Repository scaffold and `@epnexo/sdk` manifest v2 (types, `defineModule`,
+  validation) with tests.
+- [ ] **T2** `@epnexo/core` registry: dependency ordering with semver ranges, `platform`
+  compatibility check, dependents lookup.
+- [ ] **T3** Migration runner port: per-module schema, checksums, history guards, bounded
+  lock, named errors, and `purge` of a module schema.
+- [ ] **T4** Lifecycle state: `core.modules` with state, `core.module_events`, and the
+  transition rules as a pure function.
+- [ ] **T5** Lifecycle service: install, enable, disable, upgrade, uninstall (keep or
+  purge), with hooks and dependency checks, against Postgres.
+- [ ] **T6** Registration codegen: registry file and route files from enabled modules,
+  empty output with zero modules.
+- [ ] **T7** CLI: `modules list | install | enable | disable | upgrade | uninstall`,
+  `db:migrate`, `registry:generate`; README for the core.
+
+## Acceptance criteria
+
+- With no modules present, `npm test` and `npm run typecheck` pass, `db:migrate` creates
+  only the `core` schema, and `registry:generate` writes an empty registry.
+- A fixture module can be installed, disabled, enabled, upgraded and uninstalled through
+  the CLI, and each transition appears in `core.module_events`.
+- Uninstall with `keep` leaves the module schema; with `purge` the schema and its migration
+  history are gone; without a choice the command refuses.
+- Disabling or uninstalling a module that another enabled module depends on is refused with
+  a message naming the dependent.
+- A module whose `platform` range does not match the SDK version is refused at install.
+- No file in `packages/` names a specific business module.
+
+## Applicable checks
+
+- `npm test` and `npm run typecheck` after every task.
+- `gentle-ai review assess --base-ref <last reviewed boundary> --committed-only --json`
+  after every work-unit commit (receipt-driven development is on by default).
+
+## Delivery
+
+- Strategy: `auto-chain` (owner's choice, 2026-10-12).
+- Forecast: about 2,500 authored changed lines across T1 to T7, above the 400-line review
+  budget, so the feature is delivered as a chain, one slice per task.
+- Chain strategy: not chosen yet. The repository has no remote, so no pull request can be
+  opened; the choice is asked when a remote exists.
+- Branch: `feat/shell-core-base`, from an empty initial commit on `main`.
+
+## Progress
+
+Nothing implemented yet.
+
+## Next step
+
+T1.
