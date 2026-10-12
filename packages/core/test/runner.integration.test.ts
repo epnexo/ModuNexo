@@ -44,9 +44,9 @@ describe("migrate (integration): the core", () => {
     await migrate(pool!, registry);
 
     const tables = await pool!.query("select table_name from information_schema.tables where table_schema = 'core' order by 1");
-    assert.deepEqual(tables.rows.map((r) => r.table_name), ["module_events", "modules", "schema_migrations"]);
+    assert.deepEqual(tables.rows.map((r) => r.table_name), ["auth_account", "auth_rate_limit", "auth_session", "auth_user", "auth_verification", "module_events", "modules", "schema_migrations"]);
     const tracked = await pool!.query("select filename from core.schema_migrations where module_id = 'core' order by filename");
-    assert.deepEqual(tracked.rows.map((r) => r.filename), ["0001_init.sql", "0002_lifecycle_state.sql"]);
+    assert.deepEqual(tracked.rows.map((r) => r.filename), ["0001_init.sql", "0002_lifecycle_state.sql", "0003_auth.sql"]);
   });
 
   test("refuses to run when the core module is not registered", async (box) => {

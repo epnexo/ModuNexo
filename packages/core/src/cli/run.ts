@@ -1,12 +1,16 @@
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import type pg from "pg";
+import { AdminRefusedError, createAdministrator } from "../auth/admin.ts";
+import { createAuth } from "../auth/auth.ts";
+import { MASTER_KEY_ENV, resolveMasterKey } from "../auth/master-key.ts";
 import { DEFAULT_WEB_ROOT, RegistrationError, generateRegistration, registrationModulesFor } from "../codegen/index.ts";
 import { discoverModules, resolveModulesDir } from "../discovery.ts";
 import { LifecycleRefusedError, LifecycleService, type ModuleStatus, fileHookLoader } from "../lifecycle/index.ts";
 import { createPool, resolveDatabaseUrl } from "../pool.ts";
 import { Registry } from "../registry.ts";
 import { MigrationRunError, migrate, pendingMigrations } from "../runner.ts";
+import { readPassword } from "./password.ts";
 
 /** Exit codes: a script can tell a refused action (the rules said no) from a bug or an environment problem. */
 export const EXIT_OK = 0;
@@ -34,13 +38,16 @@ commands:
   db:migrate                       apply the core migrations; report installed modules that need "modules upgrade"
   registry:generate [--dry-run] [--out <dir>]
                                    write the web app registration for the enabled modules
+  admin create --email <email> --name <name>
+                                   create an administrator; the password is read from standard input
+                                   (a hidden prompt on a terminal), never from an argument
 
 options for every command:
   --modules-dir <path>             where module packages are unpacked (default: modules/ at the repository root)
   --help                           print this text
 
-environment: DATABASE_URL (and TEST_DATABASE_URL for the tests)
-exit codes: 0 done, 1 error, 2 usage error, 3 refused by the lifecycle rules or by a registration conflict`;
+environment: DATABASE_URL (and TEST_DATABASE_URL for the tests); admin create also needs ${MASTER_KEY_ENV}
+exit codes: 0 done, 1 error, 2 usage error, 3 refused by the lifecycle rules, by a registration conflict or by an administrator rule`;
 
 class UsageError extends Error {}
 /** The action was understood and refused by a rule; nothing was changed. */
@@ -53,6 +60,8 @@ const OPTIONS = {
   purge: { type: "boolean" },
   "dry-run": { type: "boolean" },
   out: { type: "string" },
+  email: { type: "string" },
+  name: { type: "string" },
   help: { type: "boolean" },
 } as const;
 
@@ -66,6 +75,7 @@ const COMMAND_OPTIONS: Record<string, readonly string[]> = {
   "modules uninstall": ["keep", "purge"],
   "db:migrate": [],
   "registry:generate": ["dry-run", "out"],
+  "admin create": ["email", "name"],
 };
 
 const ACTION_COMMANDS = ["install", "enable", "disable", "upgrade", "uninstall"] as const;
@@ -97,6 +107,10 @@ function parse(argv: string[]): Parsed | "help" {
     if (second !== "list" && !ACTION_COMMANDS.includes(second as ActionCommand)) throw new UsageError(`unknown modules command "${second}"`);
     command = `modules ${second}`;
     ids = rest;
+  } else if (first === "admin") {
+    if (second !== "create") throw new UsageError(second === undefined ? "no admin command given" : `unknown admin command "${second}"`);
+    command = "admin create";
+    ids = rest;
   } else {
     command = first;
     ids = [...(second === undefined ? [] : [second]), ...rest];
@@ -111,6 +125,11 @@ function parse(argv: string[]): Parsed | "help" {
   if (takesId && ids.length === 0) throw new UsageError(`${command} needs a module id`);
   if (takesId ? ids.length !== 1 : ids.length > 0) throw new UsageError(takesId ? `${command} takes exactly one module id` : `${command} takes no arguments`);
   if (parsed.values.keep && parsed.values.purge) throw new UsageError("uninstall takes --keep or --purge, not both");
+  if (command === "admin create") {
+    for (const option of ["email", "name"] as const) {
+      if (typeof parsed.values[option] !== "string" || parsed.values[option].trim() === "") throw new UsageError(`admin create needs --${option}`);
+    }
+  }
   return { command, ids, values: parsed.values };
 }
 
@@ -251,6 +270,21 @@ async function generateCommand(parsed: Parsed, context: Context, service: Lifecy
   for (const path of plan.deletions) io.out(`  ${verb}${dryRun ? "delete" : "deleted"} ${path}`);
 }
 
+/**
+ * Creates an administrator. The password comes from standard input so it never appears in the process list or in
+ * the shell history. This command reads no module, so a broken modules directory cannot lock the owner out.
+ */
+async function adminCreateCommand(parsed: Parsed, pool: pg.Pool, io: CliIo): Promise<void> {
+  const masterKey = resolveMasterKey();
+  const migrated = await pool.query("select to_regclass('core.auth_user') is not null as present");
+  if (!migrated.rows[0].present) throw new Error('the authentication tables do not exist yet: run "npm run db:migrate" first');
+  const password = await readPassword();
+  // The CLI serves no request, so the origin is never used; it is given only so the library does not warn about it.
+  const auth = createAuth({ pool, masterKey, baseURL: "http://localhost" });
+  const user = await createAdministrator(auth, { email: parsed.values.email as string, name: parsed.values.name as string, password });
+  io.out(`created administrator "${user.email}"`);
+}
+
 /** Run one CLI invocation and return its exit code. Everything the user sees goes through `io`. */
 export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<number> {
   let pool: pg.Pool | undefined;
@@ -258,6 +292,11 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
     const parsed = parse(argv);
     if (parsed === "help") {
       io.out(USAGE);
+      return EXIT_OK;
+    }
+    if (parsed.command === "admin create") {
+      pool = createPool(resolveDatabaseUrl(), { connectionTimeoutMillis: 5000 });
+      await adminCreateCommand(parsed, pool, io);
       return EXIT_OK;
     }
     let modulesDir: string;
@@ -282,7 +321,7 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
       io.err(`${USAGE.split("\n")[0]} (run with --help for the commands)`);
       return EXIT_USAGE;
     }
-    if (error instanceof Refusal || error instanceof LifecycleRefusedError || error instanceof RegistrationError) {
+    if (error instanceof Refusal || error instanceof LifecycleRefusedError || error instanceof RegistrationError || error instanceof AdminRefusedError) {
       io.err(`refused: ${error.message}`);
       return EXIT_REFUSED;
     }

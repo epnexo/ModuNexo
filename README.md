@@ -23,7 +23,9 @@ module by name, and modules never import each other's code.
 npm install
 docker compose up -d db      # Postgres 16 on 127.0.0.1:5436, compose project "epnexo-shell-core"
 cp .env.example .env         # DATABASE_URL and TEST_DATABASE_URL
+echo "EPNEXO_MASTER_KEY=$(openssl rand -base64 48)" >> .env
 npm run db:migrate           # creates the core schema
+npm run epnexo -- admin create --email you@example.com --name "Your Name"   # asks for the password
 npm test                     # node:test through tsx, packages/*/test/**/*.test.ts
 npm run typecheck            # tsc --noEmit
 ```
@@ -33,6 +35,9 @@ The only environment variables are infrastructure ones:
 - `DATABASE_URL` - the database the CLI works on.
 - `TEST_DATABASE_URL` - the database integration tests run on. Its name must end in `_test` and it must not be
   the development database. It is created on demand on the same server.
+- `EPNEXO_MASTER_KEY` - the one secret the platform reads from the environment, at least 32 characters
+  (`openssl rand -base64 48`). The sign-in secret is derived from it, so there is no separate variable for it.
+  Changing it signs every user out. Only the commands that touch authentication need it.
 
 No server answering, or neither variable set, **skips** the integration tests with the reason printed; a server
 that answers but refuses (bad credentials, missing permission) **fails** the suite. With the database up,
@@ -164,6 +169,7 @@ npm run modules -- upgrade <id>
 npm run modules -- uninstall <id> --keep  # or --purge; no flag is refused, both is a usage error
 npm run db:migrate                        # the core only; reports installed modules that need "modules upgrade"
 npm run registry:generate [-- --dry-run] [-- --out <dir>]
+npm run epnexo -- admin create --email <email> --name <name>
 ```
 
 Every command takes `--modules-dir <path>` (default `modules/`; a path that is given must exist) and `--help`.
@@ -183,7 +189,27 @@ Discovery warnings go to stderr. After a successful install, enable, disable, up
 prints a reminder that the registration must be regenerated and the web app rebuilt and restarted.
 
 Exit codes: `0` done, `1` unexpected error or an accepted action that failed, `2` usage error, `3` refused by a
-lifecycle rule or by a registration conflict.
+lifecycle rule, by a registration conflict or by an administrator rule.
+
+### Administrators
+
+Sign-in is email and password through [Better Auth](https://www.better-auth.com). Nobody can sign up: the public
+sign-up endpoint refuses, and `admin create` is how an administrator comes to exist. Its password is read from
+standard input, never from an argument, so it does not reach the process list or the shell history. On a terminal
+it is asked twice without echo; from a pipe the first line is the password and only its line ending is dropped:
+
+```bash
+npm run epnexo -- admin create --email ada@example.com --name "Ada"            # hidden prompt
+printf '%s\n' "$PASSWORD" | npm run epnexo -- admin create --email ada@example.com --name "Ada"
+```
+
+A password shorter than 12 characters and an email that already exists are refused with exit code `3`, and nothing
+is created. The command needs `EPNEXO_MASTER_KEY` and a migrated database, and reads no module.
+
+The authentication tables (`core.auth_user`, `core.auth_session`, `core.auth_account`, `core.auth_verification`,
+`core.auth_rate_limit`) are created by the core migration `0003_auth.sql`. The library's own migrate command is
+never run. A test compares that migration with the plan the installed library version computes, so upgrading the
+library when it needs a schema change fails the suite until a new core migration is added.
 
 ## Registration codegen
 
