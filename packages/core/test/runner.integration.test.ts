@@ -3,6 +3,7 @@ import { rmSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import { after, before, describe, it } from "node:test";
 import type pg from "pg";
+import { purgeModule } from "../src/purge.ts";
 import { MIGRATION_LOCK_NAME, migrate, migrateModule } from "../src/runner.ts";
 import { Registry } from "../src/registry.ts";
 import { openTestPool } from "../src/testing.ts";
@@ -237,5 +238,69 @@ describe("migrateModule (integration)", () => {
 
   test("rejects a module the registry does not know", async (box) => {
     await assert.rejects(migrateModule(pool!, box.registry(), "ghost"), /module "ghost" is not registered/);
+  });
+});
+
+describe("purgeModule (integration)", () => {
+  const schemaExists = async (schema: string) =>
+    (await pool!.query("select 1 from information_schema.schemata where schema_name = $1", [schema])).rowCount === 1;
+  const historyCount = async (id: string) => (await pool!.query("select 1 from core.schema_migrations where module_id = $1", [id])).rowCount;
+
+  test("drops the module schema and its history, and leaves other modules untouched", async (box) => {
+    const gone = box.add();
+    const kept = box.add();
+    gone.write("0001_a.sql", "create table a (x int); insert into a values (1);");
+    kept.write("0001_b.sql", "create table b (x int);");
+    await migrate(pool!, box.registry());
+
+    await purgeModule(pool!, box.registry(), gone.manifest.id);
+
+    assert.equal(await schemaExists(gone.manifest.schema), false);
+    assert.equal(await historyCount(gone.manifest.id), 0);
+    assert.equal(await schemaExists(kept.manifest.schema), true);
+    assert.equal(await historyCount(kept.manifest.id), 1);
+    assert.ok(await schemaExists("core"));
+  });
+
+  test("lets the module be migrated again from scratch afterwards", async (box) => {
+    const mod = box.add();
+    mod.write("0001_a.sql", "create table a (x int);");
+    await migrate(pool!, box.registry());
+    await purgeModule(pool!, box.registry(), mod.manifest.id);
+    assert.deepEqual(appliedBy(await migrate(pool!, box.registry()), mod.manifest.id), ["0001_a.sql"]);
+  });
+
+  test("works for a module that was never migrated", async (box) => {
+    const mod = box.add();
+    const coreOnly = new Registry();
+    coreOnly.registerCore();
+    await migrate(pool!, coreOnly);
+    await purgeModule(pool!, box.registry(), mod.manifest.id);
+    assert.equal(await schemaExists(mod.manifest.schema), false);
+  });
+
+  test("refuses the core and leaves the core schema and its history in place", async (box) => {
+    await migrate(pool!, box.registry());
+    await assert.rejects(purgeModule(pool!, box.registry(), "core"), /cannot purge the core module/);
+    assert.ok(await schemaExists("core"));
+    assert.equal(await historyCount("core"), 1);
+  });
+
+  test("waits for the migration lock only up to the timeout", async (box) => {
+    const mod = box.add();
+    mod.write("0001_a.sql", "create table a (x int);");
+    await migrate(pool!, box.registry());
+    const holder = await pool!.connect();
+    try {
+      await holder.query("select pg_advisory_lock(hashtext($1))", [MIGRATION_LOCK_NAME]);
+      await assert.rejects(
+        purgeModule(pool!, box.registry(), mod.manifest.id, { lockTimeoutMs: 200, lockPollMs: 50 }),
+        /could not acquire the migration lock within 200 ms/,
+      );
+      assert.equal(await schemaExists(mod.manifest.schema), true);
+    } finally {
+      await holder.query("select pg_advisory_unlock(hashtext($1))", [MIGRATION_LOCK_NAME]);
+      holder.release();
+    }
   });
 });

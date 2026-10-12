@@ -8,7 +8,8 @@
   "workspaces": ["packages/*", "modules/*", "apps/*"],
   "scripts": {
     "test": "node --env-file-if-exists=.env --import tsx --test \"packages/*/test/**/*.test.ts\"",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "db:migrate": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/migrate.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

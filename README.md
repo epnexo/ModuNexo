@@ -60,4 +60,15 @@ first) and `migrateModule` (one module, after bringing the core up to date) in `
   (`lockTimeoutMs`, default 30 s) and fails with a clear error instead of hanging;
 - name the module and file in a failing migration's error and keep the database error as `cause`.
 
+`purgeModule` drops a module's schema (cascade) and deletes its history rows in one transaction under the
+same lock. It refuses the `core` module and any module the registry does not know, and schema names are
+validated and quoted, never interpolated as given.
+
+`discoverModules(MODULES_DIR)` loads `modules/<id>/manifest.ts` (default export, folder name equal to the
+id) and returns validated manifests with `migrationsDir` resolved; an empty `modules/` yields nothing.
+
+```bash
+npm run db:migrate   # migrate the database in DATABASE_URL: the core plus every discovered module
+```
+
 A pool built with `createPool` logs errors from idle clients instead of crashing the process.
