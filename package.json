@@ -9,7 +9,10 @@
   "scripts": {
     "test": "node --env-file-if-exists=.env --import tsx --test \"packages/*/test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "db:migrate": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/migrate.ts"
+    "db:migrate": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/index.ts db:migrate",
+    "epnexo": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/index.ts",
+    "modules": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/index.ts modules",
+    "registry:generate": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/index.ts registry:generate"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
