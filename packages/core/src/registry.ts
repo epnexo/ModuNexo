@@ -17,10 +17,24 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
+export interface RegistryOptions {
+  /**
+   * Admit modules whose `platform` range the SDK does not satisfy instead of rejecting them, so that a package
+   * which cannot be installed can still be listed and refused by the lifecycle. `isPlatformSupported` tells them apart.
+   * Never use such a registry to migrate every module: that would apply migrations of unsupported packages.
+   */
+  allowUnsupportedPlatform?: boolean;
+}
+
 /** Holds module manifests and resolves the order in which modules are installed. */
 export class Registry {
+  readonly #allowUnsupportedPlatform: boolean;
   readonly #modules = new Map<string, ModuleManifest>();
   readonly #schemaOwners = new Map<string, string>();
+
+  constructor(options: RegistryOptions = {}) {
+    this.#allowUnsupportedPlatform = options.allowUnsupportedPlatform ?? false;
+  }
 
   /**
    * Validate and add a module manifest. Rejects the reserved core id, a `platform` range the SDK does not
@@ -42,7 +56,7 @@ export class Registry {
   #add(admitted: ModuleManifest): ModuleManifest {
     // Admit a frozen copy: later changes to the caller's object cannot alter what the registry returns.
     const manifest = deepFreeze(structuredClone(admitted));
-    if (!satisfies(SDK_VERSION, manifest.platform)) {
+    if (!this.#allowUnsupportedPlatform && !satisfies(SDK_VERSION, manifest.platform)) {
       throw new Error(`module "${manifest.id}" requires platform "${manifest.platform}" but the SDK version is ${SDK_VERSION}`);
     }
     if (this.#modules.has(manifest.id)) {
@@ -59,6 +73,12 @@ export class Registry {
 
   get(id: string): ModuleManifest | undefined {
     return this.#modules.get(id);
+  }
+
+  /** Whether the registered module's `platform` range accepts this SDK version. False for an unknown id. */
+  isPlatformSupported(id: string): boolean {
+    const manifest = this.#modules.get(id);
+    return manifest !== undefined && satisfies(SDK_VERSION, manifest.platform);
   }
 
   /**

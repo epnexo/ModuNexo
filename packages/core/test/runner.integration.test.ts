@@ -38,15 +38,15 @@ const appliedBy = (result: { applied: { moduleId: string; filename: string }[] }
   result.applied.filter((a) => a.moduleId === id).map((a) => a.filename);
 
 describe("migrate (integration): the core", () => {
-  test("bootstraps the core schema with only the tracking table, and records its own migration", async () => {
+  test("bootstraps the core schema with its tracking and lifecycle tables, and records its own migrations", async () => {
     const registry = new Registry();
     registry.registerCore();
     await migrate(pool!, registry);
 
     const tables = await pool!.query("select table_name from information_schema.tables where table_schema = 'core' order by 1");
-    assert.deepEqual(tables.rows.map((r) => r.table_name), ["schema_migrations"]);
+    assert.deepEqual(tables.rows.map((r) => r.table_name), ["module_events", "modules", "schema_migrations"]);
     const tracked = await pool!.query("select filename from core.schema_migrations where module_id = 'core' order by filename");
-    assert.equal(tracked.rows[0].filename, "0001_init.sql");
+    assert.deepEqual(tracked.rows.map((r) => r.filename), ["0001_init.sql", "0002_lifecycle_state.sql"]);
   });
 
   test("refuses to run when the core module is not registered", async (box) => {
@@ -345,9 +345,11 @@ describe("purgeModule (integration)", () => {
 
   test("refuses the core and leaves the core schema and its history in place", async (box) => {
     await migrate(pool!, box.registry());
+    const before = await historyCount("core");
     await assert.rejects(purgeModule(pool!, box.registry(), "core"), /cannot purge the core module/);
     assert.ok(await schemaExists("core"));
-    assert.equal(await historyCount("core"), 1);
+    assert.ok(before! > 0);
+    assert.equal(await historyCount("core"), before);
   });
 
   test("waits for the migration lock only up to the timeout", async (box) => {

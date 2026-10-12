@@ -10,7 +10,8 @@ modules compile against. The feature plan lives in `odd/tasks/`.
   No database access.
 - `packages/core` - `@epnexo/core`: the platform core. Today it holds the module `Registry`
   (manifest validation, `platform` and `dependsOn` range checks, dependency order, dependents
-  lookup), the core's own manifest and the migration runner; the lifecycle and CLI follow.
+  lookup), the core's own manifest, the migration runner and the lifecycle rules and state tables; the
+  lifecycle service and CLI follow.
 - `modules/` - installed module packages, one folder per module. Not tracked in git.
 - `apps/` - applications built on the core.
 

@@ -1,5 +1,6 @@
 export * from "./core-module.ts";
 export * from "./discovery.ts";
+export * from "./lifecycle/index.ts";
 export * from "./migrations.ts";
 export * from "./pool.ts";
 export * from "./purge.ts";
