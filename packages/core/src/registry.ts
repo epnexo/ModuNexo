@@ -75,6 +75,11 @@ export class Registry {
     return this.#modules.get(id);
   }
 
+  /** Every registered manifest, the core included, sorted by id. */
+  all(): ModuleManifest[] {
+    return [...this.#modules.values()].sort((a, b) => compareIds(a.id, b.id));
+  }
+
   /** Whether the registered module's `platform` range accepts this SDK version. False for an unknown id. */
   isPlatformSupported(id: string): boolean {
     const manifest = this.#modules.get(id);

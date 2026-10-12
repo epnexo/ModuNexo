@@ -69,11 +69,24 @@ export async function migrate(pool: pg.Pool, registry: Registry, options: Migrat
  * install and upgrade; it does not check dependencies, which the lifecycle owns.
  */
 export async function migrateModule(pool: pg.Pool, registry: Registry, moduleId: string, options: MigrateOptions = {}): Promise<MigrateResult> {
+  const modules = modulesFor(registry, moduleId);
+  return withMigrationLock(pool, options, (client) => applyModules(client, modules, options));
+}
+
+/**
+ * `migrateModule` for a caller that already holds the migration lock on `client` (the lifecycle service,
+ * which keeps the lock for a whole action). Taking the lock again from another connection would wait on
+ * itself, so this variant never locks; calling it without holding the lock is a bug.
+ */
+export async function migrateModuleLocked(client: pg.PoolClient, registry: Registry, moduleId: string, options: MigrateOptions = {}): Promise<MigrateResult> {
+  return applyModules(client, modulesFor(registry, moduleId), options);
+}
+
+function modulesFor(registry: Registry, moduleId: string): ModuleManifest[] {
   const manifest = registry.get(moduleId);
   if (manifest === undefined) throw new Error(`module "${moduleId}" is not registered`);
   const core = requireCore(registry);
-  const modules = manifest.id === core.id ? [core] : [core, manifest];
-  return withMigrationLock(pool, options, (client) => applyModules(client, modules, options));
+  return manifest.id === core.id ? [core] : [core, manifest];
 }
 
 function requireCore(registry: Registry): ModuleManifest {
