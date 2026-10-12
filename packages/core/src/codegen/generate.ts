@@ -41,6 +41,9 @@ export interface GenerateOptions {
   reservedPaths?: readonly string[];
 }
 
+const ownershipContent = (packages: string[], files: string[]): string =>
+  `${JSON.stringify({ generator: GENERATOR, version: 1, packages, files }, null, 2)}\n`;
+
 /** The text of a generated source file starts with the header; that is how the generator recognises its own files. */
 const isGenerated = (content: string): boolean => content.startsWith(GENERATED_HEADER);
 
@@ -72,22 +75,28 @@ function readOwnership(root: string): string[] | undefined {
   return files as string[];
 }
 
+/** A plan with what only the run itself needs: the manifest texts and the listed files that are no longer wanted. */
+interface RunPlan extends GenerationPlan {
+  /** Everything the previous manifest listed or this run would own, so an interrupted run leaves nothing unlisted. */
+  interimOwnership: string;
+  finalOwnership: string;
+  /** Listed files that are no longer wanted, present or not: their folders are pruned even when the file is already gone. */
+  retired: string[];
+}
+
 /**
  * Decide what a run does, reading the filesystem but never writing it. Throws `RegistrationError` before
  * anything could be written when the modules cannot be registered (see `renderRegistration`) or when a path the
  * generator needs holds something it did not generate.
  */
-function plan(modules: RegistrationModule[], root: string, reservedPaths: readonly string[] | undefined): GenerationPlan {
+function plan(modules: RegistrationModule[], root: string, reservedPaths: readonly string[] | undefined): RunPlan {
   const rendered = renderRegistration(modules, reservedPaths === undefined ? {} : { reservedPaths });
   const previous = readOwnership(root);
   const problems: string[] = [];
 
   const wanted = new Map(rendered.files.map((f) => [f.path, f.content]));
   const owned = [...wanted.keys()].sort(compareIds);
-  const ownership: RenderedFile = {
-    path: OWNERSHIP_FILE,
-    content: `${JSON.stringify({ generator: GENERATOR, version: 1, packages: rendered.packages, files: owned }, null, 2)}\n`,
-  };
+  const ownership: RenderedFile = { path: OWNERSHIP_FILE, content: ownershipContent(rendered.packages, owned) };
   const stale = new Set((previous ?? []).filter((file) => !wanted.has(file)));
 
   const writes: PlannedWrite[] = [];
@@ -123,7 +132,18 @@ function plan(modules: RegistrationModule[], root: string, reservedPaths: readon
   }
   if (problems.length > 0) throw new RegistrationError(problems);
 
-  return { root, writes, unchanged, deletions, warnings };
+  // Deletions include generated siblings that were never listed; listing them first keeps them findable.
+  const interim = [...new Set([...(previous ?? []), ...owned, ...deletions])].sort(compareIds);
+  return {
+    root,
+    writes,
+    unchanged,
+    deletions,
+    warnings,
+    interimOwnership: ownershipContent(rendered.packages, interim),
+    finalOwnership: ownership.content,
+    retired: [...stale].sort(compareIds),
+  };
 }
 
 /** Write through a temporary file in the same folder, so a reader never sees half a file. */
@@ -138,8 +158,12 @@ function writeAtomically(absolute: string, content: string): void {
 function pruneEmptyFolders(root: string, deleted: string): void {
   const stop = join(root, "src/app");
   for (let dir = dirname(join(root, deleted)); dir.startsWith(`${stop}/`); dir = dirname(dir)) {
-    if (readdirSync(dir).length > 0) return;
-    rmdirSync(dir);
+    // A folder that is already gone (an earlier run removed it) is not a reason to stop: its parent may be empty now.
+    if (existsSync(dir)) {
+      // Something that is not a folder (a hand-written file in the way) is not ours to touch, and ends the climb.
+      if (!statSync(dir).isDirectory() || readdirSync(dir).length > 0) return;
+      rmdirSync(dir);
+    }
   }
 }
 
@@ -150,19 +174,31 @@ function pruneEmptyFolders(root: string, deleted: string): void {
  * Conflicts, a path held by a hand-written file and an unreadable ownership manifest are all found before the
  * first write and reported as one `RegistrationError`. The run is idempotent: files whose content is already
  * right are not touched. With `dryRun` the plan is returned and the filesystem is not touched at all.
+ *
+ * A run that throws partway (a write, a deletion or a folder removal) is not atomic, but it is recoverable: see
+ * the comment on the ownership manifest below. Running the generator again converges to the correct tree.
  */
 export function generateRegistration(modules: RegistrationModule[], options: GenerateOptions = {}): GenerationPlan {
   const root = options.outDir ?? DEFAULT_WEB_ROOT;
-  const result = plan(modules, root, options.reservedPaths);
+  const { interimOwnership, finalOwnership, retired, ...result } = plan(modules, root, options.reservedPaths);
   if (options.dryRun === true) return result;
 
-  // The ownership manifest goes last among the writes: until it is rewritten, the old one still describes the
-  // old files, and any new file already carries the header and is picked up by the next run.
-  const ordered = [...result.writes.filter((w) => w.path !== OWNERSHIP_FILE), ...result.writes.filter((w) => w.path === OWNERSHIP_FILE)];
-  for (const write of ordered) writeAtomically(join(root, write.path), write.content);
-  for (const file of result.deletions) {
-    rmSync(join(root, file));
-    pruneEmptyFolders(root, file);
-  }
+  // Ownership is recorded in two steps so that a run that dies partway can always be cleaned up by the next one.
+  // First the manifest lists everything the previous one listed plus everything this run is about to create or
+  // remove; only after the writes, the deletions and the folder pruning have all succeeded is it rewritten to the
+  // exact final list. Until then the manifest is a superset, so no file a failed run touched is ever unlisted, and
+  // the next run deletes whatever in that superset is no longer wanted (and prunes the folders it left empty).
+  const manifestPath = join(root, OWNERSHIP_FILE);
+  let recorded = existsSync(manifestPath) ? readFileSync(manifestPath, "utf8") : undefined;
+  const record = (content: string): void => {
+    if (content === recorded) return;
+    writeAtomically(manifestPath, content);
+    recorded = content;
+  };
+  record(interimOwnership);
+  for (const write of result.writes) if (write.path !== OWNERSHIP_FILE) writeAtomically(join(root, write.path), write.content);
+  for (const file of result.deletions) rmSync(join(root, file));
+  for (const file of retired) pruneEmptyFolders(root, file);
+  record(finalOwnership);
   return result;
 }

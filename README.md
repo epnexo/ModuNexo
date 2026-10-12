@@ -69,7 +69,7 @@ Required: `id`, `version`, `name`, `platform`, `dependsOn`, `schema`, `migration
 
 - `nav` entries carry `group`, `order` and the `permission` that must be held to see them.
 - `pages` declare routes. Paths are absolute and normalised (no `..`, query, fragment or doubled slashes);
-  `[id]`, `[...slug]` and `[[...slug]]` are allowed. `kind: "page"` renders UI, `kind: "route"` is an HTTP
+  `[id]`, `[...slug]` and `[[...slug]]` are allowed, with balanced brackets and nothing around them (`[id]]` is rejected). `kind: "page"` renders UI, `kind: "route"` is an HTTP
   handler and may list the `methods` it exports (default `["GET"]`). `dynamic` is the Next.js segment config
   (`auto`, `force-dynamic`, `force-static`, `error`), which Next.js only reads from the route file itself.
 - `settings` have a `key`, `label`, `type` (`string`, `number`, `boolean`, `select`, `secret`, `path`),
@@ -196,10 +196,18 @@ Every generated source file starts with a header saying it is generated and must
 idempotent and owns only what it wrote: a file from an earlier run that is no longer wanted (a module was
 disabled or uninstalled) is removed together with the folders it emptied, a file it did not generate is never
 deleted, and a needed path held by a hand-written file is an error. Conflicts are reported before anything is
-written: two modules declaring the same normalised path (or dynamic segments with different names in the same
-position), a path at or below a reserved shell path (`RESERVED_PATHS`: `/`, `/apps`, `/settings`, `/login`,
+written: two modules declaring the same normalised path, dynamic segments of one kind with different parameter
+names at the same position under the same parent (`/items/[id]` and `/items/[itemId]/notes`: Next.js rejects
+sibling dynamic folders with different names; the same name is fine), a dynamic segment whose brackets are not
+balanced (only `[x]`, `[...x]` and `[[...x]]` exist), a path at or below a reserved shell path (`RESERVED_PATHS`: `/`, `/apps`, `/settings`, `/login`,
 `/logout`, `/api`, `/_next`), and segments that cannot be a folder name. `--dry-run` prints the planned writes
 and deletions and touches nothing.
+
+A run is not atomic, but a run that fails partway can always be repaired by running the generator again. Before
+touching any file it records, in `src/generated/.manifest.json`, everything the previous manifest listed plus
+everything it is about to create or remove; only after all writes, deletions and folder removals have succeeded
+is the manifest rewritten to the exact final list. After a failure the manifest is therefore a superset, and the
+next run deletes whatever in it is no longer wanted and removes the empty folders left behind.
 
 ## Not here yet
 

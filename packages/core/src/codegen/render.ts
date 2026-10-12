@@ -1,4 +1,4 @@
-import type { HttpMethod, ModuleManifest, NavEntry, PageDeclaration } from "@epnexo/sdk";
+import { type HttpMethod, type ModuleManifest, type NavEntry, type PageDeclaration, isDynamicRouteSegment } from "@epnexo/sdk";
 import { CORE_MODULE_ID } from "../core-module.ts";
 import { Registry, compareIds } from "../registry.ts";
 
@@ -62,11 +62,10 @@ export interface RenderOptions {
 }
 
 const STATIC_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._~-]*$/;
-const DYNAMIC_SEGMENT = /^\[(\.\.\.|\[\.\.\.)?[A-Za-z][A-Za-z0-9_]*\]?\]$/;
 const EXTENSION = /\.(?:[cm]?[jt]sx?)$/;
 
-/** Dynamic segments with their parameter names erased: `[id]` and `[slug]` are the same route to Next.js. */
-const shapeOf = (segment: string): string => segment.replace(/[A-Za-z][A-Za-z0-9_]*(?=\]+$)/, "");
+/** A valid dynamic segment with its parameter name erased: `[id]` and `[slug]` are the same position to Next.js. */
+const shapeOf = (segment: string): string => (isDynamicRouteSegment(segment) ? segment.replace(/[A-Za-z][A-Za-z0-9_]*(?=\]+$)/, "") : segment);
 
 const normalise = (path: string): string => (path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path);
 
@@ -105,7 +104,9 @@ interface RoutePlan {
 function planRoutes(ordered: RegistrationModule[], reserved: readonly string[], problems: string[]): RoutePlan[] {
   const plans: RoutePlan[] = [];
   const exact = new Map<string, string>();
-  const shapes = new Map<string, { path: string; moduleId: string }>();
+  // Next.js rejects sibling dynamic folders of one kind with different parameter names. Key: the parent prefix with
+  // every name erased, plus the segment's shape; value: the first page that put a named segment there.
+  const positions = new Map<string, { segment: string; path: string; moduleId: string }>();
 
   for (const { manifest, packageName } of ordered) {
     for (const page of manifest.pages ?? []) {
@@ -118,7 +119,7 @@ function planRoutes(ordered: RegistrationModule[], reserved: readonly string[], 
         problems.push(`${where}, which is reserved for the shell (${hit === path ? "the path itself" : `below "${hit}"`})`);
         continue;
       }
-      const invalid = segments.filter((s) => !STATIC_SEGMENT.test(s) && !DYNAMIC_SEGMENT.test(s));
+      const invalid = segments.filter((s) => !STATIC_SEGMENT.test(s) && !isDynamicRouteSegment(s));
       if (invalid.length > 0) {
         problems.push(`${where}, which has an unsupported segment ${invalid.map((s) => `"${s}"`).join(", ")} (use letters, digits, ".", "_", "~", "-", or [name], [...name], [[...name]])`);
         continue;
@@ -128,14 +129,23 @@ function planRoutes(ordered: RegistrationModule[], reserved: readonly string[], 
         problems.push(`${where}, which module "${owner}" already declares`);
         continue;
       }
-      const shape = `/${segments.map(shapeOf).join("/")}`;
-      const sameShape = shapes.get(shape);
-      if (sameShape !== undefined) {
-        problems.push(`${where}, the same route as "${sameShape.path}" declared by module "${sameShape.moduleId}" (dynamic segments with different names)`);
+      const claimed: [string, { segment: string; path: string; moduleId: string }][] = [];
+      const clashes: string[] = [];
+      segments.forEach((segment, index) => {
+        if (!isDynamicRouteSegment(segment)) return;
+        const key = `/${segments.slice(0, index).map(shapeOf).join("/")}|${shapeOf(segment)}`;
+        const first = positions.get(key);
+        if (first === undefined) claimed.push([key, { segment, path, moduleId: manifest.id }]);
+        else if (first.segment !== segment) {
+          clashes.push(`${where} with "${segment}" where module "${first.moduleId}" declares "${first.path}" with "${first.segment}" (Next.js allows one parameter name for a dynamic segment at the same position)`);
+        }
+      });
+      if (clashes.length > 0) {
+        problems.push(...clashes);
         continue;
       }
       exact.set(path, manifest.id);
-      shapes.set(shape, { path, moduleId: manifest.id });
+      for (const [key, owner] of claimed) positions.set(key, owner);
       plans.push({ moduleId: manifest.id, path, file: `src/app${path === "/" ? "" : path}/${page.kind === "page" ? "page.tsx" : "route.ts"}`, page, packageName });
     }
   }

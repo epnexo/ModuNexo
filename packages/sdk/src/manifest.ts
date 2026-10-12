@@ -122,6 +122,13 @@ const KEY = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/;
 const RELATIVE_ENTRY = /^\.\/(?!.*\.\.)\S+$/;
 const ROUTE_SEGMENT = /^[^\s/?#]+$/;
 
+const DYNAMIC_ROUTE_SEGMENT = /^(?:\[[A-Za-z][A-Za-z0-9_]*\]|\[\.\.\.[A-Za-z][A-Za-z0-9_]*\]|\[\[\.\.\.[A-Za-z][A-Za-z0-9_]*\]\])$/;
+
+/** A Next.js dynamic segment with balanced brackets: `[name]`, `[...name]` or `[[...name]]`, nothing around it. */
+export function isDynamicRouteSegment(segment: string): boolean {
+  return DYNAMIC_ROUTE_SEGMENT.test(segment);
+}
+
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim() !== "";
 }
@@ -140,13 +147,14 @@ function isRelativeEntry(value: unknown): value is string {
 
 /**
  * A route path is "/" or "/" followed by segments that are non-empty, free of whitespace, "?" and "#", and not
- * "." or "..". One trailing slash is tolerated.
+ * "." or "..". A segment that contains a bracket must be a whole dynamic segment (see `isDynamicRouteSegment`).
+ * One trailing slash is tolerated.
  */
 function isNormalisedRoutePath(value: string): boolean {
   if (value === "/") return true;
   const segments = value.slice(1).split("/");
   if (segments.length > 1 && segments[segments.length - 1] === "") segments.pop();
-  return segments.every((segment) => ROUTE_SEGMENT.test(segment) && segment !== "." && segment !== "..");
+  return segments.every((segment) => ROUTE_SEGMENT.test(segment) && segment !== "." && segment !== ".." && (!/[[\]]/.test(segment) || isDynamicRouteSegment(segment)));
 }
 
 /** Trailing slashes do not distinguish routes; the root stays "/". */
