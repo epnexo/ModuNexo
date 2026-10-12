@@ -7,7 +7,8 @@
     ".": "./src/index.ts",
     "./testing": "./src/testing.ts",
     "./pool": "./src/pool.ts",
-    "./auth": "./src/auth/index.ts"
+    "./auth": "./src/auth/index.ts",
+    "./cli": "./src/cli/run.ts"
   },
   "dependencies": {
     "@epnexo/sdk": "^0.1.0",
