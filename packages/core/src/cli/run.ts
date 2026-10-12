@@ -4,6 +4,7 @@ import type pg from "pg";
 import { AdminRefusedError, createAdministrator } from "../auth/admin.ts";
 import { createAuth } from "../auth/auth.ts";
 import { MASTER_KEY_ENV, resolveMasterKey } from "../auth/master-key.ts";
+import { ModeRefusedError, readSignInMode, setSignInMode } from "../auth/mode.ts";
 import { DEFAULT_WEB_ROOT, RegistrationError, generateRegistration, registrationModulesFor } from "../codegen/index.ts";
 import { discoverModules, resolveModulesDir } from "../discovery.ts";
 import { LifecycleRefusedError, LifecycleService, type ModuleStatus, fileHookLoader } from "../lifecycle/index.ts";
@@ -41,13 +42,16 @@ commands:
   admin create --email <email> --name <name>
                                    create an administrator; the password is read from standard input
                                    (a hidden prompt on a terminal), never from an argument
+  auth status                      whether the shell asks for a sign-in
+  auth require                     ask for a sign-in (refused while no administrator exists)
+  auth disable                     serve local requests without a sign-in
 
 options for every command:
   --modules-dir <path>             where module packages are unpacked (default: modules/ at the repository root)
   --help                           print this text
 
 environment: DATABASE_URL (and TEST_DATABASE_URL for the tests); admin create also needs ${MASTER_KEY_ENV}
-exit codes: 0 done, 1 error, 2 usage error, 3 refused by the lifecycle rules, by a registration conflict or by an administrator rule`;
+exit codes: 0 done, 1 error, 2 usage error, 3 refused by a rule (lifecycle, registration conflict, administrator or sign-in mode)`;
 
 class UsageError extends Error {}
 /** The action was understood and refused by a rule; nothing was changed. */
@@ -76,6 +80,9 @@ const COMMAND_OPTIONS: Record<string, readonly string[]> = {
   "db:migrate": [],
   "registry:generate": ["dry-run", "out"],
   "admin create": ["email", "name"],
+  "auth status": [],
+  "auth require": [],
+  "auth disable": [],
 };
 
 const ACTION_COMMANDS = ["install", "enable", "disable", "upgrade", "uninstall"] as const;
@@ -106,6 +113,12 @@ function parse(argv: string[]): Parsed | "help" {
     if (second === undefined) throw new UsageError("no modules command given");
     if (second !== "list" && !ACTION_COMMANDS.includes(second as ActionCommand)) throw new UsageError(`unknown modules command "${second}"`);
     command = `modules ${second}`;
+    ids = rest;
+  } else if (first === "auth") {
+    if (second !== "status" && second !== "require" && second !== "disable") {
+      throw new UsageError(second === undefined ? "no auth command given" : `unknown auth command "${second}"`);
+    }
+    command = `auth ${second}`;
     ids = rest;
   } else if (first === "admin") {
     if (second !== "create") throw new UsageError(second === undefined ? "no admin command given" : `unknown admin command "${second}"`);
@@ -286,6 +299,33 @@ async function adminCreateCommand(parsed: Parsed, pool: pg.Pool, io: CliIo): Pro
   io.out(`created administrator "${user.email}"`);
 }
 
+const SIGN_IN_DISABLED_NOTICE = [
+  "sign-in is now disabled.",
+  "Anyone who can reach this server from the local network can use it, including installing modules,",
+  "which runs code with access to the database. Requests that carry a public address are refused.",
+  'Switch it back on with "npm run epnexo -- auth require".',
+];
+
+/** The sign-in mode lives in the database and needs no master key, so it can be changed while locked out. */
+async function authCommand(parsed: Parsed, pool: pg.Pool, io: CliIo): Promise<void> {
+  const present = await pool.query("select to_regclass('core.platform_settings') is not null as present");
+  if (!present.rows[0].present) throw new Error('the platform settings table does not exist yet: run "npm run db:migrate" first');
+
+  const action = parsed.command.slice("auth ".length);
+  if (action === "status") {
+    io.out(`sign-in: ${await readSignInMode(pool)}`);
+    return;
+  }
+  const mode = action === "disable" ? "disabled" : "required";
+  const result = await setSignInMode(pool, mode, "cli");
+  if (!result.changed) {
+    io.out(`sign-in is already ${mode}; nothing to do`);
+    return;
+  }
+  if (mode === "disabled") for (const line of SIGN_IN_DISABLED_NOTICE) io.out(line);
+  else io.out("sign-in is now required.");
+}
+
 /** Run one CLI invocation and return its exit code. Everything the user sees goes through `io`. */
 export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<number> {
   let pool: pg.Pool | undefined;
@@ -293,6 +333,11 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
     const parsed = parse(argv);
     if (parsed === "help") {
       io.out(USAGE);
+      return EXIT_OK;
+    }
+    if (parsed.command.startsWith("auth ")) {
+      pool = createPool(resolveDatabaseUrl(), { connectionTimeoutMillis: 5000 });
+      await authCommand(parsed, pool, io);
       return EXIT_OK;
     }
     if (parsed.command === "admin create") {
@@ -322,7 +367,7 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
       io.err(`${USAGE.split("\n")[0]} (run with --help for the commands)`);
       return EXIT_USAGE;
     }
-    if (error instanceof Refusal || error instanceof LifecycleRefusedError || error instanceof RegistrationError || error instanceof AdminRefusedError) {
+    if (error instanceof Refusal || error instanceof LifecycleRefusedError || error instanceof RegistrationError || error instanceof AdminRefusedError || error instanceof ModeRefusedError) {
       io.err(`refused: ${error.message}`);
       return EXIT_REFUSED;
     }

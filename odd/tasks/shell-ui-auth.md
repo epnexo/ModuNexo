@@ -75,7 +75,7 @@ and is marked as an assumption where the owner did not state it.
   (authentication), independent verifier after the unit's own checks. Commit `5e5b061`.
 - [x] **T2** (S3, S6, S7) Web app scaffold: Next.js, Tailwind tokens, light and dark themes,
   typecheck covering `.tsx`, scripts, build against the empty registry. Route: inline.
-- [ ] **T6** (S9) Sign-in mode in `@epnexo/core`, done before T3: core settings table, mode read and
+- [x] **T6** (S9) Sign-in mode in `@epnexo/core`, done before T3: core settings table, mode read and
   write, `auth status | require | disable` commands, the local-request rule as a pure function.
   Route: inline. Risk: item 2.
 - [ ] **T3** (S4, S9) Sign-in page, auth route handler, server-side guard that honours the sign-in
@@ -159,3 +159,17 @@ feature is a chain with one slice per task.
   The first half is true and already a T3 requirement (T3 task line); T3's verifier must prove it
   against the built app. Reviewed boundary is now `e7be714`. The review needed the untracked files of
   the T2 work declared out of scope (`--untracked-scope=exclude` with the inventory digest).
+- **L12** (2026-10-13) T6 done. Stored in a new `core.platform_settings` table (migration
+  `0004_platform_settings.sql`, key `auth.signIn`, `updated_by` names who changed it); the settings
+  feature (A3) will own module settings separately. Tests written first and observed RED (modules
+  missing, commands unknown), then GREEN: 14 for the local-address rule, 9 for the mode against
+  Postgres, 8 for the CLI. `npm test` 389 pass, 0 fail, 0 skipped; `npm run typecheck` clean. Rules
+  pinned by tests: a missing row or any stored value other than exactly `disabled` reads as
+  `required`; a database error is not turned into a mode; `require` is refused (exit 3) without an
+  active, non-banned administrator and leaves the mode unchanged; the check and the write share one
+  transaction under an advisory lock; repeating a command writes nothing; the auth commands need no
+  master key. The local-address rule looks through `::ffff:` mapped addresses (as the
+  `nextjs-auth-guardrails` skill requires), accepts brackets and a port, and fails closed on anything
+  unreadable, on `0.0.0.0`, `::`, site-local `fec0::/10` and shared space `100.64.0.0/10` (a VPN range
+  is not known to be the owner's network). Not wired to any HTTP request yet: T3 does that. Existing
+  tests that pin the core's table and migration lists were updated for migration 0004.
