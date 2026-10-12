@@ -112,13 +112,17 @@ previous repository to prepare the write).
 
 - [x] **T1** Repository scaffold and `@epnexo/sdk` manifest v2 (types, `defineModule`,
   validation) with tests.
-- [ ] **T1b** Harden manifest validation from the T1 review: normalised `pages[].path`
+- [x] **T1b** Harden manifest validation from the T1 review: normalised `pages[].path`
   (no `..`, whitespace, query, fragment or doubled slashes; duplicates compared after
   normalising a trailing slash), a test proving `..` is rejected inside `entry` and
   `hooks`, finite `number` defaults, `engines.node` declared, and the version contract
   pinned by tests (prerelease accepted, build metadata rejected).
-- [ ] **T2** `@epnexo/core` registry: dependency ordering with semver ranges, `platform`
+- [x] **T2** `@epnexo/core` registry: dependency ordering with semver ranges, `platform`
   compatibility check, dependents lookup.
+- [ ] **T2b** Registry follow-ups from the T2 review: one locale-independent id comparator
+  everywhere with a dependents-order test; a test pinning that a prerelease dependency
+  does not satisfy an ordinary range (semver default, kept on purpose); `allowCoreSchema`
+  bound to the id `core`; manifests frozen on admission.
 - [ ] **T3** Migration runner port: per-module schema, checksums, history guards, bounded
   lock, named errors, and `purge` of a module schema.
 - [ ] **T4** Lifecycle state: `core.modules` with state, `core.module_events`, and the
@@ -184,6 +188,26 @@ for a large decision. Review consent for each work unit is granted under that in
   compose so integration tests cannot skip silently (with T3), and include `.tsx` in the
   typecheck once UI files exist (with the shell UI feature).
 
+### T1b and T2 — done (2026-10-13)
+
+- Commits: `b43cf35` manifest hardening, `e592888` registry, `2ef0ddd` neutral fixture
+  names (the acceptance criterion "no file in `packages/` names a business module" was
+  broken by T1 fixtures; fixed inline by the orchestrator).
+- Checks observed by the orchestrator: `npm test` 61 pass, 0 fail; `npm run typecheck`
+  clean. RED reported by the writer per behaviour group; the `..`-in-entry and
+  prerelease/build-metadata cases were already true in behaviour, so their tests only pin
+  it.
+- Decisions taken where this document was silent: `engines.node` is `>=22.9.0` (first
+  release with `--env-file-if-exists`); dependency and `platform` ranges follow semver's
+  default prerelease rule; `dependentsOf` an unknown id returns an empty list; the core
+  manifest is admitted through `Registry.registerCore()` and a validator option scoped to
+  the `core` schema.
+- Size: T2 is 462 authored lines, 251 of them tests.
+- Review: `medium` (`slice_budget_reached`), consent granted under the working agreement,
+  lens `review-reliability`, approved and acknowledged (lineage
+  `review-35b6d4ba54a24fd0`). Reviewed boundary: `2ef0ddd`.
+- Advisory findings, none blocking: two warnings and two suggestions, all taken as T2b.
+
 ## Next step
 
-T1b, then T2.
+T2b, then T3.
