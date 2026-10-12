@@ -91,6 +91,17 @@ describe("sign-in mode", () => {
     assert.deepEqual(await setSignInMode(db!, "required", "cli"), { mode: "required", changed: false });
   });
 
+  test("requiring on a fresh instance is already the case: no refusal and no row is written", async () => {
+    assert.deepEqual(await setSignInMode(db!, "required", "cli"), { mode: "required", changed: false });
+    assert.equal((await db!.query("select 1 from core.platform_settings")).rowCount, 0);
+  });
+
+  test("requiring with an administrator but no stored row reports no change and writes nothing", async () => {
+    await addUser("admin");
+    assert.deepEqual(await setSignInMode(db!, "required", "cli"), { mode: "required", changed: false });
+    assert.equal((await db!.query("select 1 from core.platform_settings")).rowCount, 0);
+  });
+
   test("any stored value other than disabled means required: the mode fails closed", async () => {
     for (const value of ['"off"', '"DISABLED"', "true", "false", "null", "0", '{"mode":"disabled"}', '""']) {
       await db!.query("delete from core.platform_settings");
