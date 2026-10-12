@@ -8,3 +8,6 @@ build/
 # Installed modules are unpacked here and are not tracked.
 modules/*
 !modules/.gitkeep
+
+# Agent tooling state generated on this machine
+.atl/
