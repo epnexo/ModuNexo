@@ -29,6 +29,23 @@ const needs = (...deps: string[]): Options => ({ dependsOn: Object.fromEntries(d
 const ids = (modules: ModuleManifest[]) => modules.map((m) => m.id);
 const order = (registry: Registry) => ids(registry.resolveOrder());
 
+describe("Registry: unsupported platform", () => {
+  it("is rejected by default and admitted when explicitly allowed", () => {
+    assert.throws(() => new Registry().register(manifest("a", { platform: "^9.0.0" })), /requires platform/);
+    const lenient = new Registry({ allowUnsupportedPlatform: true });
+    assert.equal(lenient.register(manifest("a", { platform: "^9.0.0" })).id, "a");
+  });
+
+  it("tells supported and unsupported modules apart, and unknown ids are never supported", () => {
+    const registry = new Registry({ allowUnsupportedPlatform: true });
+    registry.register(manifest("ok"));
+    registry.register(manifest("future", { platform: "^9.0.0" }));
+    assert.equal(registry.isPlatformSupported("ok"), true);
+    assert.equal(registry.isPlatformSupported("future"), false);
+    assert.equal(registry.isPlatformSupported("ghost"), false);
+  });
+});
+
 describe("Registry: registration", () => {
   it("validates manifests on register", () => {
     const registry = new Registry();
