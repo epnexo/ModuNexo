@@ -170,6 +170,7 @@ npm run modules -- uninstall <id> --keep  # or --purge; no flag is refused, both
 npm run db:migrate                        # the core only; reports installed modules that need "modules upgrade"
 npm run registry:generate [-- --dry-run] [-- --out <dir>]
 npm run epnexo -- admin create --email <email> --name <name>
+npm run epnexo -- auth status | require | disable
 ```
 
 Every command takes `--modules-dir <path>` (default `modules/`; a path that is given must exist) and `--help`.
@@ -189,7 +190,7 @@ Discovery warnings go to stderr. After a successful install, enable, disable, up
 prints a reminder that the registration must be regenerated and the web app rebuilt and restarted.
 
 Exit codes: `0` done, `1` unexpected error or an accepted action that failed, `2` usage error, `3` refused by a
-lifecycle rule, by a registration conflict or by an administrator rule.
+rule: a lifecycle rule, a registration conflict, an administrator rule or the sign-in mode.
 
 ### Administrators
 
@@ -250,3 +251,27 @@ Planned as later features: the shell UI and admin login (`apps/web`), the settin
 Apps screen with the install pipeline (package upload, build, restart - until then the CLI prints the reminder
 and the regeneration, rebuild and restart are manual), and the module scaffold and packaging commands. A cleanup
 path for orphaned rows is not designed.
+
+### Sign-in mode
+
+Sign-in is required by default. For an instance that lives only on a trusted local network it can be switched off,
+and switched back on when the instance is exposed:
+
+```bash
+npm run epnexo -- auth status     # sign-in: required | disabled
+npm run epnexo -- auth disable
+npm run epnexo -- auth require
+```
+
+The mode is stored in the database (`core.platform_settings`, key `auth.signIn`), so it does not need the master
+key and can be changed while locked out. Three rules keep it from becoming an open door:
+
+- Anything other than the exact stored value `disabled` means *required*. A missing, corrupted or hand-edited row
+  never opens the shell.
+- With sign-in disabled the shell serves **local requests only**: a request is refused when any address it carries
+  is not loopback, private (RFC 1918), link-local or IPv6 unique-local. Shared address space (100.64.0.0/10) is not
+  local. An address that cannot be read is not local.
+- `auth require` is refused (exit code `3`) while no active administrator exists, so it cannot lock you out.
+
+With sign-in disabled there is no session, and anyone on the local network can use the shell as an operator with
+every permission, including installing modules, which runs code with access to the database.
