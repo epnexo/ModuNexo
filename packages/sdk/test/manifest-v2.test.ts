@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { validateManifest } from "../src/index.ts";
+import { isDynamicRouteSegment, validateManifest } from "../src/index.ts";
 
 const base = {
   id: "reports",
@@ -85,6 +85,15 @@ describe("validateManifest: v2 sections", () => {
     for (const path of ["/a//b", "//a", "/a/./b", "/a/../b", "/..", "/a b", "/a\tb", "/a?x=1", "/a#top", "/a/\u00a0", "//", "/a//"]) {
       assert.throws(() => validateManifest(withPath(path)), /pages\[0\]\.path must be a normalised route path/, JSON.stringify(path));
     }
+  });
+
+  it("rejects unbalanced or malformed dynamic segments", () => {
+    const withPath = (path: string) => ({ ...base, pages: [{ path, entry: "./a.tsx", kind: "page" }] });
+    for (const path of ["/a/[x]]", "/a/[[...x]", "/a/[[x]]", "/a/[x", "/a/x]", "/a/[]", "/a/[...]", "/a/pre[x]"]) {
+      assert.throws(() => validateManifest(withPath(path)), /pages\[0\]\.path must be a normalised route path/, path);
+    }
+    assert.equal(isDynamicRouteSegment("[x]") && isDynamicRouteSegment("[...x]") && isDynamicRouteSegment("[[...x]]"), true);
+    assert.equal(isDynamicRouteSegment("[x]]") || isDynamicRouteSegment("[[...x]") || isDynamicRouteSegment("x"), false);
   });
 
   it("treats a trailing slash as the same page path when detecting duplicates", () => {

@@ -135,9 +135,26 @@ describe("renderRegistration: conflicts are found before anything is produced", 
     assert.match(problems[0]!, /module "beta" declares "\/shared", which module "alpha" already declares/);
   });
 
-  it("rejects dynamic segments with different names at the same position", () => {
+  it("rejects dynamic segments with different names at the same position, naming both modules and both paths", () => {
     const problems = problemsOf([fixture("alpha", { pages: [page("/x/[id]")] }), fixture("beta", { pages: [page("/x/[slug]/edit"), page("/x/[slug]")] })]);
-    assert.ok(problems.some((p) => /"\/x\/\[slug\]".*same route as "\/x\/\[id\]".*module "alpha"/.test(p)), problems.join("\n"));
+    assert.ok(problems.some((p) => /module "beta" declares "\/x\/\[slug\]\/edit".*"\[slug\]".*module "alpha" declares "\/x\/\[id\]".*"\[id\]"/.test(p)), problems.join("\n"));
+  });
+
+  it("rejects differently named dynamic segments even when one path is deeper than the other", () => {
+    const problems = problemsOf([fixture("alpha", { pages: [page("/items/[id]")] }), fixture("beta", { pages: [page("/items/[itemId]/notes")] })]);
+    assert.equal(problems.length, 1);
+    assert.match(problems[0]!, /module "beta" declares "\/items\/\[itemId\]\/notes".*module "alpha" declares "\/items\/\[id\]"/);
+    // The deeper path may come first, and a conflict further down the path is found too.
+    assert.equal(problemsOf([fixture("alpha", { pages: [page("/items/[itemId]/notes/[n]")] }), fixture("beta", { pages: [page("/items/[itemId]/notes/[m]")] })]).length, 1);
+    assert.equal(problemsOf([fixture("alpha", { pages: [page("/items/[a]/notes")] }), fixture("beta", { pages: [page("/items/[b]/tags")] })]).length, 1);
+  });
+
+  it("accepts the same dynamic segment name at that position, and different names under different parents or kinds", () => {
+    const modules = [
+      fixture("alpha", { pages: [page("/items/[id]"), page("/other/[x]"), page("/docs/[...slug]")] }),
+      fixture("beta", { pages: [page("/items/[id]/notes"), page("/more/[y]"), page("/docs/[id]")] }),
+    ];
+    assert.equal(fileMap(modules).size, 7);
   });
 
   it("rejects a path that is, or is under, a reserved shell path", () => {
@@ -154,9 +171,17 @@ describe("renderRegistration: conflicts are found before anything is produced", 
   });
 
   it("rejects a segment that cannot be a file name, and reports every problem at once", () => {
-    const problems = problemsOf([fixture("alpha", { pages: [page("/a/(group)/b"), page("/a/@slot"), page("/a/_private"), page("/a/[b$d]"), page("/apps")] })]);
-    assert.equal(problems.filter((p) => /unsupported segment/.test(p)).length, 4);
+    const problems = problemsOf([fixture("alpha", { pages: [page("/a/(group)/b"), page("/a/@slot"), page("/a/_private"), page("/apps")] })]);
+    assert.equal(problems.filter((p) => /unsupported segment/.test(p)).length, 3);
     assert.ok(problems.some((p) => /reserved/.test(p)));
+  });
+
+  it("accepts only balanced dynamic segments: [x], [...x] and [[...x]]", () => {
+    for (const ok of ["/a/[x]", "/a/[...x]", "/a/[[...x]]", "/a/[x_1]"]) assert.doesNotThrow(() => render([fixture("alpha", { pages: [page(ok)] })]), ok);
+    for (const bad of ["/a/[x]]", "/a/[[...x]", "/a/[[x]]", "/a/[[x]", "/a/[x", "/a/x]", "/a/[...x]]", "/a/[[...x]]]", "/a/[]", "/a/[...]", "/a/[[...]]", "/a/pre[x]"]) {
+      // The registry validates each manifest first (the SDK applies the same grammar), so the problem may be its message.
+      assert.match(problemsOf([fixture("alpha", { pages: [page(bad)] })])[0]!, /unsupported segment|normalised route path/, bad);
+    }
   });
 
   it("rejects a module with no package name", () => {

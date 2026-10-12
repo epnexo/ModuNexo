@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, it } from "node:test";
@@ -167,6 +167,96 @@ describe("generateRegistration: owning its output", () => {
     assert.throws(() => generate([fixture("alpha", [page("/apps")])]), /reserved for the shell/);
     assert.throws(() => generate([fixture("alpha", [page("/x")]), fixture("beta", [page("/x")])]), /already declares/);
     assert.equal(existsSync(join(root, "src")), false);
+  });
+});
+
+/** Every file and folder under `dir`, relative to it and sorted; folders end with "/". */
+function treeOf(dir: string): string[] {
+  const found: string[] = [];
+  const walk = (current: string) => {
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const absolute = join(current, entry.name);
+      found.push(`${relative(dir, absolute)}${entry.isDirectory() ? "/" : ""}`);
+      if (entry.isDirectory()) walk(absolute);
+    }
+  };
+  walk(dir);
+  return found.sort();
+}
+
+describe("generateRegistration: a run that fails partway", () => {
+  // Permission bits cannot stop the superuser, so those cases are skipped there; the write case needs no permissions.
+  const unprivileged = process.getuid?.() !== 0;
+
+  /** The tree a clean run of `modules` produces in an empty folder, plus any hand-written files in `extra`. */
+  function cleanTree(modules: RegistrationModule[], extra: Record<string, string> = {}): string[] {
+    const fresh = mkdtempSync(join(tmpdir(), "epnexo-codegen-clean-"));
+    try {
+      for (const [path, content] of Object.entries(extra)) {
+        mkdirSync(dirname(join(fresh, path)), { recursive: true });
+        writeFileSync(join(fresh, path), content);
+      }
+      generateRegistration(modules, { outDir: fresh });
+      return treeOf(fresh);
+    } finally {
+      rmSync(fresh, { recursive: true, force: true });
+    }
+  }
+
+  it("leaves nothing orphaned when a write fails: the next run removes what the failed run created", () => {
+    const alpha = fixture("alpha", [page("/alpha")]);
+    generate([alpha]);
+    // "/blocked" is a hand-written file, so the folder a later page needs cannot be created.
+    put("src/app/blocked", "not a folder\n");
+    const beta = fixture("beta", [page("/beta"), page("/blocked/inside")]);
+    assert.throws(() => generate([alpha, beta]), /ENOTDIR|EEXIST/);
+    assert.ok(existsSync(join(root, "src/app/beta/page.tsx")), "the failed run did write the file before the failing one");
+
+    const plan = generate([alpha]);
+    assert.deepEqual(plan.deletions, ["src/app/beta/page.tsx"]);
+    assert.deepEqual(treeOf(root), cleanTree([alpha], { "src/app/blocked": "not a folder\n" }));
+    assert.deepEqual(ownership().files, ["src/app/alpha/page.tsx", REGISTRY_FILE]);
+  });
+
+  it("converges after a failed deletion", { skip: !unprivileged && "needs an unprivileged user" }, () => {
+    const alpha = fixture("alpha", [page("/alpha")]);
+    const beta = fixture("beta", [page("/beta")]);
+    generate([alpha, beta]);
+    chmodSync(join(root, "src/app/alpha"), 0o555);
+    try {
+      assert.throws(() => generate([beta]), /EACCES|EPERM/);
+    } finally {
+      chmodSync(join(root, "src/app/alpha"), 0o755);
+    }
+    assert.ok(ownership().files.includes("src/app/alpha/page.tsx"), "the interrupted run still records the file it has not removed");
+
+    generate([beta]);
+    assert.deepEqual(treeOf(root), cleanTree([beta]));
+  });
+
+  it("converges after a failed folder prune, removing the empty folders the interrupted run left", { skip: !unprivileged && "needs an unprivileged user" }, () => {
+    const alpha = fixture("alpha", [page("/alpha/deep/er")]);
+    const beta = fixture("beta", [page("/beta")]);
+    generate([alpha, beta]);
+    // The file can be deleted from its own folder, but the folder cannot be removed from its parent.
+    chmodSync(join(root, "src/app/alpha"), 0o555);
+    try {
+      assert.throws(() => generate([beta]), /EACCES|EPERM/);
+    } finally {
+      chmodSync(join(root, "src/app/alpha"), 0o755);
+    }
+    assert.equal(existsSync(join(root, "src/app/alpha/deep/er/page.tsx")), false);
+
+    generate([beta]);
+    assert.deepEqual(treeOf(root), cleanTree([beta]));
+  });
+
+  it("changes nothing on disk when the run has nothing to do", () => {
+    const modules = [fixture("alpha", [page("/alpha")])];
+    generate(modules);
+    const before = readFileSync(join(root, OWNERSHIP_FILE), "utf8");
+    generate(modules);
+    assert.equal(readFileSync(join(root, OWNERSHIP_FILE), "utf8"), before);
   });
 });
 
