@@ -3,21 +3,21 @@ import { describe, it } from "node:test";
 import { validateManifest } from "../src/index.ts";
 
 const valid = {
-  id: "ai-usage",
+  id: "sample-module",
   version: "0.1.0",
-  name: "AI Usage",
+  name: "Sample Module",
   platform: "^0.1.0",
-  dependsOn: { documents: "^1.0.0" },
+  dependsOn: { base: "^1.0.0" },
   schema: "ai_usage",
   migrationsDir: "migrations",
-  nav: [{ label: "AI usage", href: "/ai-usage", icon: "chart" }],
+  nav: [{ label: "Sample", href: "/sample", icon: "chart" }],
 };
 
 describe("validateManifest: base rules", () => {
   it("accepts a valid manifest and returns it typed", () => {
     const manifest = validateManifest(valid);
-    assert.equal(manifest.id, "ai-usage");
-    assert.deepEqual(manifest.dependsOn, { documents: "^1.0.0" });
+    assert.equal(manifest.id, "sample-module");
+    assert.deepEqual(manifest.dependsOn, { base: "^1.0.0" });
   });
 
   it("accepts a nav entry without an icon", () => {
@@ -54,7 +54,7 @@ describe("validateManifest: base rules", () => {
   });
 
   it("rejects invalid schema names", () => {
-    for (const schema of ["AI", "ai-usage", "1x", "pg_catalog", "public", "core", "a".repeat(64)]) {
+    for (const schema of ["AI", "sample-module", "1x", "pg_catalog", "public", "core", "a".repeat(64)]) {
       assert.throws(() => validateManifest({ ...valid, schema }), /schema/, schema);
     }
   });
@@ -106,12 +106,12 @@ describe("validateManifest: platform and dependsOn", () => {
     assert.throws(() => validateManifest({ ...valid, dependsOn: ["core"] }), /dependsOn must be an object/);
     assert.throws(() => validateManifest({ ...valid, dependsOn: "core" }), /dependsOn must be an object/);
     assert.throws(() => validateManifest({ ...valid, dependsOn: { Bad_Id: "^1.0.0" } }), /dependsOn key "Bad_Id" must be a kebab-case module id/);
-    assert.throws(() => validateManifest({ ...valid, dependsOn: { documents: "nope" } }), /dependsOn\.documents must be a valid semver range/);
-    assert.throws(() => validateManifest({ ...valid, dependsOn: { documents: 1 } }), /dependsOn\.documents must be a valid semver range/);
+    assert.throws(() => validateManifest({ ...valid, dependsOn: { base: "nope" } }), /dependsOn\.base must be a valid semver range/);
+    assert.throws(() => validateManifest({ ...valid, dependsOn: { base: 1 } }), /dependsOn\.base must be a valid semver range/);
     assert.doesNotThrow(() => validateManifest({ ...valid, dependsOn: {} }));
   });
 
   it("rejects a module that depends on itself", () => {
-    assert.throws(() => validateManifest({ ...valid, dependsOn: { "ai-usage": "^0.1.0" } }), /cannot depend on itself/);
+    assert.throws(() => validateManifest({ ...valid, dependsOn: { "sample-module": "^0.1.0" } }), /cannot depend on itself/);
   });
 });

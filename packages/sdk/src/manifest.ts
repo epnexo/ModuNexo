@@ -3,7 +3,7 @@ import { valid, validRange } from "semver";
 /** A navigation entry a module contributes to the web shell. */
 export interface NavEntry {
   label: string;
-  /** Absolute path inside the web shell, for example "/ai-usage". */
+  /** Absolute path inside the web shell, for example "/sample". */
   href: string;
   icon?: string;
   /** Sidebar group the entry belongs to. */
@@ -17,7 +17,7 @@ export interface NavEntry {
 /** A route a module contributes. The codegen turns each page into a generated route file. */
 export interface PageDeclaration {
   /**
-   * Absolute, normalised path inside the web shell, for example "/ai-usage/reports". Next.js dynamic
+   * Absolute, normalised path inside the web shell, for example "/sample/reports". Next.js dynamic
    * segments (`[id]`, `[...slug]`, `[[...slug]]`) are allowed.
    */
   path: string;
