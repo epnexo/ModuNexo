@@ -166,3 +166,31 @@ describe("validateManifest: v2 sections", () => {
     }
   });
 });
+
+describe("validateManifest: page segment config and route methods", () => {
+  const withPage = (page: Record<string, unknown>) => ({ ...base, pages: [{ path: "/x", entry: "./a.tsx", kind: "page", ...page }] });
+
+  it("accepts a rendering mode on a page or a route", () => {
+    for (const dynamic of ["auto", "force-dynamic", "force-static", "error"]) {
+      assert.equal(validateManifest(withPage({ dynamic })).pages?.[0]?.dynamic, dynamic);
+      assert.equal(validateManifest(withPage({ kind: "route", dynamic })).pages?.[0]?.dynamic, dynamic);
+    }
+  });
+
+  it("rejects a rendering mode Next.js does not know", () => {
+    assert.throws(() => validateManifest(withPage({ dynamic: "sometimes" })), /pages\[0\]\.dynamic must be one of auto, force-dynamic, force-static, error/);
+    assert.throws(() => validateManifest(withPage({ dynamic: true })), /pages\[0\]\.dynamic must be one of/);
+  });
+
+  it("accepts the HTTP methods a route exports", () => {
+    const page = validateManifest(withPage({ kind: "route", methods: ["GET", "POST"] })).pages?.[0];
+    assert.deepEqual(page?.methods, ["GET", "POST"]);
+  });
+
+  it("rejects unknown, repeated or empty methods, and methods on a page", () => {
+    assert.throws(() => validateManifest(withPage({ kind: "route", methods: ["FETCH"] })), /pages\[0\]\.methods must be a non-empty array of distinct HTTP methods/);
+    assert.throws(() => validateManifest(withPage({ kind: "route", methods: ["GET", "GET"] })), /pages\[0\]\.methods must be a non-empty array of distinct/);
+    assert.throws(() => validateManifest(withPage({ kind: "route", methods: [] })), /pages\[0\]\.methods must be a non-empty array/);
+    assert.throws(() => validateManifest(withPage({ kind: "page", methods: ["GET"] })), /pages\[0\]\.methods is only allowed for kind "route"/);
+  });
+});

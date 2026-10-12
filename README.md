@@ -137,3 +137,34 @@ Every transition is appended to `core.module_events` (it has no foreign key, so 
 | `outcome` | `ok` or `failed` |
 | `detail` | `keep` or `purge` for an uninstall; for a failure, `<step>: <error message>` |
 | `occurred_at` | when it was recorded |
+
+## Registration codegen
+
+Next.js resolves routes and client code at build time, so the web app cannot discover modules at run time.
+`generateRegistration` (`@epnexo/core`) turns the manifests of the **enabled** modules into the files the web
+app needs, so nothing is wired by hand per module. Its inputs are the enabled modules with their package names
+(`registrationModulesFor` builds them from `LifecycleService.list()` and the registry) and an output root,
+`apps/web` by default and injectable.
+
+Under the output root it writes:
+
+| File | Content |
+| --- | --- |
+| `src/generated/modules.ts` | static imports of each enabled module's manifest; `modules` in dependency order, the flattened `navigation` (ungrouped entries first, then groups by name, each by `order`, then label; carries `permission`) and `packageNames` for the bundler (`transpilePackages`). With no modules the three are empty arrays. |
+| `src/app/<path>/page.tsx` | for `kind: "page"`: `export { default, metadata } from "<package>/<entry>"` |
+| `src/app/<path>/route.ts` | for `kind: "route"`: `export { GET, ... } from "<package>/<entry>"`, the methods the page declares (`methods`, default `["GET"]`) |
+| `src/generated/.manifest.json` | the files this generator owns, and the package names |
+
+Every generated source file starts with a header saying it is generated and must not be edited. The generator is
+idempotent and owns only what it wrote: a file from an earlier run that is no longer wanted (a module was
+disabled or uninstalled) is removed together with the folders it emptied, a file it did not generate is never
+deleted, and a needed path held by a hand-written file is an error. Conflicts are reported before anything is
+written: two modules declaring the same normalised path, a path at or below a reserved shell path
+(`RESERVED_PATHS`: `/`, `/apps`, `/settings`, `/login`, `/logout`, `/api`, `/_next`), and segments that cannot be a
+folder name. `dryRun` returns the planned writes and deletions and touches nothing.
+
+How a module is referenced: the web app imports `<package name>/<entry without "./" and extension>`, and the manifest as
+`<package name>/manifest`. A module's `package.json` therefore needs a `name`, must not hide its files behind an
+`exports` map, and keeps `manifest.ts` at its root; npm workspaces link `modules/<id>/` under that name.
+Next.js segment config cannot be re-exported, so a page declares `dynamic` in the manifest and the generator writes
+`export const dynamic = "..."` literally into the route file. A page entry must export `default` and `metadata`.

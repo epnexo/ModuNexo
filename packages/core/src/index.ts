@@ -1,3 +1,4 @@
+export * from "./codegen/index.ts";
 export * from "./core-module.ts";
 export * from "./discovery.ts";
 export * from "./lifecycle/index.ts";
