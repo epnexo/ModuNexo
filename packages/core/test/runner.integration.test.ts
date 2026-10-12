@@ -4,7 +4,7 @@ import { basename, dirname } from "node:path";
 import { after, before, describe, it } from "node:test";
 import type pg from "pg";
 import { purgeModule } from "../src/purge.ts";
-import { MIGRATION_LOCK_NAME, migrate, migrateModule } from "../src/runner.ts";
+import { MIGRATION_LOCK_NAME, MigrationRunError, migrate, migrateModule } from "../src/runner.ts";
 import { Registry } from "../src/registry.ts";
 import { openTestPool } from "../src/testing.ts";
 import { Sandbox } from "./sandbox.ts";
@@ -30,6 +30,9 @@ const test = (name: string, run: (box: Sandbox) => Promise<void>) =>
       await box.cleanup();
     }
   });
+
+const schemaExists = async (schema: string) =>
+  (await pool!.query("select 1 from information_schema.schemata where schema_name = $1", [schema])).rowCount === 1;
 
 const appliedBy = (result: { applied: { moduleId: string; filename: string }[] }, id: string) =>
   result.applied.filter((a) => a.moduleId === id).map((a) => a.filename);
@@ -152,6 +155,31 @@ describe("migrate (integration): history guards", () => {
     mod.write("0001_a.sql", "select 1;");
     mod.write("0001_b.sql", "select 1;");
     await assert.rejects(migrate(pool!, box.registry()), /duplicate migration number 0001/);
+    assert.equal(await schemaExists(mod.manifest.schema), false, "a refused plan must not leave an empty schema behind");
+  });
+
+  test("a missing migrations directory is refused before the schema is created", async (box) => {
+    const mod = box.add();
+    rmSync(mod.dir, { recursive: true });
+    await assert.rejects(migrate(pool!, box.registry()), /migrations directory .* does not exist/);
+    assert.equal(await schemaExists(mod.manifest.schema), false);
+  });
+
+  test("a file name that breaks the naming rule is refused before the schema is created", async (box) => {
+    const mod = box.add();
+    mod.write("create_items.sql", "select 1;");
+    await assert.rejects(migrate(pool!, box.registry()), /does not match NNNN_name\.sql/);
+    assert.equal(await schemaExists(mod.manifest.schema), false);
+  });
+
+  test("a history guard refuses the plan without recreating a schema that went missing", async (box) => {
+    const mod = box.add();
+    mod.write("0001_a.sql", "create table a (x int);");
+    await migrate(pool!, box.registry());
+    await pool!.query(`drop schema "${mod.manifest.schema}" cascade`);
+    mod.write("0001_a.sql", "create table a (x int, y int);");
+    await assert.rejects(migrate(pool!, box.registry()), /was modified after it was applied/);
+    assert.equal(await schemaExists(mod.manifest.schema), false);
   });
 });
 
@@ -182,6 +210,42 @@ describe("migrate (integration): failures", () => {
     await assert.rejects(migrate(pool!, box.registry()), /does_not_exist/);
     const recorded = await pool!.query("select 1 from core.schema_migrations where module_id = $1", [second.manifest.id]);
     assert.equal(recorded.rowCount, 0);
+  });
+});
+
+describe("migrate (integration): partial runs", () => {
+  test("a failing file reports what the run had already applied", async (box) => {
+    const mod = box.add();
+    mod.write("0001_ok.sql", "create table items (name text);");
+    mod.write("0002_ok.sql", "create table more (x int);");
+    mod.write("0003_broken.sql", "select * from does_not_exist;");
+
+    const error = await migrate(pool!, box.registry()).then(() => assert.fail("expected a failure"), (e: unknown) => e);
+
+    assert.ok(error instanceof MigrationRunError);
+    assert.deepEqual(error.applied.filter((a) => a.moduleId === mod.manifest.id).map((a) => a.filename), ["0001_ok.sql", "0002_ok.sql"]);
+    assert.match(error.message, new RegExp(`migration ${mod.manifest.id}/0003_broken\\.sql failed`));
+    assert.match((error.cause as Error).message, /does_not_exist/, "the database error stays the cause");
+  });
+
+  test("a later module failing reports the earlier module's files too", async (box) => {
+    const first = box.add();
+    const second = box.add({ [first.manifest.id]: "*" });
+    first.write("0001_a.sql", "create table a (x int);");
+    second.write("0001_bad.sql", "select * from does_not_exist;");
+    const error = await migrate(pool!, box.registry()).then(() => assert.fail("expected a failure"), (e: unknown) => e);
+    assert.ok(error instanceof MigrationRunError);
+    assert.ok(error.applied.some((a) => a.moduleId === first.manifest.id && a.filename === "0001_a.sql"));
+    assert.ok(!error.applied.some((a) => a.moduleId === second.manifest.id));
+  });
+
+  test("a refused plan is reported the same way, with the message naming the module", async (box) => {
+    const mod = box.add();
+    mod.write("0001_a.sql", "select 1;");
+    mod.write("0001_b.sql", "select 1;");
+    const error = await migrate(pool!, box.registry()).then(() => assert.fail("expected a failure"), (e: unknown) => e);
+    assert.ok(error instanceof MigrationRunError);
+    assert.match(error.message, new RegExp(`module "${mod.manifest.id}": duplicate migration number 0001`));
   });
 });
 

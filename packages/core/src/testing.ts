@@ -1,8 +1,15 @@
+import { randomBytes } from "node:crypto";
 import pg from "pg";
 import { createPool } from "./pool.ts";
 import { quoteIdentifier } from "./sql.ts";
 
 type Env = Record<string, string | undefined>;
+
+function adminUrl(url: string): string {
+  const admin = new URL(url);
+  admin.pathname = "/postgres";
+  return admin.toString();
+}
 
 function databaseName(url: string): string {
   return decodeURIComponent(new URL(url).pathname.replace(/^\//, ""));
@@ -64,9 +71,7 @@ export async function openTestPool(env: Env = process.env): Promise<TestPool> {
   if (!url) return { skipReason: "neither TEST_DATABASE_URL nor DATABASE_URL is set (copy .env.example to .env and run `docker compose up -d db`)" };
 
   try {
-    const admin = new URL(url);
-    admin.pathname = "/postgres";
-    const client = new pg.Client({ connectionString: admin.toString(), connectionTimeoutMillis: 2000 });
+    const client = new pg.Client({ connectionString: adminUrl(url), connectionTimeoutMillis: 2000 });
     await client.connect();
     try {
       await ensureDatabase(client, databaseName(url));
@@ -95,4 +100,41 @@ async function ensureDatabase(client: pg.Client, name: string): Promise<void> {
       if (!ALREADY_EXISTS.has(error.code ?? "")) throw error;
     });
   }
+}
+
+export interface ScratchDatabase {
+  /** Connection string of the fresh database; undefined when no server is available (see `skipReason`). */
+  url?: string;
+  skipReason?: string;
+  /** Drop the database, closing any connection still open to it. Safe to call when nothing was created. */
+  drop: () => Promise<void>;
+}
+
+/**
+ * A fresh, empty database of its own on the test server, for tests that must not share state with the
+ * rest of the suite (a spawned CLI, say). Same guards and skip rules as `openTestPool`.
+ */
+export async function createScratchDatabase(env: Env = process.env): Promise<ScratchDatabase> {
+  const base = resolveTestDatabaseUrl(env);
+  if (!base) return { skipReason: "neither TEST_DATABASE_URL nor DATABASE_URL is set", drop: async () => undefined };
+
+  const scratchUrl = new URL(base);
+  const name = `epnexo_scratch_${randomBytes(4).toString("hex")}_test`;
+  scratchUrl.pathname = `/${name}`;
+  const opened = await openTestPool({ ...env, TEST_DATABASE_URL: scratchUrl.toString() });
+  if (!opened.pool) return { skipReason: opened.skipReason, drop: async () => undefined };
+  await opened.pool.end();
+
+  return {
+    url: scratchUrl.toString(),
+    drop: async () => {
+      const admin = new pg.Client({ connectionString: adminUrl(scratchUrl.toString()), connectionTimeoutMillis: 2000 });
+      await admin.connect();
+      try {
+        await admin.query(`drop database if exists ${quoteIdentifier(name)} with (force)`);
+      } finally {
+        await admin.end();
+      }
+    },
+  };
 }

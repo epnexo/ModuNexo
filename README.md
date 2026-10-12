@@ -65,10 +65,19 @@ same lock. It refuses the `core` module and any module the registry does not kno
 validated and quoted, never interpolated as given.
 
 `discoverModules(MODULES_DIR)` loads `modules/<id>/manifest.ts` (default export, folder name equal to the
-id) and returns validated manifests with `migrationsDir` resolved; an empty `modules/` yields nothing.
+id) and returns `{ modules, warnings }`: validated manifests with `migrationsDir` resolved, plus a
+message for every entry that was skipped (a symlink whose target is gone, for instance). An empty
+`modules/` yields nothing.
+
+The plan for each module (directory present, file names, duplicate numbers, history guards) is checked
+before its schema is created, so a refused plan leaves nothing behind. A run that fails partway throws a
+`MigrationRunError` whose `applied` lists the files already committed in that run.
 
 ```bash
-npm run db:migrate   # migrate the database in DATABASE_URL: the core plus every discovered module
+npm run db:migrate                                  # the core plus every module under modules/
+npm run db:migrate -- --modules-dir /path/to/dir    # discover modules somewhere else
 ```
+
+`db:migrate` prints discovery warnings to stderr and, when a run fails, the files applied before the failure.
 
 A pool built with `createPool` logs errors from idle clients instead of crashing the process.
