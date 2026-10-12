@@ -1,3 +1,6 @@
+# Explicit project name: this stack never shares a compose project with other databases on the machine.
+name: epnexo-shell-core
+
 services:
   db:
     image: postgres:16-alpine
