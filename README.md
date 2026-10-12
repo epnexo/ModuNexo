@@ -10,7 +10,7 @@ modules compile against. The feature plan lives in `odd/tasks/`.
   No database access.
 - `packages/core` - `@epnexo/core`: the platform core. Today it holds the module `Registry`
   (manifest validation, `platform` and `dependsOn` range checks, dependency order, dependents
-  lookup) and the core's own manifest; the migration runner, lifecycle and CLI follow.
+  lookup), the core's own manifest and the migration runner; the lifecycle and CLI follow.
 - `modules/` - installed module packages, one folder per module. Not tracked in git.
 - `apps/` - applications built on the core.
 
@@ -24,5 +24,40 @@ npm test          # node:test through tsx, packages/*/test/**/*.test.ts
 npm run typecheck # tsc --noEmit
 ```
 
+## Database
+
 Configuration is read from `.env` (copy `.env.example`): `DATABASE_URL` and `TEST_DATABASE_URL`.
-`docker-compose.yml` defines a local Postgres 16 on `127.0.0.1:5436`.
+
+```bash
+docker compose up -d db   # Postgres 16 on 127.0.0.1:5436, compose project "epnexo-shell-core"
+```
+
+Integration tests run against a separate database whose name must end in `_test` (anything else is
+refused, as is the development database). It is created on demand on the same server, so no extra
+setup is needed. Two situations are kept apart:
+
+- no database server answers, or neither URL is set: the integration tests are **skipped** with the
+  reason printed;
+- a server answers but the test database cannot be created or reached (bad credentials, missing
+  permission): the suite **fails**.
+
+With the database up, `npm test` reports 0 skipped.
+
+## Migrations
+
+Each module owns its schema and ships plain SQL files in `<moduleDir>/<migrationsDir>/NNNN_name.sql`
+(the core's are in `packages/core/migrations`). `migrate` (all modules, in dependency order, core
+first) and `migrateModule` (one module, after bringing the core up to date) in `@epnexo/core`:
+
+- create the module schema when absent and run each file in its own transaction with `search_path` set
+  to that schema; the history row is written in the same transaction, so a failing file leaves nothing
+  behind;
+- track history in `core.schema_migrations(module_id, filename, checksum, applied_at)`, created by the
+  core's own first migration;
+- refuse rewritten history: an applied file that is missing from disk, edited (checksum), or a new file
+  numbered before the latest applied one; duplicate numbers are rejected;
+- hold a Postgres advisory lock so concurrent runs serialise; the wait is bounded
+  (`lockTimeoutMs`, default 30 s) and fails with a clear error instead of hanging;
+- name the module and file in a failing migration's error and keep the database error as `cause`.
+
+A pool built with `createPool` logs errors from idle clients instead of crashing the process.

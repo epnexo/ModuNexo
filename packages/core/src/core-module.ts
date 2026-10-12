@@ -1,9 +1,13 @@
+import { fileURLToPath } from "node:url";
 import { type ModuleManifest, SDK_VERSION } from "@epnexo/sdk";
 import { CORE_VERSION } from "./version.ts";
 
 export const CORE_MODULE_ID = "core";
 
-/** The core is itself a module: it owns the `core` schema, which later holds lifecycle state and migration history. */
+/** The directory of this package; the core manifest's relative `migrationsDir` resolves against it. */
+export const CORE_MODULE_DIR = fileURLToPath(new URL("../", import.meta.url));
+
+/** The core is itself a module: it owns the `core` schema, which holds migration history today and lifecycle state later. */
 export const coreManifest: ModuleManifest = {
   id: CORE_MODULE_ID,
   version: CORE_VERSION,
