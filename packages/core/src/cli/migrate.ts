@@ -1,15 +1,22 @@
 // Thin wrapper behind `npm run db:migrate`; the full CLI arrives with the lifecycle.
+import { resolve } from "node:path";
+import { parseArgs } from "node:util";
 import { discoverModules, MODULES_DIR } from "../discovery.ts";
 import { createPool, resolveDatabaseUrl } from "../pool.ts";
 import { Registry } from "../registry.ts";
-import { migrate } from "../runner.ts";
+import { MigrationRunError, migrate } from "../runner.ts";
 
 async function main(): Promise<void> {
+  // The modules directory is an argument, not an environment variable: the environment is for infrastructure only.
+  const { values } = parseArgs({ options: { "modules-dir": { type: "string" } }, allowPositionals: false });
+  const modulesDir = values["modules-dir"] === undefined ? MODULES_DIR : resolve(values["modules-dir"]);
   const url = resolveDatabaseUrl();
 
   const registry = new Registry();
   registry.registerCore();
-  for (const manifest of await discoverModules(MODULES_DIR)) registry.register(manifest);
+  const { modules, warnings } = await discoverModules(modulesDir);
+  for (const warning of warnings) console.error(`warning: ${warning}`);
+  for (const manifest of modules) registry.register(manifest);
 
   const pool = createPool(url, { connectionTimeoutMillis: 5000 });
   try {
@@ -26,5 +33,10 @@ async function main(): Promise<void> {
 
 main().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : error);
+  if (error instanceof MigrationRunError && error.applied.length > 0) {
+    // Those files are committed and stay applied; say so, so a failed deploy is not mistaken for a clean rollback.
+    console.error("applied before the failure:");
+    for (const { moduleId, filename } of error.applied) console.error(`  ${moduleId}/${filename}`);
+  }
   process.exitCode = 1;
 });

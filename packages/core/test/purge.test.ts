@@ -5,13 +5,13 @@ import type { Registry } from "../src/registry.ts";
 import { purgeModule } from "../src/purge.ts";
 
 /** A pool whose client records every statement and fails the ones `failOn` matches. */
-function recordingPool(failOn?: RegExp) {
+function recordingPool(failOn?: RegExp, historyTable = true) {
   const statements: string[] = [];
   const client = {
     query: async (sql: string) => {
       statements.push(sql.replace(/\s+/g, " ").trim());
       if (sql.includes("pg_try_advisory_lock")) return { rows: [{ locked: true }] };
-      if (sql.includes("to_regclass")) return { rows: [{ present: true }] };
+      if (sql.includes("to_regclass")) return { rows: [{ present: historyTable }] };
       if (failOn?.test(sql)) throw new Error("statement failed");
       return { rows: [], rowCount: 0 };
     },
@@ -55,6 +55,13 @@ describe("purgeModule: guards and atomicity", () => {
       "commit",
     ]);
     assert.ok(statements.some((s) => s.includes("pg_try_advisory_lock")));
+  });
+
+  it("only drops the schema when the history table does not exist yet", async () => {
+    const { pool, statements } = recordingPool(undefined, false);
+    await purgeModule(pool, registryWith({ id: "a", schema: "a" }), "a");
+    const body = statements.filter((s) => !s.includes("advisory"));
+    assert.deepEqual(body, ["begin", 'drop schema if exists "a" cascade', "select to_regclass('core.schema_migrations') is not null as present", "commit"]);
   });
 
   it("rolls everything back and surfaces the error when a step fails", async () => {

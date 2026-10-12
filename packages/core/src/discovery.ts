@@ -7,17 +7,34 @@ import { compareIds } from "./registry.ts";
 /** The repository's `modules/` directory, where installed module packages are unpacked. */
 export const MODULES_DIR = fileURLToPath(new URL("../../../modules", import.meta.url));
 
+export interface DiscoveryResult {
+  modules: ModuleManifest[];
+  /** Entries that were skipped instead of loaded (a broken symlink, say), each naming the entry. The caller decides whether to print them. */
+  warnings: string[];
+}
+
 /**
  * Load `<modulesDir>/<folder>/manifest.ts` for every module folder, sorted by folder name.
  * Each manifest must default-export its manifest and use the folder name as its id.
  * Relative `migrationsDir` values are resolved against the module folder.
  */
-export async function discoverModules(modulesDir: string): Promise<ModuleManifest[]> {
-  if (!existsSync(modulesDir)) return [];
+export async function discoverModules(modulesDir: string): Promise<DiscoveryResult> {
+  const warnings: string[] = [];
+  if (!existsSync(modulesDir)) return { modules: [], warnings };
 
   const isModuleFolder = (entry: Dirent): boolean => {
-    // A module folder may be a symlink to a package checked out elsewhere.
-    const isDirectory = entry.isDirectory() || (entry.isSymbolicLink() && statSync(join(modulesDir, entry.name)).isDirectory());
+    let isDirectory = entry.isDirectory();
+    if (entry.isSymbolicLink()) {
+      // A module folder may be a symlink to a package checked out elsewhere. One whose target is gone
+      // (or loops) is reported and skipped; it must not stop the modules next to it from loading.
+      try {
+        isDirectory = statSync(join(modulesDir, entry.name)).isDirectory();
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code ?? "unreadable";
+        warnings.push(`"${entry.name}" is a symlink whose target cannot be read (${code}); skipped`);
+        return false;
+      }
+    }
     return isDirectory && existsSync(join(modulesDir, entry.name, "manifest.ts"));
   };
   const folders = readdirSync(modulesDir, { withFileTypes: true })
@@ -42,5 +59,5 @@ export async function discoverModules(modulesDir: string): Promise<ModuleManifes
 
     manifests.push({ ...manifest, migrationsDir: resolve(modulesDir, folder, manifest.migrationsDir) });
   }
-  return manifests;
+  return { modules: manifests, warnings };
 }

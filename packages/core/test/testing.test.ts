@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 import pg from "pg";
-import { type TestPool, isServerUnreachable, openTestPool, resolveTestDatabaseUrl } from "../src/testing.ts";
+import { type TestPool, createScratchDatabase, isServerUnreachable, openTestPool, resolveTestDatabaseUrl } from "../src/testing.ts";
 
 describe("resolveTestDatabaseUrl", () => {
   it("uses TEST_DATABASE_URL when set", () => {
@@ -36,6 +36,8 @@ describe("isServerUnreachable", () => {
       assert.equal(isServerUnreachable(Object.assign(new Error("x"), { code })), true, code);
     }
     assert.equal(isServerUnreachable(new Error("timeout expired")), true);
+    assert.equal(isServerUnreachable(new Error("Connection terminated unexpectedly")), true);
+    assert.equal(isServerUnreachable(new Error("Connection terminated due to connection timeout")), true);
     for (const code of ["28P01", "28000", "3D000", "42501"]) {
       assert.equal(isServerUnreachable(Object.assign(new Error("x"), { code })), false, code);
     }
@@ -100,5 +102,38 @@ describe("openTestPool", () => {
       assert.ok(base.pool instanceof pg.Pool);
       assert.equal((await base.pool.query("select 1 as one")).rows[0].one, 1);
     });
+  });
+});
+
+describe("createScratchDatabase", () => {
+  it("skips with a visible reason when the server is unreachable", async () => {
+    const scratch = await createScratchDatabase({ TEST_DATABASE_URL: "postgres://u:p@127.0.0.1:1/x_test" });
+    assert.equal(scratch.url, undefined);
+    assert.match(scratch.skipReason ?? "", /server is unreachable/);
+    await scratch.drop();
+  });
+
+  it("creates an empty database of its own and drops it again", async (t) => {
+    const base = await openTestPool();
+    if (!base.pool) return t.skip(base.skipReason);
+    try {
+      const scratch = await createScratchDatabase();
+      assert.ok(scratch.url, scratch.skipReason);
+      const name = decodeURIComponent(new URL(scratch.url).pathname.slice(1));
+      assert.match(name, /^epnexo_scratch_[0-9a-f]{8}_test$/);
+      const exists = () => base.pool!.query("select 1 from pg_database where datname = $1", [name]);
+      assert.equal((await exists()).rowCount, 1);
+
+      const inside = new pg.Pool({ connectionString: scratch.url });
+      try {
+        assert.equal((await inside.query("select count(*)::int as n from information_schema.schemata where schema_name = 'core'")).rows[0].n, 0);
+      } finally {
+        await inside.end();
+      }
+      await scratch.drop();
+      assert.equal((await exists()).rowCount, 0);
+    } finally {
+      await base.pool.end();
+    }
   });
 });

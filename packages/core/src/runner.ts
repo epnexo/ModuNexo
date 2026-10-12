@@ -28,6 +28,22 @@ export interface MigrateOptions {
   lockPollMs?: number;
 }
 
+/**
+ * A migration run that stopped partway. `applied` lists what this run had already committed before the
+ * failure (those files stay applied: each file is its own transaction), so a caller can report it.
+ * `message` and `cause` are those of the underlying failure.
+ */
+export class MigrationRunError extends Error {
+  constructor(
+    message: string,
+    readonly applied: AppliedMigration[],
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "MigrationRunError";
+  }
+}
+
 export const DEFAULT_LOCK_TIMEOUT_MS = 30_000;
 const DEFAULT_LOCK_POLL_MS = 100;
 
@@ -107,19 +123,25 @@ export async function withMigrationLock<T>(pool: pg.Pool, options: MigrateOption
 
 async function applyModules(client: pg.PoolClient, modules: ModuleManifest[], options: MigrateOptions): Promise<MigrateResult> {
   const applied: AppliedMigration[] = [];
-  for (const manifest of modules) {
-    await client.query(`create schema if not exists ${quoteIdentifier(manifest.schema)}`);
-    let pending: MigrationFile[];
-    try {
-      const files = readMigrationFiles(migrationsPath(manifest, options.moduleDirs ?? {}));
-      pending = planMigrations(files, await loadApplied(client, manifest.id));
-    } catch (error) {
-      throw new Error(`module "${manifest.id}": ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+  try {
+    for (const manifest of modules) {
+      // Plan first: a refused plan (missing directory, bad names, rewritten history) must not leave an empty schema behind.
+      let pending: MigrationFile[];
+      try {
+        const files = readMigrationFiles(migrationsPath(manifest, options.moduleDirs ?? {}));
+        pending = planMigrations(files, await loadApplied(client, manifest.id));
+      } catch (error) {
+        throw new Error(`module "${manifest.id}": ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+      }
+      await client.query(`create schema if not exists ${quoteIdentifier(manifest.schema)}`);
+      for (const file of pending) {
+        await applyFile(client, manifest, file);
+        applied.push({ moduleId: manifest.id, filename: file.filename });
+      }
     }
-    for (const file of pending) {
-      await applyFile(client, manifest, file);
-      applied.push({ moduleId: manifest.id, filename: file.filename });
-    }
+  } catch (error) {
+    const failure = error instanceof Error ? error : new Error(String(error));
+    throw new MigrationRunError(failure.message, applied, { cause: failure.cause ?? failure });
   }
   return { applied };
 }

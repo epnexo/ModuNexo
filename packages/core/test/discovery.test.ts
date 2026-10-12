@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { MODULES_DIR, discoverModules } from "../src/discovery.ts";
 
@@ -31,21 +32,22 @@ describe("discoverModules", () => {
   it("loads manifests from <dir>/*/manifest.ts sorted by folder and resolves migrationsDir", async () => {
     addModule("beta");
     addModule("alpha");
-    const found = await discoverModules(root);
+    const { modules: found, warnings } = await discoverModules(root);
+    assert.deepEqual(warnings, []);
     assert.deepEqual(found.map((m) => m.id), ["alpha", "beta"]);
     assert.equal(found[0]?.migrationsDir, join(root, "alpha", "migrations"));
   });
 
   it("returns an empty list for an empty or missing directory", async () => {
-    assert.deepEqual(await discoverModules(root), []);
-    assert.deepEqual(await discoverModules(join(root, "missing")), []);
+    assert.deepEqual(await discoverModules(root), { modules: [], warnings: [] });
+    assert.deepEqual(await discoverModules(join(root, "missing")), { modules: [], warnings: [] });
   });
 
   it("ignores folders and files without a manifest", async () => {
     addModule("alpha");
     mkdirSync(join(root, "no-manifest"));
     writeFileSync(join(root, ".gitkeep"), "");
-    assert.equal((await discoverModules(root)).length, 1);
+    assert.equal((await discoverModules(root)).modules.length, 1);
   });
 
   it("follows a symlinked module folder", async () => {
@@ -57,10 +59,26 @@ describe("discoverModules", () => {
         `export default ${JSON.stringify({ id: "linked", version: "1.0.0", name: "L", platform: "^0.1.0", dependsOn: {}, schema: "linked", migrationsDir: "migrations", nav: [] })};\n`,
       );
       symlinkSync(join(elsewhere, "linked"), join(root, "linked"), "dir");
-      assert.deepEqual((await discoverModules(root)).map((m) => m.id), ["linked"]);
+      assert.deepEqual((await discoverModules(root)).modules.map((m) => m.id), ["linked"]);
     } finally {
       rmSync(elsewhere, { recursive: true, force: true });
     }
+  });
+
+  it("skips a dangling symlink and reports it by name instead of failing with ENOENT", async () => {
+    addModule("alpha");
+    symlinkSync(join(root, "gone"), join(root, "dangling"), "dir");
+    const { modules, warnings } = await discoverModules(root);
+    assert.deepEqual(modules.map((m) => m.id), ["alpha"]);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0]!, /"dangling".*skipped/);
+  });
+
+  it("skips a symlink loop the same way", async () => {
+    symlinkSync(join(root, "loop"), join(root, "loop"), "dir");
+    const { modules, warnings } = await discoverModules(root);
+    assert.deepEqual(modules, []);
+    assert.match(warnings[0]!, /"loop".*skipped/);
   });
 
   it("rejects a manifest whose id differs from its folder name", async () => {
@@ -86,8 +104,8 @@ describe("discoverModules", () => {
 });
 
 describe("MODULES_DIR", () => {
-  it("is the repository's modules directory", () => {
-    assert.equal(basename(MODULES_DIR), "modules");
-    assert.ok(existsSync(MODULES_DIR));
+  it("is the modules directory at the repository root", () => {
+    const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+    assert.equal(MODULES_DIR, join(repositoryRoot, "modules"));
   });
 });
