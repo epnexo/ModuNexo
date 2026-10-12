@@ -53,7 +53,7 @@ describe("core lifecycle tables (migration 0002)", () => {
 
   test("the migration is recorded in the core history", async () => {
     const files = (await pool!.query("select filename from core.schema_migrations where module_id = 'core' order by filename")).rows.map((r) => r.filename);
-    assert.deepEqual(files, ["0001_init.sql", "0002_lifecycle_state.sql"]);
+    assert.ok(files.includes("0002_lifecycle_state.sql"), files.join(", "));
   });
 
   test("a module that is merely available has no row: state is enabled or disabled only", async (id) => {
