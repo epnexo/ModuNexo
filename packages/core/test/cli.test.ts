@@ -225,8 +225,9 @@ describe("cli: the module journey", () => {
       assert.equal((await userSchemas(db)).includes("future"), false);
 
       const migrate = await cli("db:migrate");
-      assert.equal(migrate.code, 3, "db:migrate never applies the migrations of an unsupported package");
-      assert.match(migrate.stderr, /future/);
+      assert.equal(migrate.code, 0, "a package that is not installed does not matter to db:migrate");
+      assert.doesNotMatch(migrate.stderr, /future/);
+      assert.equal((await userSchemas(db)).includes("future"), false);
     });
   });
 
@@ -260,6 +261,71 @@ describe("cli: the module journey", () => {
       assert.equal(generated.code, 3);
       assert.match(generated.stderr, /module "beta" declares "\/shared", which module "alpha" already declares/);
       assert.equal(existsSync(outDir), false, "nothing was written");
+    });
+  });
+});
+
+describe("cli: db:migrate and installed modules", () => {
+  it("does not migrate, nor make look retained, a module that was never installed", async (t) => {
+    writeModule("alpha");
+    await inScratchDatabase(t, async (_url, db, cli) => {
+      const migrated = await cli("db:migrate");
+      assert.equal(migrated.code, 0, migrated.stderr);
+      assert.doesNotMatch(migrated.stdout, /alpha/);
+      assert.deepEqual(await userSchemas(db), ["core"]);
+
+      const listed = JSON.parse((await cli("modules", "list", "--json")).stdout) as { id: string; status: string; dataRetained: boolean }[];
+      assert.deepEqual(listed.map((m) => [m.id, m.status, m.dataRetained]), [["alpha", "available", false]]);
+      assert.doesNotMatch((await cli("modules", "list")).stdout, /data-retained/);
+
+      // installing is what applies the first migrations
+      assert.equal((await cli("modules", "install", "alpha")).code, 0);
+      assert.ok((await userSchemas(db)).includes("alpha"));
+    });
+  });
+
+  it("leaves the migrations of an installed module to modules upgrade, so the version always matches the schema", async (t) => {
+    writeModule("alpha");
+    await inScratchDatabase(t, async (_url, db, cli) => {
+      assert.equal((await cli("modules", "install", "alpha")).code, 0);
+      const settled = await cli("db:migrate");
+      assert.equal(settled.code, 0, settled.stderr);
+      assert.match(settled.stdout, /nothing to apply/);
+      assert.doesNotMatch(settled.stderr, /warning/);
+
+      // A new file with an unchanged version: not applied, and the warning says what to do.
+      writeModule("alpha", { migrations: { "0001_create.sql": "create table items (name text); insert into items values ('kept');", "0002_more.sql": "alter table items add column note text;" } });
+      const sameVersion = await cli("db:migrate");
+      assert.equal(sameVersion.code, 0, sameVersion.stderr);
+      assert.match(sameVersion.stderr, /warning: module "alpha" has 1 pending migration\(s\) \(0002_more\.sql\).*raise its version.*modules upgrade alpha/);
+      assert.doesNotMatch(sameVersion.stdout, /alpha/);
+      assert.equal((await db.query("select 1 from information_schema.columns where table_schema = 'alpha' and column_name = 'note'")).rowCount, 0);
+
+      // With a newer version the warning points straight at the upgrade, which applies the file and records the version.
+      writeModule("alpha", { version: "1.1.0", migrations: { "0001_create.sql": "create table items (name text); insert into items values ('kept');", "0002_more.sql": "alter table items add column note text;" } });
+      const newer = await cli("db:migrate");
+      assert.match(newer.stderr, /module "alpha" has 1 pending migration\(s\).*run "modules upgrade alpha"/);
+      assert.doesNotMatch(newer.stderr, /raise its version/);
+      assert.equal((await cli("modules", "upgrade", "alpha")).code, 0);
+      assert.equal((await db.query("select 1 from information_schema.columns where table_schema = 'alpha' and column_name = 'note'")).rowCount, 1);
+      assert.equal((await db.query("select installed_version from core.modules where id = 'alpha'")).rows[0].installed_version, "1.1.0");
+      assert.doesNotMatch((await cli("db:migrate")).stderr, /warning/);
+    });
+  });
+
+  it("reports an installed module whose package is gone as a warning and carries on", async (t) => {
+    writeModule("alpha");
+    writeModule("beta");
+    await inScratchDatabase(t, async (_url, _db, cli) => {
+      assert.equal((await cli("modules", "install", "alpha")).code, 0);
+      assert.equal((await cli("modules", "install", "beta")).code, 0);
+      rmSync(join(modulesDir, "alpha"), { recursive: true });
+
+      const migrated = await cli("db:migrate");
+      assert.equal(migrated.code, 0, migrated.stderr);
+      assert.match(migrated.stderr, /warning: module "alpha" is installed but its package is not on disk; skipped/);
+      assert.doesNotMatch(migrated.stderr, /beta/);
+      assert.match(migrated.stdout, /nothing to apply/);
     });
   });
 });

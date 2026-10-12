@@ -106,7 +106,7 @@ in `core.modules`: `id`, `state`, `installed_version`, `installed_at`, `updated_
 
 | Action | From | To | What it does |
 | --- | --- | --- | --- |
-| `install` | available | enabled | runs the module's migrations, then `onInstall` and `onEnable`. Needs every dependency enabled with its INSTALLED version inside the declared range, and the `platform` range satisfied. |
+| `install` | available | enabled | runs the module's migrations, then `onInstall` and `onEnable`. Needs every dependency enabled with its INSTALLED version inside the declared range, and the `platform` range satisfied. A prerelease only satisfies a range that names its own prerelease line: `1.0.0-rc.1` does not satisfy `^1.0.0` but does satisfy `^1.0.0-rc.0`. |
 | `enable` | disabled | enabled | runs `onEnable`. Needs every dependency enabled and installed at a version inside the range. |
 | `disable` | enabled | disabled | runs `onDisable`; all data is kept. Refused while an enabled module depends on it, directly or not. |
 | `upgrade` | enabled or disabled | same | applies pending migrations, runs `onUpgrade`, records the new version. Only to a higher package version; an equal version is a no-op. |
@@ -162,14 +162,23 @@ npm run modules -- enable <id>
 npm run modules -- disable <id>
 npm run modules -- upgrade <id>
 npm run modules -- uninstall <id> --keep  # or --purge; no flag is refused, both is a usage error
-npm run db:migrate                        # the core plus every module found under the modules directory
+npm run db:migrate                        # the core only; reports installed modules that need "modules upgrade"
 npm run registry:generate [-- --dry-run] [-- --out <dir>]
 ```
 
 Every command takes `--modules-dir <path>` (default `modules/`; a path that is given must exist) and `--help`.
 `list` flags are `upgrade-pending`, `orphaned`, `data-retained` and `invalid-version`. The CLI registry admits
 modules whose `platform` the SDK does not satisfy, so they are listed and refused at install instead of breaking
-every command; `db:migrate` refuses to run while one is present, because it must not apply their migrations.
+every command.
+
+`db:migrate` applies the core's migrations and nothing else. A module's schema changes only through the lifecycle:
+`install` applies its first migrations and `upgrade` applies later ones, in the same locked action that records
+`installed_version`, so the recorded version can never be out of step with the schema. For every installed module
+(enabled or disabled) `db:migrate` checks, without applying, whether migration files are waiting and prints a
+warning naming them: a newer package version needs `modules upgrade <id>`, and new files under an unchanged version
+need the version raised first, because an upgrade to the same version is a no-op. An installed module whose package
+is gone is reported as a warning and skipped. A module that was never installed is ignored, so it is not migrated,
+refused for its `platform`, or shown as `data-retained`.
 Discovery warnings go to stderr. After a successful install, enable, disable, upgrade or uninstall the CLI
 prints a reminder that the registration must be regenerated and the web app rebuilt and restarted.
 
@@ -214,5 +223,4 @@ next run deletes whatever in it is no longer wanted and removes the empty folder
 Planned as later features: the shell UI and admin login (`apps/web`), the settings service and appearance, the
 Apps screen with the install pipeline (package upload, build, restart - until then the CLI prints the reminder
 and the regeneration, rebuild and restart are manual), and the module scaffold and packaging commands. A cleanup
-path for orphaned rows, and a way for `db:migrate` to leave modules that are not installed alone, are not
-designed.
+path for orphaned rows is not designed.
