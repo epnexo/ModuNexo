@@ -112,6 +112,48 @@ describe("createAdministrator", () => {
   });
 });
 
+/**
+ * The web server sets this header from the connection and strips any copy a client sent (task T3). It is the only
+ * header the limiter keys on; `x-forwarded-for` and friends are client-controlled and must never matter.
+ */
+const TRUSTED_IP_HEADER = "x-epnexo-client-ip";
+
+describe("sign-in rate limit", () => {
+  const attempt = (headers: Record<string, string>) =>
+    auth.handler(
+      new Request("http://localhost:3000/api/auth/sign-in/email", {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: "http://localhost:3000", ...headers },
+        body: JSON.stringify({ email: "nobody@example.test", password: "wrong password here" }),
+      }),
+    );
+  const statuses = async (count: number, headers: (i: number) => Record<string, string>) => {
+    const seen: number[] = [];
+    for (let i = 0; i < count; i++) seen.push((await attempt(headers(i))).status);
+    return seen;
+  };
+
+  test("a client cannot avoid the limit by rotating x-forwarded-for", async () => {
+    await pool!.query("delete from core.auth_rate_limit");
+    const seen = await statuses(8, (i) => ({ "x-forwarded-for": `10.9.9.${i}` }));
+    assert.deepEqual(seen, [401, 401, 401, 401, 401, 429, 429, 429]);
+  });
+
+  test("throttles one trusted address without affecting another", async () => {
+    await pool!.query("delete from core.auth_rate_limit");
+    const first = await statuses(7, () => ({ [TRUSTED_IP_HEADER]: "192.0.2.10" }));
+    assert.deepEqual(first, [401, 401, 401, 401, 401, 429, 429]);
+    const other = await statuses(1, () => ({ [TRUSTED_IP_HEADER]: "192.0.2.11" }));
+    assert.deepEqual(other, [401]);
+  });
+
+  test("the trusted header wins over a spoofed x-forwarded-for", async () => {
+    await pool!.query("delete from core.auth_rate_limit");
+    const seen = await statuses(6, (i) => ({ [TRUSTED_IP_HEADER]: "192.0.2.20", "x-forwarded-for": `10.8.8.${i}` }));
+    assert.deepEqual(seen, [401, 401, 401, 401, 401, 429]);
+  });
+});
+
 describe("sign-in", () => {
   test("accepts the right password and opens a session", async (email) => {
     await createAdministrator(auth, { email, name: "Ada", password: PASSWORD });
