@@ -45,7 +45,9 @@ export async function setSignInMode(pool: pg.Pool, mode: SignInMode, actor: stri
     await client.query("select pg_advisory_xact_lock(hashtext($1))", [KEY]);
     const current = await client.query("select value from core.platform_settings where key = $1", [KEY]);
     const existing: SignInMode = current.rows[0]?.value === "disabled" ? "disabled" : "required";
-    if (existing === mode && current.rows.length > 0) {
+    // The effective mode already is the requested one: nothing to check and nothing to write. This also covers a
+    // fresh instance, where "required" is the default and no row exists.
+    if (existing === mode) {
       await client.query("commit");
       return { mode, changed: false };
     }
@@ -61,7 +63,7 @@ export async function setSignInMode(pool: pg.Pool, mode: SignInMode, actor: stri
       [KEY, mode, actor],
     );
     await client.query("commit");
-    return { mode, changed: existing !== mode };
+    return { mode, changed: true };
   } catch (error) {
     await client.query("rollback").catch(() => undefined);
     throw error;
