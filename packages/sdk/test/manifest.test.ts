@@ -8,7 +8,7 @@ const valid = {
   name: "Sample Module",
   platform: "^0.1.0",
   dependsOn: { base: "^1.0.0" },
-  schema: "ai_usage",
+  schema: "sample_mod",
   migrationsDir: "migrations",
   nav: [{ label: "Sample", href: "/sample", icon: "chart" }],
 };
@@ -32,7 +32,7 @@ describe("validateManifest: base rules", () => {
   });
 
   it("rejects ids that are not kebab-case", () => {
-    for (const id of ["AiUsage", "ai_usage", "-ai", "ai-", "1ai", ""]) {
+    for (const id of ["SampleMod", "sample_mod", "-sample", "sample-", "1sample", ""]) {
       assert.throws(() => validateManifest({ ...valid, id }), /id must be kebab-case/, id);
     }
   });
