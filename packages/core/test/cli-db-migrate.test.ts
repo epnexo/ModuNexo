@@ -9,11 +9,11 @@ import { type TestContext, afterEach, beforeEach, describe, it } from "node:test
 import { createScratchDatabase } from "../src/testing.ts";
 
 const execute = promisify(execFile);
-const script = fileURLToPath(new URL("../src/cli/migrate.ts", import.meta.url));
+const script = fileURLToPath(new URL("../src/cli/index.ts", import.meta.url));
 
 /** Run the script as `npm run db:migrate` does, with only the environment it is given. */
 const run = (args: string[], env: Record<string, string>) =>
-  execute(process.execPath, ["--import", "tsx", script, ...args], { env: { PATH: process.env.PATH, ...env } });
+  execute(process.execPath, ["--import", "tsx", script, "db:migrate", ...args], { env: { PATH: process.env.PATH, ...env } });
 
 let modulesDir: string;
 beforeEach(() => {
@@ -39,7 +39,7 @@ async function inScratchDatabase(t: TestContext, work: (url: string) => Promise<
   }
 }
 
-describe("db:migrate script", () => {
+describe("db:migrate command", () => {
   it("fails with a clear message when DATABASE_URL is not set", async () => {
     await assert.rejects(run([], {}), (error: { stderr: string; code: number }) => error.code === 1 && /DATABASE_URL is not set/.test(error.stderr));
   });
@@ -96,7 +96,7 @@ describe("db:migrate script", () => {
   it("fails with a non-zero exit when --modules-dir points at a path that does not exist", async () => {
     const missing = join(modulesDir, "nope");
     await assert.rejects(run(["--modules-dir", missing], { DATABASE_URL: "postgres://u:p@127.0.0.1:1/x_test" }), (error: { stderr: string; code: number }) => {
-      assert.equal(error.code, 1);
+      assert.equal(error.code, 2, "a wrong argument is a usage error");
       assert.match(error.stderr, /modules directory ".*nope" does not exist/);
       return true;
     });
@@ -104,7 +104,7 @@ describe("db:migrate script", () => {
 
   it("rejects an option it does not know", async () => {
     await assert.rejects(run(["--bogus"], { DATABASE_URL: "postgres://u:p@127.0.0.1:1/x_test" }), (error: { stderr: string; code: number }) => {
-      return error.code === 1 && /--bogus/.test(error.stderr);
+      return error.code === 2 && /--bogus/.test(error.stderr);
     });
   });
 });

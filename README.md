@@ -1,170 +1,210 @@
 # epnexo platform
 
-A module platform: a small core that installs, enables, disables, upgrades and uninstalls
-modules, each living in its own repository. This repository holds the core and the SDK that
-modules compile against. The feature plan lives in `odd/tasks/`.
+A module platform: a small core that installs, enables, disables, upgrades and uninstalls modules, each living
+in its own repository, and generates the registration the web app needs from the modules that are enabled. This
+repository holds the SDK modules compile against and the core. The feature plan lives in `odd/tasks/`.
 
 ## Layout
 
-- `packages/sdk` - `@epnexo/sdk`: module manifest v2 types, `defineModule`, `validateManifest`.
-  No database access.
-- `packages/core` - `@epnexo/core`: the platform core. Today it holds the module `Registry`
-  (manifest validation, `platform` and `dependsOn` range checks, dependency order, dependents
-  lookup), the core's own manifest, the migration runner and the module lifecycle (rules, state tables and
-  service); the CLI follows.
-- `modules/` - installed module packages, one folder per module. Not tracked in git.
-- `apps/` - applications built on the core.
+| Path | What it is |
+| --- | --- |
+| `packages/sdk` | `@epnexo/sdk`: manifest v2 types, `defineModule`, `validateManifest`. No database access. |
+| `packages/core` | `@epnexo/core`: the registry, migration runner, lifecycle, registration codegen and CLI. |
+| `modules/` | Installed module packages, one folder per module, linked by the npm workspace glob. Not tracked in git. |
+| `apps/` | Applications built on the core. Empty today; the web shell is a later feature. |
+| `odd/tasks/` | Feature documents. |
 
-Everything is TypeScript consumed from source; there is no build step for packages.
+Everything is TypeScript consumed from source; there is no build step for packages. The core never imports a
+module by name, and modules never import each other's code.
 
-## Commands
+## Setup
 
 ```bash
 npm install
-npm test          # node:test through tsx, packages/*/test/**/*.test.ts
-npm run typecheck # tsc --noEmit
+docker compose up -d db      # Postgres 16 on 127.0.0.1:5436, compose project "epnexo-shell-core"
+cp .env.example .env         # DATABASE_URL and TEST_DATABASE_URL
+npm run db:migrate           # creates the core schema
+npm test                     # node:test through tsx, packages/*/test/**/*.test.ts
+npm run typecheck            # tsc --noEmit
 ```
 
-## Database
+The only environment variables are infrastructure ones:
 
-Configuration is read from `.env` (copy `.env.example`): `DATABASE_URL` and `TEST_DATABASE_URL`.
+- `DATABASE_URL` - the database the CLI works on.
+- `TEST_DATABASE_URL` - the database integration tests run on. Its name must end in `_test` and it must not be
+  the development database. It is created on demand on the same server.
 
-```bash
-docker compose up -d db   # Postgres 16 on 127.0.0.1:5436, compose project "epnexo-shell-core"
+No server answering, or neither variable set, **skips** the integration tests with the reason printed; a server
+that answers but refuses (bad credentials, missing permission) **fails** the suite. With the database up,
+`npm test` reports 0 skipped.
+
+## The module contract
+
+A module is a package under `modules/<id>/` with a `manifest.ts` that default-exports its manifest:
+
+```ts
+import { defineModule } from "@epnexo/sdk";
+
+export default defineModule({
+  id: "sample",                       // kebab-case, equal to the folder name
+  version: "1.2.0",                   // semver, prerelease allowed, no build metadata
+  name: "Sample",
+  platform: "^0.1.0",                 // range of SDK versions the module supports
+  dependsOn: { other: "^1.0.0" },     // module id -> range; each must be enabled and installed in range
+  schema: "sample",                   // the Postgres schema this module owns ("core", "public" are reserved)
+  migrationsDir: "migrations",        // NNNN_name.sql files, relative to the module folder
+  nav: [{ label: "Sample", href: "/sample", icon: "chart", group: "Tools", order: 10, permission: "sample.read" }],
+  pages: [
+    { path: "/sample", entry: "./web/page.tsx", kind: "page", dynamic: "force-dynamic" },
+    { path: "/sample/export", entry: "./web/export.ts", kind: "route", methods: ["GET"] },
+  ],
+  settings: [{ key: "page_size", label: "Page size", type: "number", default: 50 }],
+  permissions: [{ key: "sample.read", label: "Read samples" }],
+  hooks: "./hooks.ts",                // optional: exports onInstall, onEnable, onDisable, onUpgrade, onUninstall
+});
 ```
 
-Integration tests run against a separate database whose name must end in `_test` (anything else is
-refused, as is the development database). It is created on demand on the same server, so no extra
-setup is needed. Two situations are kept apart:
+Required: `id`, `version`, `name`, `platform`, `dependsOn`, `schema`, `migrationsDir`, `nav`. The rest is optional.
+`validateManifest` rejects unknown fields and lists every problem at once.
 
-- no database server answers, or neither URL is set: the integration tests are **skipped** with the
-  reason printed;
-- a server answers but the test database cannot be created or reached (bad credentials, missing
-  permission): the suite **fails**.
+- `nav` entries carry `group`, `order` and the `permission` that must be held to see them.
+- `pages` declare routes. Paths are absolute and normalised (no `..`, query, fragment or doubled slashes);
+  `[id]`, `[...slug]` and `[[...slug]]` are allowed. `kind: "page"` renders UI, `kind: "route"` is an HTTP
+  handler and may list the `methods` it exports (default `["GET"]`). `dynamic` is the Next.js segment config
+  (`auto`, `force-dynamic`, `force-static`, `error`), which Next.js only reads from the route file itself.
+- `settings` have a `key`, `label`, `type` (`string`, `number`, `boolean`, `select`, `secret`, `path`),
+  `default`, `required`, `options` (for `select`) and `description`. A `secret` cannot declare a default.
+- `hooks` is a path to a file whose exports are called by the lifecycle (see below).
 
-With the database up, `npm test` reports 0 skipped.
+For the web app a module's `package.json` needs a `name` (the web app imports the module through it), must not
+hide its files behind an `exports` map, and keeps `manifest.ts` at its root.
 
-## Migrations
+### Migrations
 
-Each module owns its schema and ships plain SQL files in `<moduleDir>/<migrationsDir>/NNNN_name.sql`
-(the core's are in `packages/core/migrations`). `migrate` (all modules, in dependency order, core
-first) and `migrateModule` (one module, after bringing the core up to date) in `@epnexo/core`:
+Each module owns its schema and ships plain SQL files in `<migrationsDir>/NNNN_name.sql`; the core's own are in
+`packages/core/migrations`. `migrate` (every module in dependency order, core first) and `migrateModule` (one
+module, after bringing the core up to date):
 
-- create the module schema when absent and run each file in its own transaction with `search_path` set
-  to that schema; the history row is written in the same transaction, so a failing file leaves nothing
-  behind;
-- track history in `core.schema_migrations(module_id, filename, checksum, applied_at)`, created by the
-  core's own first migration;
-- refuse rewritten history: an applied file that is missing from disk, edited (checksum), or a new file
-  numbered before the latest applied one; duplicate numbers are rejected;
-- hold a Postgres advisory lock so concurrent runs serialise; the wait is bounded
-  (`lockTimeoutMs`, default 30 s) and fails with a clear error instead of hanging;
-- name the module and file in a failing migration's error and keep the database error as `cause`.
+- create the module schema when absent and run each file in its own transaction with `search_path` set to that
+  schema; the history row is written in the same transaction, so a failing file leaves nothing behind;
+- track history in `core.schema_migrations(module_id, filename, checksum, applied_at)`;
+- refuse rewritten history: an applied file that is missing from disk, edited (checksum), or a new file numbered
+  before the latest applied one; duplicate numbers are rejected;
+- hold a Postgres advisory lock so concurrent runs serialise; the wait is bounded (`lockTimeoutMs`, default
+  30 s) and fails with a clear error instead of hanging;
+- name the module and file in a failing migration's error and keep the database error as `cause`; a run that
+  fails partway throws a `MigrationRunError` whose `applied` lists the files already committed.
 
-`purgeModule` drops a module's schema (cascade) and deletes its history rows in one transaction under the
-same lock. It refuses the `core` module and any module the registry does not know, and schema names are
-validated and quoted, never interpolated as given.
-
-`discoverModules(MODULES_DIR)` loads `modules/<id>/manifest.ts` (default export, folder name equal to the
-id) and returns `{ modules, warnings }`: validated manifests with `migrationsDir` resolved, plus a
-message for every entry that was skipped (a symlink whose target is gone, for instance). An empty
-`modules/` yields nothing.
-
-The plan for each module (directory present, file names, duplicate numbers, history guards) is checked
-before its schema is created, so a refused plan leaves nothing behind. A run that fails partway throws a
-`MigrationRunError` whose `applied` lists the files already committed in that run.
-
-```bash
-npm run db:migrate                                  # the core plus every module under modules/
-npm run db:migrate -- --modules-dir /path/to/dir    # discover modules somewhere else (the path must exist)
-```
-
-`db:migrate` prints discovery warnings to stderr and, when a run fails, the files applied before the failure.
-
-A pool built with `createPool` logs errors from idle clients instead of crashing the process.
+The plan for a module (directory, file names, duplicate numbers, history guards) is checked before its schema is
+created, so a refused plan leaves nothing behind. `discoverModules(dir)` loads `<dir>/<id>/manifest.ts` and
+returns `{ modules, warnings }`; a symlink whose target is gone is skipped with a warning.
 
 ## Module lifecycle
 
-A module is in one of three states. `available` means its package is on disk and nothing is installed (it
-has no row in the database); `enabled` and `disabled` are the two installed states, stored in
-`core.modules` (`id`, `state`, `installed_version`, `installed_at`, `updated_at`). Nothing the manifest
-already says is stored.
+A module is `available` (its package is on disk and nothing is installed; no row), `enabled` or `disabled` (rows
+in `core.modules`: `id`, `state`, `installed_version`, `installed_at`, `updated_at`).
 
 | Action | From | To | What it does |
 | --- | --- | --- | --- |
-| `install` | available | enabled | runs the module's migrations, then `onInstall` and `onEnable`. Needs every dependency enabled, its INSTALLED version inside the declared range, and the `platform` range satisfied. |
-| `enable` | disabled | enabled | runs `onEnable`. Needs every dependency enabled and at an installed version inside the declared range. |
+| `install` | available | enabled | runs the module's migrations, then `onInstall` and `onEnable`. Needs every dependency enabled with its INSTALLED version inside the declared range, and the `platform` range satisfied. |
+| `enable` | disabled | enabled | runs `onEnable`. Needs every dependency enabled and installed at a version inside the range. |
 | `disable` | enabled | disabled | runs `onDisable`; all data is kept. Refused while an enabled module depends on it, directly or not. |
-| `upgrade` | enabled or disabled | same | applies pending migrations, runs `onUpgrade` (previous and new version), records the new version. Only to a higher package version: no downgrade; an equal version is a no-op. |
+| `upgrade` | enabled or disabled | same | applies pending migrations, runs `onUpgrade`, records the new version. Only to a higher package version; an equal version is a no-op. |
 | `uninstall` | enabled or disabled | available | disables first if enabled, runs `onUninstall`, then removes the row. Refused while any installed module depends on it. |
 
-`uninstall` needs an explicit mode and there is no default:
+`uninstall` needs an explicit mode and there is no default: `keep` leaves the schema and its migration history
+(installing again finds the data), `purge` drops the schema (cascade) and deletes the history. The drop, the
+history deletion and the removal of the `core.modules` row commit together or not at all.
 
-- `keep` leaves the module's schema and its migration history in place. The module is available again
-  with `dataRetained` set, and installing it later finds its data.
-- `purge` drops the schema (cascade) and deletes the module's migration history. The drop, the history
-  deletion and the removal of the `core.modules` row commit together or not at all.
-
-The `core` module can never be installed, enabled, disabled, upgraded or uninstalled. The rules are a pure
-function (`planTransition`) that returns a plan or a coded refusal naming the blocking modules.
-`LifecycleService` performs them against Postgres:
+The `core` module can never be managed. The rules are a pure function, `planTransition`, which returns a plan or a
+coded refusal naming the blocking modules; `LifecycleService` carries plans out against Postgres:
 
 ```ts
-const lifecycle = new LifecycleService(pool, registry);   // registry: Registry with the core and the discovered modules
-await lifecycle.install("some-module");
-await lifecycle.uninstall("some-module", "keep");
-await lifecycle.list();   // status, upgradePending, orphaned (row without a package), dataRetained
+const lifecycle = new LifecycleService(pool, registry);  // registry: the core plus the discovered modules
+await lifecycle.install("sample");
+await lifecycle.uninstall("sample", "keep");
+await lifecycle.list();  // status, upgradePending, orphaned, dataRetained, invalidInstalledVersion
 ```
 
-Hooks come from the manifest's `hooks` entry (a path relative to `modules/<id>/`; the loader is injectable).
-Every export is optional and receives `{ moduleId, version, previousVersion?, mode?, db }`.
+### Failure semantics
 
-Every action is serialised with the migration advisory lock, so two actions never interleave. The rules are evaluated
-before anything else, including the core's own migrations, so a refused action changes and creates nothing and is
-not audited. A stored version that is not valid semver does not break `list()`: the row is flagged
-(`invalidInstalledVersion`) and every action on it is refused with `invalid_installed_version`. If a migration or hook throws, `core.modules` is left as it was, a `failed`
-event is recorded and the error names the module, the action and the step. Migration files already committed
-stay applied and hooks that already ran are not undone, so retrying the action is the way forward (hooks should
-be idempotent).
+- The rules are evaluated first, before anything else, including the core's own migrations. A refusal throws
+  `LifecycleRefusedError` (with a `code` and the `related` module ids), changes and creates nothing, and is not
+  audited. On a database that was never migrated the lifecycle tables do not exist yet; reading them then
+  yields no rows, which is correct, and the core migrations run only once an action is accepted.
+- Steps then run in order (install: migrations, `onInstall`, `onEnable`; enable: `onEnable`; disable:
+  `onDisable`; upgrade: migrations, `onUpgrade`; uninstall: `onDisable` if enabled, `onUninstall`). The last step
+  is one transaction: for `purge` the schema drop and history deletion, then the new row and the `ok` event.
+- If a step throws, `core.modules` is left exactly as it was, a `failed` event is appended and a
+  `LifecycleStepError` names module, action and step (`lock`, `read state`, `plan`, `core migrations`,
+  `load hooks`, `migrations`, a hook name, `purge`, `record`) with the original error as `cause`.
+- Effects of steps that already succeeded are not undone: migration files are committed one by one and hooks
+  that ran have run. Retrying is the way forward, so hooks must be idempotent.
+- Every action holds the migration advisory lock on one connection for its whole duration, so two actions (or an
+  action and `migrate`) never interleave. A hook runs with the lock held and must not call the lifecycle or
+  `migrate`.
+- A stored version that is not valid semver does not break `list()`: the row is flagged
+  (`invalidInstalledVersion`) and every action on it is refused with `invalid_installed_version`.
+- A row whose package is gone is listed as `orphaned`; every action on it is refused.
 
-Every transition is appended to `core.module_events` (it has no foreign key, so it outlives an uninstall):
+Every transition is appended to `core.module_events` (no foreign key, so it outlives an uninstall): `module_id`,
+`action`, `from_state`, `to_state`, `version`, `outcome` (`ok` or `failed`), `detail` (`keep` or `purge` for an
+uninstall; `<step>: <message>` for a failure) and `occurred_at`.
 
-| Column | Meaning |
-| --- | --- |
-| `module_id`, `action` | the module and `install`, `enable`, `disable`, `upgrade` or `uninstall` |
-| `from_state`, `to_state` | `available`, `enabled` or `disabled` |
-| `version` | the version after the action (the installed one for enable, disable and uninstall) |
-| `outcome` | `ok` or `failed` |
-| `detail` | `keep` or `purge` for an uninstall; for a failure, `<step>: <error message>` |
-| `occurred_at` | when it was recorded |
+## CLI
+
+One entry, `packages/core/src/cli/index.ts`, wired as npm scripts (`npm run epnexo -- <command>` runs any command):
+
+```bash
+npm run modules -- list [--json]          # every known module: state, versions, flags
+npm run modules -- install <id>
+npm run modules -- enable <id>
+npm run modules -- disable <id>
+npm run modules -- upgrade <id>
+npm run modules -- uninstall <id> --keep  # or --purge; no flag is refused, both is a usage error
+npm run db:migrate                        # the core plus every module found under the modules directory
+npm run registry:generate [-- --dry-run] [-- --out <dir>]
+```
+
+Every command takes `--modules-dir <path>` (default `modules/`; a path that is given must exist) and `--help`.
+`list` flags are `upgrade-pending`, `orphaned`, `data-retained` and `invalid-version`. The CLI registry admits
+modules whose `platform` the SDK does not satisfy, so they are listed and refused at install instead of breaking
+every command; `db:migrate` refuses to run while one is present, because it must not apply their migrations.
+Discovery warnings go to stderr. After a successful install, enable, disable, upgrade or uninstall the CLI
+prints a reminder that the registration must be regenerated and the web app rebuilt and restarted.
+
+Exit codes: `0` done, `1` unexpected error or an accepted action that failed, `2` usage error, `3` refused by a
+lifecycle rule or by a registration conflict.
 
 ## Registration codegen
 
 Next.js resolves routes and client code at build time, so the web app cannot discover modules at run time.
-`generateRegistration` (`@epnexo/core`) turns the manifests of the **enabled** modules into the files the web
-app needs, so nothing is wired by hand per module. Its inputs are the enabled modules with their package names
-(`registrationModulesFor` builds them from `LifecycleService.list()` and the registry) and an output root,
-`apps/web` by default and injectable.
-
-Under the output root it writes:
+`registry:generate` (or `generateRegistration` in `@epnexo/core`) turns the manifests of the **enabled** modules
+into the files the web app needs, under `apps/web` unless `--out` says otherwise:
 
 | File | Content |
 | --- | --- |
 | `src/generated/modules.ts` | static imports of each enabled module's manifest; `modules` in dependency order, the flattened `navigation` (ungrouped entries first, then groups by name, each by `order`, then label; carries `permission`) and `packageNames` for the bundler (`transpilePackages`). With no modules the three are empty arrays. |
-| `src/app/<path>/page.tsx` | for `kind: "page"`: `export { default, metadata } from "<package>/<entry>"` |
-| `src/app/<path>/route.ts` | for `kind: "route"`: `export { GET, ... } from "<package>/<entry>"`, the methods the page declares (`methods`, default `["GET"]`) |
-| `src/generated/.manifest.json` | the files this generator owns, and the package names |
+| `src/app/<path>/page.tsx` | for `kind: "page"`: `export { default, metadata } from "<package>/<entry>"`, plus a literal `export const dynamic` when declared |
+| `src/app/<path>/route.ts` | for `kind: "route"`: `export { GET, ... } from "<package>/<entry>"` for the declared methods |
+| `src/generated/.manifest.json` | the files this generator owns and the package names |
+
+A module is imported as `<package name>/<entry without "./" and extension>`, its manifest as
+`<package name>/manifest`. A page entry must export `default` and `metadata`.
 
 Every generated source file starts with a header saying it is generated and must not be edited. The generator is
 idempotent and owns only what it wrote: a file from an earlier run that is no longer wanted (a module was
 disabled or uninstalled) is removed together with the folders it emptied, a file it did not generate is never
 deleted, and a needed path held by a hand-written file is an error. Conflicts are reported before anything is
-written: two modules declaring the same normalised path, a path at or below a reserved shell path
-(`RESERVED_PATHS`: `/`, `/apps`, `/settings`, `/login`, `/logout`, `/api`, `/_next`), and segments that cannot be a
-folder name. `dryRun` returns the planned writes and deletions and touches nothing.
+written: two modules declaring the same normalised path (or dynamic segments with different names in the same
+position), a path at or below a reserved shell path (`RESERVED_PATHS`: `/`, `/apps`, `/settings`, `/login`,
+`/logout`, `/api`, `/_next`), and segments that cannot be a folder name. `--dry-run` prints the planned writes
+and deletions and touches nothing.
 
-How a module is referenced: the web app imports `<package name>/<entry without "./" and extension>`, and the manifest as
-`<package name>/manifest`. A module's `package.json` therefore needs a `name`, must not hide its files behind an
-`exports` map, and keeps `manifest.ts` at its root; npm workspaces link `modules/<id>/` under that name.
-Next.js segment config cannot be re-exported, so a page declares `dynamic` in the manifest and the generator writes
-`export const dynamic = "..."` literally into the route file. A page entry must export `default` and `metadata`.
+## Not here yet
+
+Planned as later features: the shell UI and admin login (`apps/web`), the settings service and appearance, the
+Apps screen with the install pipeline (package upload, build, restart - until then the CLI prints the reminder
+and the regeneration, rebuild and restart are manual), and the module scaffold and packaging commands. A cleanup
+path for orphaned rows, and a way for `db:migrate` to leave modules that are not installed alone, are not
+designed.
