@@ -3,6 +3,10 @@ node_modules/
 dist/
 build/
 .next/
+next-env.d.ts
+
+# Written by "npm run registry:generate" from the modules enabled in the database.
+apps/web/src/generated/
 *.tsbuildinfo
 
 # Installed modules are unpacked here and are not tracked.
