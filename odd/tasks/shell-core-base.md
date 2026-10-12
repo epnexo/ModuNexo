@@ -110,8 +110,13 @@ Out of scope here, planned as later features:
 Route per task: delegated writer (trigger: two or more non-trivial files, and reading the
 previous repository to prepare the write).
 
-- [ ] **T1** Repository scaffold and `@epnexo/sdk` manifest v2 (types, `defineModule`,
+- [x] **T1** Repository scaffold and `@epnexo/sdk` manifest v2 (types, `defineModule`,
   validation) with tests.
+- [ ] **T1b** Harden manifest validation from the T1 review: normalised `pages[].path`
+  (no `..`, whitespace, query, fragment or doubled slashes; duplicates compared after
+  normalising a trailing slash), a test proving `..` is rejected inside `entry` and
+  `hooks`, finite `number` defaults, `engines.node` declared, and the version contract
+  pinned by tests (prerelease accepted, build metadata rejected).
 - [ ] **T2** `@epnexo/core` registry: dependency ordering with semver ranges, `platform`
   compatibility check, dependents lookup.
 - [ ] **T3** Migration runner port: per-module schema, checksums, history guards, bounded
@@ -153,10 +158,32 @@ previous repository to prepare the write).
   opened; the choice is asked when a remote exists.
 - Branch: `feat/shell-core-base`, from an empty initial commit on `main`.
 
+## Working agreement
+
+The owner asked on 2026-10-13 to continue tasks and reviews automatically and to stop only
+for a large decision. Review consent for each work unit is granted under that instruction.
+
 ## Progress
 
-Nothing implemented yet.
+### T1 — done (2026-10-13)
+
+- Commits: `5569421` scaffold, `0581b7c` SDK manifest v2, `27c9271` ignore `.atl/`.
+- Checks observed by the orchestrator: `npm test` 27 pass, 0 fail; `npm run typecheck`
+  clean. RED was reported by the writer for each behaviour group before implementation.
+- Size: 666 authored lines excluding the lockfile and this document, above the 400-line
+  heuristic; the validator and its 27 tests account for it and nothing was trimmed.
+- Defaults the writer chose where this document was silent, accepted: `platform` and
+  `dependsOn` required, other v2 sections optional; setting `options` are strings and a
+  `select` default must be one of them; setting and permission keys are lowercase dotted
+  identifiers; `core` is a reserved schema name.
+- Review: assessed `medium` (`slice_budget_reached`), consent granted, lens
+  `review-reliability`, outcome approved and acknowledged (lineage
+  `review-cc2eb8dab6d3d8bc`). Reviewed boundary: `27c9271`.
+- Advisory findings, none blocking: four warnings and the version-contract suggestion
+  became T1b. Two suggestions are carried forward: provision the `_test` database in
+  compose so integration tests cannot skip silently (with T3), and include `.tsx` in the
+  typecheck once UI files exist (with the shell UI feature).
 
 ## Next step
 
-T1.
+T1b, then T2.
