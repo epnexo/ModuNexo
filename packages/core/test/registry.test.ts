@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { SDK_VERSION, type ModuleManifest } from "@epnexo/sdk";
-import { Registry } from "../src/index.ts";
+import { Registry, compareIds } from "../src/index.ts";
 
 interface Options {
   dependsOn?: Record<string, string>;
@@ -218,5 +218,92 @@ describe("Registry: dependents", () => {
     registry.register(manifest("x", needs("y")));
     registry.register(manifest("y", needs("x")));
     assert.deepEqual(ids(registry.transitiveDependentsOf("x")), ["y"]);
+  });
+});
+
+describe("Registry: id ordering", () => {
+  // Hyphens and digits are where a locale-aware comparison and a plain code-unit comparison can disagree.
+  const tricky = ["a-b", "a1", "a10", "a2", "ab", "a-1", "b"];
+
+  it("compares ids by code unit, independent of the host locale", () => {
+    assert.deepEqual([...tricky].sort(compareIds), ["a-1", "a-b", "a1", "a10", "a2", "ab", "b"]);
+    assert.equal(compareIds("a", "a"), 0);
+    assert.ok(compareIds("a", "b") < 0 && compareIds("b", "a") > 0);
+  });
+
+  it("lists dependents in the same order resolveOrder breaks ties", () => {
+    const registry = new Registry();
+    registry.register(manifest("base"));
+    for (const id of tricky) registry.register(manifest(id, needs("base")));
+
+    const expected = order(registry).filter((id) => id !== "base");
+    assert.deepEqual(ids(registry.dependentsOf("base")), expected);
+    assert.deepEqual(ids(registry.transitiveDependentsOf("base")), expected);
+    assert.deepEqual(expected, [...tricky].sort(compareIds));
+  });
+});
+
+describe("Registry: prerelease dependencies", () => {
+  // Semver's default rule is kept on purpose: a prerelease only satisfies a range that names its own
+  // prerelease line, so a release candidate never silently stands in for a stable dependency.
+  it("does not satisfy an ordinary range and is reported as a version mismatch", () => {
+    const registry = new Registry();
+    registry.register(manifest("base", { version: "1.0.0-rc.1" }));
+    registry.register(manifest("app", { dependsOn: { base: "^1.0.0" } }));
+    assert.throws(() => registry.resolveOrder(), /module "app" requires "base" \^1\.0\.0 but version 1\.0\.0-rc\.1 is registered/);
+  });
+
+  it("satisfies a range that names the prerelease line", () => {
+    const registry = new Registry();
+    registry.register(manifest("base", { version: "1.0.0-rc.1" }));
+    registry.register(manifest("app", { dependsOn: { base: "^1.0.0-rc.0" } }));
+    assert.deepEqual(order(registry), ["base", "app"]);
+  });
+});
+
+describe("Registry: admitted manifests are immutable", () => {
+  it("is unaffected by changes to the original object after registration", () => {
+    const original = manifest("a", { dependsOn: { b: "*" } });
+    original.nav = [{ label: "A", href: "/a" }];
+    const registry = new Registry();
+    registry.register(manifest("b"));
+    registry.register(original);
+
+    original.schema = "hijacked";
+    original.version = "9.9.9";
+    original.dependsOn.b = "^9.0.0";
+    original.nav[0]!.label = "changed";
+
+    const stored = registry.get("a")!;
+    assert.equal(stored.schema, "a");
+    assert.equal(stored.version, "1.0.0");
+    assert.equal(stored.dependsOn.b, "*");
+    assert.equal(stored.nav[0]!.label, "A");
+    assert.deepEqual(registry.problems(), []);
+    assert.throws(() => registry.register(manifest("c", { schema: "a" })), /schema "a" is already owned by module "a"/);
+    assert.doesNotThrow(() => registry.register(manifest("d", { schema: "hijacked" })));
+  });
+
+  it("freezes what the registry returns, including nested arrays and the core manifest", () => {
+    const registry = new Registry();
+    const core = registry.registerCore();
+    const a = registry.register({ ...manifest("a", needs("core")), nav: [{ label: "A", href: "/a" }] });
+    for (const stored of [core, a]) {
+      assert.throws(() => {
+        stored.schema = "other";
+      }, TypeError);
+      assert.throws(() => {
+        stored.version = "9.9.9";
+      }, TypeError);
+      assert.throws(() => {
+        stored.dependsOn.x = "*";
+      }, TypeError);
+    }
+    assert.throws(() => {
+      a.nav.push({ label: "B", href: "/b" });
+    }, TypeError);
+    assert.throws(() => {
+      a.nav[0]!.label = "changed";
+    }, TypeError);
   });
 });

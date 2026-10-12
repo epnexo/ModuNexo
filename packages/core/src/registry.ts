@@ -2,6 +2,21 @@ import { SDK_VERSION, type ModuleManifest, validateManifest } from "@epnexo/sdk"
 import { satisfies } from "semver";
 import { CORE_MODULE_ID, coreManifest } from "./core-module.ts";
 
+/**
+ * The one ordering for module ids: plain code-unit comparison, so the result never depends on the host locale.
+ * Every place that orders ids (install order tie-breaks, dependents, problem reports) uses it.
+ */
+export const compareIds = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+/** Freeze an object and everything reachable from it. */
+function deepFreeze<T>(value: T): T {
+  if (typeof value === "object" && value !== null && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const child of Object.values(value)) deepFreeze(child);
+  }
+  return value;
+}
+
 /** Holds module manifests and resolves the order in which modules are installed. */
 export class Registry {
   readonly #modules = new Map<string, ModuleManifest>();
@@ -24,7 +39,9 @@ export class Registry {
     return this.#add(validateManifest(coreManifest, { allowCoreSchema: true }));
   }
 
-  #add(manifest: ModuleManifest): ModuleManifest {
+  #add(admitted: ModuleManifest): ModuleManifest {
+    // Admit a frozen copy: later changes to the caller's object cannot alter what the registry returns.
+    const manifest = deepFreeze(structuredClone(admitted));
     if (!satisfies(SDK_VERSION, manifest.platform)) {
       throw new Error(`module "${manifest.id}" requires platform "${manifest.platform}" but the SDK version is ${SDK_VERSION}`);
     }
@@ -51,20 +68,24 @@ export class Registry {
   #dependenciesOf(manifest: ModuleManifest): string[] {
     const deps = new Set(Object.keys(manifest.dependsOn));
     if (manifest.id !== CORE_MODULE_ID && this.#modules.has(CORE_MODULE_ID)) deps.add(CORE_MODULE_ID);
-    return [...deps].sort();
+    return [...deps].sort(compareIds);
   }
 
   /**
    * Everything wrong with the dependency graph, without throwing: unknown dependencies, dependencies whose
    * version misses the declared range, and the first dependency cycle. Empty when the graph can be ordered.
+   *
+   * Ranges follow semver's default prerelease rule, kept on purpose: a prerelease dependency (`1.0.0-rc.1`)
+   * does not satisfy an ordinary range (`^1.0.0`) and is reported as a mismatch; it satisfies only a range
+   * that names its own prerelease line (`^1.0.0-rc.0`). `includePrerelease` is deliberately not enabled.
    */
   problems(): string[] {
-    const ids = [...this.#modules.keys()].sort();
+    const ids = [...this.#modules.keys()].sort(compareIds);
     const problems: string[] = [];
 
     for (const id of ids) {
       const manifest = this.#modules.get(id)!;
-      for (const [dep, range] of Object.entries(manifest.dependsOn).sort(([a], [b]) => a.localeCompare(b))) {
+      for (const [dep, range] of Object.entries(manifest.dependsOn).sort(([a], [b]) => compareIds(a, b))) {
         const target = this.#modules.get(dep);
         if (target === undefined) {
           problems.push(`module "${id}" depends on unknown module "${dep}"`);
@@ -86,7 +107,7 @@ export class Registry {
       throw new Error(problems.length === 1 ? problems[0]! : `invalid module graph:\n${problems.map((p) => `  - ${p}`).join("\n")}`);
     }
 
-    const ids = [...this.#modules.keys()].sort();
+    const ids = [...this.#modules.keys()].sort(compareIds);
     const remaining = new Map(ids.map((id) => [id, new Set(this.#dependenciesOf(this.#modules.get(id)!))]));
     const ordered: ModuleManifest[] = [];
     while (remaining.size > 0) {
@@ -131,7 +152,7 @@ export class Registry {
   dependentsOf(id: string): ModuleManifest[] {
     return [...this.#modules.values()]
       .filter((manifest) => this.#dependenciesOf(manifest).includes(id))
-      .sort((a, b) => a.id.localeCompare(b.id));
+      .sort((a, b) => compareIds(a.id, b.id));
   }
 
   /** The modules that depend on `id` directly or through other modules, sorted by id, never including `id` itself. */
@@ -145,6 +166,6 @@ export class Registry {
         queue.push(dependent.id);
       }
     }
-    return [...found.values()].sort((a, b) => a.id.localeCompare(b.id));
+    return [...found.values()].sort((a, b) => compareIds(a.id, b.id));
   }
 }

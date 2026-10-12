@@ -261,8 +261,8 @@ function checkPermissions(permissions: unknown, problems: string[]): Set<string>
 
 export interface ValidateOptions {
   /**
-   * Admit the schema name "core", which is reserved for the platform. Only the platform's own core
-   * manifest passes this; every other reserved name stays rejected.
+   * Admit the schema name "core", which is reserved for the platform, and only for a manifest whose id is
+   * also "core". Only the platform's own core manifest passes this; every other reserved name stays rejected.
    */
   allowCoreSchema?: boolean;
 }
@@ -287,7 +287,7 @@ export function validateManifest(input: unknown, options: ValidateOptions = {}):
   if (
     typeof raw.schema !== "string" ||
     !SCHEMA_NAME.test(raw.schema) ||
-    (RESERVED_SCHEMAS.has(raw.schema) && !(options.allowCoreSchema === true && raw.schema === "core")) ||
+    (RESERVED_SCHEMAS.has(raw.schema) && !(options.allowCoreSchema === true && raw.schema === "core" && raw.id === "core")) ||
     raw.schema.startsWith("pg_")
   ) {
     problems.push("schema must be a lowercase Postgres identifier (a-z, 0-9, _), at most 63 characters, and not reserved");
