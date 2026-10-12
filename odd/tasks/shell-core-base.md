@@ -125,16 +125,22 @@ previous repository to prepare the write).
   bound to the id `core`; manifests frozen on admission.
 - [x] **T3** Migration runner port: per-module schema, checksums, history guards, bounded
   lock, named errors, and `purge` of a module schema.
-- [ ] **T3b** Migration follow-ups from the T3 review: hermetic `db:migrate` test (own
+- [x] **T3b** Migration follow-ups from the T3 review: hermetic `db:migrate` test (own
   modules directory, no ambient modules); the `MODULES_DIR` test asserts the resolved path
   only; a dangling symlink in the modules directory is skipped with a named warning, not
   a raw `ENOENT`; the plan is validated before the module schema is created; a failed run
   reports what was applied before the failure; unit cases for purge without a history
   table and for the connection-terminated branch.
-- [ ] **T4** Lifecycle state: `core.modules` with state, `core.module_events`, and the
+- [x] **T4** Lifecycle state: `core.modules` with state, `core.module_events`, and the
   transition rules as a pure function.
-- [ ] **T5** Lifecycle service: install, enable, disable, upgrade, uninstall (keep or
+- [x] **T5** Lifecycle service: install, enable, disable, upgrade, uninstall (keep or
   purge), with hooks and dependency checks, against Postgres.
+- [ ] **T5b** Lifecycle follow-ups from the T5 review: install and enable also require each
+  dependency's INSTALLED version to satisfy the declared range; uninstall with purge
+  removes the schema, the history and the `core.modules` row atomically, with tests that
+  fail at the purge and record steps; the rules are evaluated before any core migration
+  runs and each step is labelled correctly; a malformed stored version flags that row
+  instead of failing `list()`; an explicit `--modules-dir` that does not exist is an error.
 - [ ] **T6** Registration codegen: registry file and route files from enabled modules,
   empty output with zero modules.
 - [ ] **T7** CLI: `modules list | install | enable | disable | upgrade | uninstall`,
@@ -237,6 +243,36 @@ for a large decision. Review consent for each work unit is granted under that in
   `review-d493631001bfee03`). Reviewed boundary: `ca3c85f`.
 - Advisory findings, none blocking: three warnings and three suggestions, taken as T3b.
 
+### T3b, T4 and T5 — done (2026-10-13)
+
+- Commits: `6cc1f80` migration hardening, `e1a817b` lifecycle state and pure transition
+  rules, `a9bfc72` lifecycle service.
+- Checks observed by the orchestrator with `TEST_DATABASE_URL` exported: `npm test` 227
+  pass, 0 fail, 0 skipped; `npm run typecheck` clean. RED was an assertion failure or a
+  throwing stub for the new behaviour; three cases only pin behaviour that already held.
+- Failure semantics: rules first (a refusal changes and audits nothing); steps in order;
+  the row and the `ok` event are written together after the last step; a failing step
+  leaves `core.modules` unchanged, appends a `failed` event and throws naming module,
+  action and step. Committed migrations stay applied and hooks are not undone, so hooks
+  must be idempotent and a retry works.
+- Locking: every action holds the migration advisory lock on one connection for its whole
+  duration; `migrateModuleLocked` and `purgeModuleLocked` run on that connection. A hook
+  must not call the lifecycle or `migrate`.
+- Decisions taken where this document was silent: the registry can admit a module with an
+  unsupported `platform` when asked (`allowUnsupportedPlatform`) so the refusal happens at
+  install; upgrade to the same version is a no-op with no event; upgrade also checks
+  `platform`; `discoverModules` returns `{ modules, warnings }`; `db:migrate` takes
+  `--modules-dir`; `list()` does not include `core`; the audit table is append-only by
+  convention, without a trigger; hook types live in core, not in the SDK.
+- Open product question, not blocking: a row in `core.modules` whose package is gone is
+  listed as `orphaned` and every action on it is refused. A cleanup path for orphans is
+  not designed.
+- Size: T4 821 and T5 980 authored lines, more than half of each tests; not split.
+- Review: `medium` (`slice_budget_reached`), consent granted under the working agreement,
+  lens `review-reliability`, approved and acknowledged (lineage
+  `review-b1e7853884e4f1de`). Reviewed boundary: `a9bfc72`.
+- Advisory findings, none blocking: two warnings and three suggestions, taken as T5b.
+
 ## Next step
 
-T3b, then T4 and T5.
+T5b, then T6 and T7.
