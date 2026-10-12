@@ -135,16 +135,26 @@ previous repository to prepare the write).
   transition rules as a pure function.
 - [x] **T5** Lifecycle service: install, enable, disable, upgrade, uninstall (keep or
   purge), with hooks and dependency checks, against Postgres.
-- [ ] **T5b** Lifecycle follow-ups from the T5 review: install and enable also require each
+- [x] **T5b** Lifecycle follow-ups from the T5 review: install and enable also require each
   dependency's INSTALLED version to satisfy the declared range; uninstall with purge
   removes the schema, the history and the `core.modules` row atomically, with tests that
   fail at the purge and record steps; the rules are evaluated before any core migration
   runs and each step is labelled correctly; a malformed stored version flags that row
   instead of failing `list()`; an explicit `--modules-dir` that does not exist is an error.
-- [ ] **T6** Registration codegen: registry file and route files from enabled modules,
+- [x] **T6** Registration codegen: registry file and route files from enabled modules,
   empty output with zero modules.
-- [ ] **T7** CLI: `modules list | install | enable | disable | upgrade | uninstall`,
+- [x] **T7** CLI: `modules list | install | enable | disable | upgrade | uninstall`,
   `db:migrate`, `registry:generate`; README for the core.
+- [ ] **T7b** Follow-ups from the T7 review and one design correction:
+  - codegen: conflicting dynamic segment names at the same position are caught for
+    prefixes, not only for whole paths; a run that fails partway cannot leave untracked
+    generated files (ownership is recorded before deletion and recovered on the next run);
+    unbalanced dynamic segment brackets are rejected.
+  - lifecycle: a test pins that an installed prerelease dependency does not satisfy an
+    ordinary range, matching the registry rule.
+  - `db:migrate` migrates the core and INSTALLED modules only. Migrating a module that was
+    never installed bypassed the lifecycle's dependency and platform checks and made it
+    look like retained data; installing is what applies a module's first migrations.
 
 ## Acceptance criteria
 
@@ -273,6 +283,36 @@ for a large decision. Review consent for each work unit is granted under that in
   `review-b1e7853884e4f1de`). Reviewed boundary: `a9bfc72`.
 - Advisory findings, none blocking: two warnings and three suggestions, taken as T5b.
 
+### T5b, T6 and T7 — done (2026-10-13)
+
+- Commits: `502d3fb` lifecycle hardening, `5ab7812` registration codegen, `586634c` CLI
+  and README.
+- Checks observed by the orchestrator with `TEST_DATABASE_URL` exported: `npm test` 306
+  pass, 0 fail, 0 skipped; `npm run typecheck` clean; no file under `packages/` names a
+  business module. The writer ran `db:migrate`, `modules list` and
+  `registry:generate --dry-run` by hand against the dev database with no modules.
+- Acceptance criteria: each one is proven end to end by a spawned-CLI test in
+  `packages/core/test/cli.test.ts` (journey, keep/purge/no-flag, dependents, platform
+  mismatch, empty registry).
+- Codegen: under the output root (default `apps/web`) it writes
+  `src/generated/modules.ts` (modules in dependency order, flattened navigation, package
+  names), one `page.tsx` or `route.ts` per declared page, and
+  `src/generated/.manifest.json`. A file is owned when it starts with the generated
+  header; a hand-written file in the way is an error found before any write.
+- Additions to the manifest contract: optional `dynamic` on a page and optional `methods`
+  on a route (segment config cannot be re-exported, and the generator cannot know which
+  handlers an entry exports).
+- What a module package needs: a `name`, `manifest.ts` at its root, no `exports` map
+  hiding its files; page entries export `default` and `metadata`.
+- Reserved shell paths: `/`, `/apps`, `/settings`, `/login`, `/logout`, `/api`, `/_next`.
+- CLI exit codes: 0 done, 1 unexpected error or failed action, 2 usage error, 3 refusal.
+- Size: T6 1,015 and T7 930 authored lines (tests and README are about half); not split.
+- Review: `medium` (`slice_budget_reached`), consent granted under the working agreement,
+  lens `review-reliability`, approved and acknowledged (lineage
+  `review-cc793818a025e075`). Reviewed boundary: `586634c`.
+- Advisory findings, none blocking: two warnings and two suggestions, taken as T7b.
+
 ## Next step
 
-T5b, then T6 and T7.
+T7b, then close this feature. The next feature (A2, shell UI and admin login) needs the
+owner's decisions before it starts.
