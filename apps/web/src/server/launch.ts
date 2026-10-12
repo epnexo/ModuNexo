@@ -63,3 +63,12 @@ export function planLaunch(command: string | undefined, env: Env = process.env):
   const { host, port } = resolveListen(env);
   return { nextArgs: [command, "--hostname", host, "--port", String(port)], registry: command === "dev" ? "ensure" : "none" };
 }
+
+/**
+ * The launcher's exit code for the Next.js child. A child killed by a signal nobody asked for (the out-of-memory
+ * killer during a build, for one) is a failure; only the signal the launcher itself forwarded is a clean stop.
+ */
+export function exitCodeFor(code: number | null, signal: NodeJS.Signals | null, forwarded: NodeJS.Signals | null): number {
+  if (code !== null) return code;
+  return signal !== null && signal === forwarded ? 0 : 1;
+}

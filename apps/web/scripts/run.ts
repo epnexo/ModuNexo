@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { runCli } from "@epnexo/core/cli";
-import { LaunchError, LaunchUsageError, planLaunch } from "../src/server/launch.ts";
+import { LaunchError, LaunchUsageError, exitCodeFor, planLaunch } from "../src/server/launch.ts";
 import { ensureRegistry } from "./ensure-registry.ts";
 
 const webRoot = fileURLToPath(new URL("../", import.meta.url));
@@ -22,13 +22,22 @@ async function main(): Promise<number> {
 
   const next = createRequire(import.meta.url).resolve("next/dist/bin/next");
   const child = spawn(process.execPath, [next, ...plan.nextArgs], { cwd: webRoot, stdio: "inherit" });
-  for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => child.kill(signal));
+  let forwarded: NodeJS.Signals | null = null;
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    process.on(signal, () => {
+      forwarded = signal;
+      child.kill(signal);
+    });
+  }
   return new Promise((resolve) => {
     child.on("error", (error) => {
       console.error(`error: could not start Next.js: ${error.message}`);
       resolve(1);
     });
-    child.on("exit", (code, signal) => resolve(code ?? (signal === null ? 1 : 0)));
+    child.on("exit", (code, signal) => {
+      if (signal !== null && signal !== forwarded) console.error(`error: Next.js was killed by ${signal}`);
+      resolve(exitCodeFor(code, signal, forwarded));
+    });
   });
 }
 

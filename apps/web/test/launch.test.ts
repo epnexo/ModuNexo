@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
-import { DEFAULT_HOST, DEFAULT_PORT, LaunchError, planLaunch, resolveListen } from "../src/server/launch.ts";
+import { DEFAULT_HOST, DEFAULT_PORT, LaunchError, exitCodeFor, planLaunch, resolveListen } from "../src/server/launch.ts";
 
 const KEY = "k".repeat(32);
 
@@ -63,6 +63,28 @@ describe("planLaunch", () => {
   it("refuses an unknown or missing command", () => {
     assert.throws(() => planLaunch("deploy", { EPNEXO_MASTER_KEY: KEY }), /unknown command "deploy"/);
     assert.throws(() => planLaunch(undefined, { EPNEXO_MASTER_KEY: KEY }), /dev, build or start/);
+  });
+});
+
+describe("exitCodeFor", () => {
+  it("passes the child's own exit code through", () => {
+    assert.equal(exitCodeFor(0, null, null), 0);
+    assert.equal(exitCodeFor(3, null, null), 3);
+  });
+
+  it("is a failure when the child was killed by a signal nobody asked for", () => {
+    assert.equal(exitCodeFor(null, "SIGKILL", null), 1);
+    assert.equal(exitCodeFor(null, "SIGKILL", "SIGTERM"), 1);
+    assert.equal(exitCodeFor(null, "SIGSEGV", null), 1);
+  });
+
+  it("is a clean stop when the child ended with the very signal the launcher forwarded", () => {
+    assert.equal(exitCodeFor(null, "SIGTERM", "SIGTERM"), 0);
+    assert.equal(exitCodeFor(null, "SIGINT", "SIGINT"), 0);
+  });
+
+  it("is a failure when the child reports neither a code nor a signal", () => {
+    assert.equal(exitCodeFor(null, null, null), 1);
   });
 });
 

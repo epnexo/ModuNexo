@@ -173,3 +173,21 @@ feature is a chain with one slice per task.
   unreadable, on `0.0.0.0`, `::`, site-local `fec0::/10` and shared space `100.64.0.0/10` (a VPN range
   is not known to be the owner's network). Not wired to any HTTP request yet: T3 does that. Existing
   tests that pin the core's table and migration lists were updated for migration 0004.
+- **L13** (2026-10-13) Native review of `e7be714..58594bd` (T2 and T6; 28 files, 1,211 authored lines
+  without the lockfile; lenses `risk`, `resilience`, `reliability`): approved, acknowledged, burned.
+  Three warnings, all real, all fixed with tests written first (RED then GREEN):
+  - R3, signal exit: the launcher returned 0 when `next build` was killed by a signal (my expression
+    was inverted), so an out-of-memory kill would have reported success. New pure `exitCodeFor`:
+    a signal nobody forwarded is a failure.
+  - R4, `next.config.ts`: one half-unpacked `modules/*/package.json` stopped the whole shell with a
+    raw stack trace. Extracted to `src/server/module-packages.ts`: unreadable or nameless packages are
+    skipped with a warning that names the directory.
+  - R3, `auth require`: on a fresh instance it was refused without an administrator and, with one,
+    wrote a row but reported no change. The effective mode is now compared first; equal means no check
+    and no write.
+  Reviewed boundary is now `58594bd`. `npm test` 400 pass, 0 fail, 0 skipped.
+- **L14** (2026-10-13) Finding for T3, from reading Next 16.4's `base-server.js` (read only): the
+  server fills `x-forwarded-for` from the socket with `??=`, so a client-sent header wins and a route
+  handler cannot learn the real connection address. T3 therefore needs a thin Node server in front of
+  Next that deletes any incoming `x-epnexo-client-ip` and sets it from `req.socket.remoteAddress`.
+  The same address feeds the local-only rule of S9, together with the forwarding headers a proxy adds.
