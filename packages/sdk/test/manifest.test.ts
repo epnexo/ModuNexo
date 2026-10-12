@@ -68,6 +68,10 @@ describe("validateManifest: base rules", () => {
     }
   });
 
+  it("admits the core schema only for the manifest whose id is also core", () => {
+    assert.throws(() => validateManifest({ ...valid, schema: "core" }, { allowCoreSchema: true }), /schema must be/);
+  });
+
   it("rejects an empty migrationsDir", () => {
     assert.throws(() => validateManifest({ ...valid, migrationsDir: "" }), /migrationsDir/);
   });
