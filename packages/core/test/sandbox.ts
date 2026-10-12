@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type pg from "pg";
 import { SDK_VERSION, type ModuleManifest } from "@epnexo/sdk";
-import { Registry } from "../src/registry.ts";
+import { Registry, type RegistryOptions } from "../src/registry.ts";
 
 export interface Throwaway {
   manifest: ModuleManifest;
@@ -36,9 +36,9 @@ export class Sandbox {
     return module;
   }
 
-  /** A registry with the core and every throwaway module added so far. */
-  registry(): Registry {
-    const registry = new Registry();
+  /** A registry with the core and every throwaway module added so far. Pass options to admit unsupported platforms. */
+  registry(options?: RegistryOptions): Registry {
+    const registry = new Registry(options);
     registry.registerCore();
     for (const { manifest } of this.modules) registry.register(manifest);
     return registry;
@@ -47,6 +47,8 @@ export class Sandbox {
   async cleanup(): Promise<void> {
     for (const { manifest, dir } of this.modules) {
       await this.pool.query("delete from core.schema_migrations where module_id = $1", [manifest.id]).catch(() => undefined);
+      await this.pool.query("delete from core.modules where id = $1", [manifest.id]).catch(() => undefined);
+      await this.pool.query("delete from core.module_events where module_id = $1", [manifest.id]).catch(() => undefined);
       await this.pool.query(`drop schema if exists "${manifest.schema}" cascade`);
       rmSync(dir, { recursive: true, force: true });
     }

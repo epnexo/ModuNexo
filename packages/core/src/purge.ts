@@ -15,26 +15,43 @@ const PROTECTED_SCHEMAS = new Set(["public", "information_schema", "core"]);
  * rather than interpolated as given.
  */
 export async function purgeModule(pool: pg.Pool, registry: Registry, moduleId: string, options: MigrateOptions = {}): Promise<void> {
+  const target = purgeTarget(registry, moduleId);
+  await withMigrationLock(pool, options, (client) => dropModule(client, target));
+}
+
+/** `purgeModule` for a caller that already holds the migration lock on `client`; see `migrateModuleLocked`. */
+export async function purgeModuleLocked(client: pg.PoolClient, registry: Registry, moduleId: string): Promise<void> {
+  await dropModule(client, purgeTarget(registry, moduleId));
+}
+
+interface PurgeTarget {
+  id: string;
+  schema: string;
+}
+
+function purgeTarget(registry: Registry, moduleId: string): PurgeTarget {
   if (moduleId === CORE_MODULE_ID) throw new Error("cannot purge the core module");
   const manifest = registry.get(moduleId);
   if (manifest === undefined) throw new Error(`module "${moduleId}" is not registered`);
   if (PROTECTED_SCHEMAS.has(manifest.schema)) throw new Error(`refusing to purge schema "${manifest.schema}" of module "${moduleId}"`);
-  const schema = quoteIdentifier(manifest.schema);
+  quoteIdentifier(manifest.schema);
+  return { id: manifest.id, schema: manifest.schema };
+}
 
-  await withMigrationLock(pool, options, async (client) => {
-    try {
-      await client.query("begin");
-      await client.query(`drop schema if exists ${schema} cascade`);
-      // Before the core's first migration there is no history table, so there is nothing to delete.
-      const tracked = await client.query("select to_regclass('core.schema_migrations') is not null as present");
-      if (tracked.rows[0].present) {
-        await client.query("delete from core.schema_migrations where module_id = $1", [manifest.id]);
-      }
-      await client.query("commit");
-    } catch (error) {
-      await client.query("rollback").catch(() => undefined);
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`purging module "${manifest.id}" failed: ${message}`, { cause: error });
+async function dropModule(client: pg.PoolClient, target: PurgeTarget): Promise<void> {
+  const schema = quoteIdentifier(target.schema);
+  try {
+    await client.query("begin");
+    await client.query(`drop schema if exists ${schema} cascade`);
+    // Before the core's first migration there is no history table, so there is nothing to delete.
+    const tracked = await client.query("select to_regclass('core.schema_migrations') is not null as present");
+    if (tracked.rows[0].present) {
+      await client.query("delete from core.schema_migrations where module_id = $1", [target.id]);
     }
-  });
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`purging module "${target.id}" failed: ${message}`, { cause: error });
+  }
 }

@@ -10,8 +10,8 @@ modules compile against. The feature plan lives in `odd/tasks/`.
   No database access.
 - `packages/core` - `@epnexo/core`: the platform core. Today it holds the module `Registry`
   (manifest validation, `platform` and `dependsOn` range checks, dependency order, dependents
-  lookup), the core's own manifest, the migration runner and the lifecycle rules and state tables; the
-  lifecycle service and CLI follow.
+  lookup), the core's own manifest, the migration runner and the module lifecycle (rules, state tables and
+  service); the CLI follows.
 - `modules/` - installed module packages, one folder per module. Not tracked in git.
 - `apps/` - applications built on the core.
 
@@ -82,3 +82,55 @@ npm run db:migrate -- --modules-dir /path/to/dir    # discover modules somewhere
 `db:migrate` prints discovery warnings to stderr and, when a run fails, the files applied before the failure.
 
 A pool built with `createPool` logs errors from idle clients instead of crashing the process.
+
+## Module lifecycle
+
+A module is in one of three states. `available` means its package is on disk and nothing is installed (it
+has no row in the database); `enabled` and `disabled` are the two installed states, stored in
+`core.modules` (`id`, `state`, `installed_version`, `installed_at`, `updated_at`). Nothing the manifest
+already says is stored.
+
+| Action | From | To | What it does |
+| --- | --- | --- | --- |
+| `install` | available | enabled | runs the module's migrations, then `onInstall` and `onEnable`. Needs every dependency enabled and the `platform` range satisfied. |
+| `enable` | disabled | enabled | runs `onEnable`. Needs every dependency enabled. |
+| `disable` | enabled | disabled | runs `onDisable`; all data is kept. Refused while an enabled module depends on it, directly or not. |
+| `upgrade` | enabled or disabled | same | applies pending migrations, runs `onUpgrade` (previous and new version), records the new version. Only to a higher package version: no downgrade; an equal version is a no-op. |
+| `uninstall` | enabled or disabled | available | disables first if enabled, runs `onUninstall`, then removes the row. Refused while any installed module depends on it. |
+
+`uninstall` needs an explicit mode and there is no default:
+
+- `keep` leaves the module's schema and its migration history in place. The module is available again
+  with `dataRetained` set, and installing it later finds its data.
+- `purge` drops the schema (cascade) and deletes the module's migration history.
+
+The `core` module can never be installed, enabled, disabled, upgraded or uninstalled. The rules are a pure
+function (`planTransition`) that returns a plan or a coded refusal naming the blocking modules.
+`LifecycleService` performs them against Postgres:
+
+```ts
+const lifecycle = new LifecycleService(pool, registry);   // registry: Registry with the core and the discovered modules
+await lifecycle.install("some-module");
+await lifecycle.uninstall("some-module", "keep");
+await lifecycle.list();   // status, upgradePending, orphaned (row without a package), dataRetained
+```
+
+Hooks come from the manifest's `hooks` entry (a path relative to `modules/<id>/`; the loader is injectable).
+Every export is optional and receives `{ moduleId, version, previousVersion?, mode?, db }`.
+
+Every action is serialised with the migration advisory lock, so two actions never interleave. A refused action
+changes nothing and is not audited. If a migration or hook throws, `core.modules` is left as it was, a `failed`
+event is recorded and the error names the module, the action and the step. Migration files already committed
+stay applied and hooks that already ran are not undone, so retrying the action is the way forward (hooks should
+be idempotent).
+
+Every transition is appended to `core.module_events` (it has no foreign key, so it outlives an uninstall):
+
+| Column | Meaning |
+| --- | --- |
+| `module_id`, `action` | the module and `install`, `enable`, `disable`, `upgrade` or `uninstall` |
+| `from_state`, `to_state` | `available`, `enabled` or `disabled` |
+| `version` | the version after the action (the installed one for enable, disable and uninstall) |
+| `outcome` | `ok` or `failed` |
+| `detail` | `keep` or `purge` for an uninstall; for a failure, `<step>: <error message>` |
+| `occurred_at` | when it was recorded |

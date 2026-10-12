@@ -46,6 +46,16 @@ describe("Registry: unsupported platform", () => {
   });
 });
 
+describe("Registry: all", () => {
+  it("lists every registered manifest, the core included, sorted by id", () => {
+    const registry = new Registry();
+    registry.registerCore();
+    registry.register(manifest("b"));
+    registry.register(manifest("a"));
+    assert.deepEqual(ids(registry.all()), ["a", "b", "core"]);
+  });
+});
+
 describe("Registry: registration", () => {
   it("validates manifests on register", () => {
     const registry = new Registry();
