@@ -16,7 +16,10 @@ export interface NavEntry {
 
 /** A route a module contributes. The codegen turns each page into a generated route file. */
 export interface PageDeclaration {
-  /** Absolute path inside the web shell, for example "/ai-usage/reports". */
+  /**
+   * Absolute, normalised path inside the web shell, for example "/ai-usage/reports". Next.js dynamic
+   * segments (`[id]`, `[...slug]`, `[[...slug]]`) are allowed.
+   */
   path: string;
   /** Relative path (starting with "./") to the module file that implements the route. */
   entry: string;
@@ -32,7 +35,7 @@ export interface SettingDeclaration {
   key: string;
   label: string;
   type: SettingType;
-  /** Initial value. A `secret` must not declare one. */
+  /** Initial value; a `number` default must be finite. A `secret` must not declare one. */
   default?: string | number | boolean;
   required?: boolean;
   /** Allowed values; required and non-empty for `select`. */
@@ -50,7 +53,7 @@ export interface PermissionDeclaration {
 export interface ModuleManifest {
   /** Unique kebab-case identifier. */
   id: string;
-  /** Semantic version, `MAJOR.MINOR.PATCH`. */
+  /** Semantic version, `MAJOR.MINOR.PATCH` with an optional prerelease tag (`1.0.0-rc.1`). Build metadata (`+build.5`) is not allowed. */
   version: string;
   /** Human-readable name. */
   name: string;
@@ -100,7 +103,9 @@ const PAGE_KINDS = ["page", "route"];
 const SETTING_TYPES = ["string", "number", "boolean", "select", "secret", "path"];
 /** Lowercase dotted identifier, for example "api_key" or "reports.read". */
 const KEY = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/;
+/** "./" followed by non-blank text with no ".." anywhere, which also rules out a ".." segment. */
 const RELATIVE_ENTRY = /^\.\/(?!.*\.\.)\S+$/;
+const ROUTE_SEGMENT = /^[^\s/?#]+$/;
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim() !== "";
@@ -116,6 +121,22 @@ function isSemverRange(value: unknown): value is string {
 
 function isRelativeEntry(value: unknown): value is string {
   return typeof value === "string" && RELATIVE_ENTRY.test(value);
+}
+
+/**
+ * A route path is "/" or "/" followed by segments that are non-empty, free of whitespace, "?" and "#", and not
+ * "." or "..". One trailing slash is tolerated.
+ */
+function isNormalisedRoutePath(value: string): boolean {
+  if (value === "/") return true;
+  const segments = value.slice(1).split("/");
+  if (segments.length > 1 && segments[segments.length - 1] === "") segments.pop();
+  return segments.every((segment) => ROUTE_SEGMENT.test(segment) && segment !== "." && segment !== "..");
+}
+
+/** Trailing slashes do not distinguish routes; the root stays "/". */
+function routeKey(path: string): string {
+  return path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path;
 }
 
 function checkUnknownFields(item: Record<string, unknown>, known: Set<string>, where: string, problems: string[]): void {
@@ -168,10 +189,12 @@ function checkPages(pages: unknown, problems: string[]): void {
     checkUnknownFields(page, KNOWN_PAGE_FIELDS, where, problems);
     if (typeof page.path !== "string" || !page.path.startsWith("/")) {
       problems.push(`${where}.path must start with "/"`);
-    } else if (seen.has(page.path)) {
+    } else if (!isNormalisedRoutePath(page.path)) {
+      problems.push(`${where}.path must be a normalised route path (single slashes, no ".", ".." or empty segment, no whitespace, "?" or "#")`);
+    } else if (seen.has(routeKey(page.path))) {
       problems.push(`${where}.path "${page.path}" is duplicated`);
     } else {
-      seen.add(page.path);
+      seen.add(routeKey(page.path));
     }
     if (!isRelativeEntry(page.entry)) problems.push(`${where}.entry must be a relative path starting with "./"`);
     if (typeof page.kind !== "string" || !PAGE_KINDS.includes(page.kind)) problems.push(`${where}.kind must be "page" or "route"`);
@@ -182,7 +205,7 @@ function checkSettingDefault(setting: Record<string, unknown>, where: string, pr
   const { type, default: value } = setting;
   if (value === undefined) return;
   if (type === "secret") problems.push(`${where}.default is not allowed for type "secret"`);
-  else if (type === "number" && typeof value !== "number") problems.push(`${where}.default must be a number`);
+  else if (type === "number" && !(typeof value === "number" && Number.isFinite(value))) problems.push(`${where}.default must be a finite number`);
   else if (type === "boolean" && typeof value !== "boolean") problems.push(`${where}.default must be a boolean`);
   else if ((type === "string" || type === "path") && typeof value !== "string") problems.push(`${where}.default must be a string`);
   else if (type === "select" && Array.isArray(setting.options) && !setting.options.includes(value)) {
@@ -249,7 +272,7 @@ export function validateManifest(input: unknown): ModuleManifest {
   }
 
   if (typeof raw.id !== "string" || !KEBAB_CASE.test(raw.id)) problems.push("id must be kebab-case");
-  if (typeof raw.version !== "string" || valid(raw.version) !== raw.version) problems.push("version must be semver (MAJOR.MINOR.PATCH)");
+  if (typeof raw.version !== "string" || valid(raw.version) !== raw.version) problems.push("version must be semver MAJOR.MINOR.PATCH with an optional prerelease tag and no build metadata");
   if (!isNonEmptyString(raw.name)) problems.push("name must be a non-empty string");
   if (!isSemverRange(raw.platform)) problems.push("platform must be a valid semver range");
 
