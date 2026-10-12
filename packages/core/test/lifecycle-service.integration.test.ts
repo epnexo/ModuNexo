@@ -16,8 +16,11 @@ import {
   readEvents,
   readStates,
 } from "../src/index.ts";
+import { createPool } from "../src/pool.ts";
+import { Registry } from "../src/registry.ts";
 import { MIGRATION_LOCK_NAME } from "../src/runner.ts";
-import { openTestPool } from "../src/testing.ts";
+import { createScratchDatabase, openTestPool } from "../src/testing.ts";
+import { faultyPool } from "./faulty-pool.ts";
 import { Sandbox, type Throwaway } from "./sandbox.ts";
 
 let pool: pg.Pool | undefined;
@@ -231,6 +234,34 @@ describe("LifecycleService: refusals", () => {
     assert.equal(await schemaExists(app.manifest.schema), false, "nothing was migrated");
   });
 
+  test("install and enable check the INSTALLED version of a dependency, not the package on disk", async (box, hooks) => {
+    const base = withData(box.add());
+    const app = withData(box.add({ [base.manifest.id]: "^2.0.0" }));
+    const service = () => serviceFor(box, hooks);
+    await service().install(base.manifest.id);
+    // The package on disk is already 2.0.0, but 1.0.0 is installed and running until the upgrade is applied.
+    base.manifest = { ...base.manifest, version: "2.0.0" };
+
+    const install = await rejection(service().install(app.manifest.id));
+    assert.ok(install instanceof LifecycleRefusedError);
+    assert.equal(install.code, "dependency_version_mismatch");
+    assert.deepEqual(install.related, [base.manifest.id]);
+    assert.match(install.message, new RegExp(`requires "${base.manifest.id}" \\^2\\.0\\.0 but the installed version is 1\\.0\\.0`));
+    assert.equal(await schemaExists(app.manifest.schema), false, "nothing was migrated");
+    assert.deepEqual(await events(app.manifest.id), []);
+
+    await service().upgrade(base.manifest.id);
+    await service().install(app.manifest.id);
+    assert.equal((await stateOf(app.manifest.id))?.state, "enabled");
+
+    // Enable is checked the same way: an installed dependency that no longer fits blocks it.
+    await service().disable(app.manifest.id);
+    await pool!.query("update core.modules set installed_version = '1.0.0' where id = $1", [base.manifest.id]);
+    const enable = await rejection(service().enable(app.manifest.id));
+    assert.ok(enable instanceof LifecycleRefusedError);
+    assert.equal(enable.code, "dependency_version_mismatch");
+  });
+
   test("a module whose platform range does not match the SDK is refused at install", async (box, hooks) => {
     const mod = withData(box.add());
     mod.manifest = { ...mod.manifest, platform: "^9.0.0" };
@@ -388,6 +419,106 @@ describe("LifecycleService: failures", () => {
   });
 });
 
+describe("LifecycleService: uninstall with purge is atomic", () => {
+  const failingAt = (box: Sandbox, hooks: Hooks, pattern: RegExp) =>
+    new LifecycleService(faultyPool(pool!, (sql) => pattern.test(sql)), box.registry({ allowUnsupportedPlatform: true }), { loadHooks: hooks.load, lockPollMs: 20 });
+
+  for (const [step, pattern] of [
+    ["purge", /drop schema/],
+    ["record", /delete from core\.modules/],
+  ] as const) {
+    test(`a failure at the ${step} step leaves schema, history and row together, and a retry succeeds`, async (box, hooks) => {
+      const mod = withData(box.add());
+      const id = mod.manifest.id;
+      await serviceFor(box, hooks).install(id);
+      await serviceFor(box, hooks).disable(id);
+
+      const error = await rejection(failingAt(box, hooks, pattern).uninstall(id, "purge"));
+      assert.ok(error instanceof LifecycleStepError);
+      assert.deepEqual([error.action, error.step], ["uninstall", step]);
+      assert.equal(await schemaExists(mod.manifest.schema), true, "the schema is still there");
+      assert.equal(await rowCount(mod), 1, "and so is its data");
+      assert.deepEqual(await historyOf(id), ["0001_create_items.sql"], "and its migration history");
+      assert.deepEqual(await stateOf(id), { id, state: "disabled", installedVersion: "1.0.0" }, "and the row in core.modules");
+      const failed = (await events(id)).at(-1);
+      assert.deepEqual(failed?.slice(0, 5), ["uninstall", "disabled", "available", "1.0.0", "failed"]);
+      assert.match(failed?.[5] ?? "", new RegExp(`^${step}: .*injected failure`));
+
+      await serviceFor(box, hooks).uninstall(id, "purge");
+      assert.equal(await schemaExists(mod.manifest.schema), false);
+      assert.deepEqual(await historyOf(id), []);
+      assert.equal(await stateOf(id), undefined);
+      assert.deepEqual((await events(id)).map((e) => e[4]), ["ok", "ok", "failed", "ok"]);
+    });
+  }
+});
+
+describe("LifecycleService: rules run before anything else", () => {
+  /** A database of its own, so that "nothing was created" can be asserted about the core schema itself. */
+  const onScratch = (name: string, run: (box: Sandbox, scratchPool: pg.Pool, hooks: Hooks) => Promise<void>) =>
+    it(name, async (t) => {
+      const scratch = await createScratchDatabase();
+      if (!scratch.url) return t.skip(scratch.skipReason);
+      const own = createPool(scratch.url, { connectionTimeoutMillis: 2000 });
+      const box = new Sandbox(own);
+      try {
+        await run(box, own, new Hooks());
+      } finally {
+        await own.end();
+        await scratch.drop();
+      }
+    });
+  const coreSchemaExists = async (db: pg.Pool) => (await db.query("select 1 from information_schema.schemata where schema_name = 'core'")).rowCount === 1;
+  const serviceOn = (db: pg.Pool, box: Sandbox, hooks: Hooks, registry?: Registry) =>
+    new LifecycleService(db, registry ?? box.registry({ allowUnsupportedPlatform: true }), { loadHooks: hooks.load, lockPollMs: 20 });
+
+  onScratch("a refused action on a database that was never migrated creates nothing, not even the core schema", async (box, db, hooks) => {
+    const mod = withData(box.add());
+    mod.manifest = { ...mod.manifest, platform: "^9.0.0" };
+    const refused = await rejection(serviceOn(db, box, hooks).install(mod.manifest.id));
+    assert.ok(refused instanceof LifecycleRefusedError && refused.code === "platform_unsupported");
+    const notInstalled = await rejection(serviceOn(db, box, hooks).disable(mod.manifest.id));
+    assert.ok(notInstalled instanceof LifecycleRefusedError && notInstalled.code === "not_installed");
+    assert.equal(await coreSchemaExists(db), false);
+  });
+
+  onScratch("the core migrations run for an accepted action, and are reported under their own step when they fail", async (box, db, hooks) => {
+    const mod = withData(box.add());
+    const broken = new LifecycleService(db, box.registry(), { loadHooks: hooks.load, lockPollMs: 20, moduleDirs: { core: join(tmpdir(), "epnexo-no-such-core-dir") } });
+    const error = await rejection(broken.install(mod.manifest.id));
+    assert.ok(error instanceof LifecycleStepError);
+    assert.equal(error.step, "core migrations");
+
+    await serviceOn(db, box, hooks, box.registry()).install(mod.manifest.id);
+    assert.equal((await db.query("select state from core.modules where id = $1", [mod.manifest.id])).rows[0]?.state, "enabled");
+  });
+
+  onScratch("a failure while reading the state is reported as reading state, not as a core migration", async (box, db, hooks) => {
+    const mod = withData(box.add());
+    const service = new LifecycleService(faultyPool(db, (sql) => sql.includes("to_regclass('core.modules')")), box.registry(), { loadHooks: hooks.load, lockPollMs: 20 });
+    const error = await rejection(service.install(mod.manifest.id));
+    assert.ok(error instanceof LifecycleStepError);
+    assert.equal(error.step, "read state");
+    assert.equal(await coreSchemaExists(db), false, "the core migrations never ran");
+  });
+
+  onScratch("a failure while planning is reported as planning", async (box, db, hooks) => {
+    const mod = withData(box.add());
+    class BrokenRegistry extends Registry {
+      override isPlatformSupported(): boolean {
+        throw new Error("registry exploded");
+      }
+    }
+    const registry = new BrokenRegistry();
+    registry.registerCore();
+    registry.register(mod.manifest);
+    const error = await rejection(serviceOn(db, box, hooks, registry).install(mod.manifest.id));
+    assert.ok(error instanceof LifecycleStepError);
+    assert.equal(error.step, "plan");
+    assert.equal(await coreSchemaExists(db), false);
+  });
+});
+
 describe("LifecycleService: concurrency", () => {
   test("two installs of the same module do not interleave: one wins, the other is refused", async (box, hooks) => {
     const mod = withData(box.add());
@@ -452,17 +583,38 @@ describe("LifecycleService: list", () => {
       const listed = await service().list();
       const by = (id: string) => listed.find((m) => m.id === id);
       assert.equal(by("core"), undefined, "the core is not a manageable module");
-      assert.deepEqual(by(available.manifest.id), { id: available.manifest.id, status: "available", packageVersion: "1.0.0", upgradePending: false, orphaned: false, dataRetained: false });
+      assert.deepEqual(by(available.manifest.id), { id: available.manifest.id, status: "available", packageVersion: "1.0.0", upgradePending: false, orphaned: false, dataRetained: false, invalidInstalledVersion: false });
       assert.equal(by(enabled.manifest.id)?.status, "enabled");
       assert.equal(by(disabled.manifest.id)?.status, "disabled");
       assert.deepEqual([by(outdated.manifest.id)?.upgradePending, by(outdated.manifest.id)?.installedVersion, by(outdated.manifest.id)?.packageVersion], [true, "1.0.0", "1.2.0"]);
       assert.deepEqual([by(kept.manifest.id)?.status, by(kept.manifest.id)?.dataRetained], ["available", true]);
-      assert.deepEqual(by(orphan), { id: orphan, status: "enabled", installedVersion: "0.5.0", upgradePending: false, orphaned: true, dataRetained: false });
+      assert.deepEqual(by(orphan), { id: orphan, status: "enabled", installedVersion: "0.5.0", upgradePending: false, orphaned: true, dataRetained: false, invalidInstalledVersion: false });
       const ids = listed.map((m) => m.id);
       assert.deepEqual(ids, [...ids].sort(), "sorted by id");
     } finally {
       await pool!.query("delete from core.modules where id = $1", [orphan]);
     }
+  });
+
+  test("a malformed stored version is flagged on its row and does not stop the listing; actions on it are refused", async (box, hooks) => {
+    const good = withData(box.add());
+    const bad = withData(box.add());
+    const service = () => serviceFor(box, hooks);
+    await service().install(good.manifest.id);
+    await service().install(bad.manifest.id);
+    await pool!.query("update core.modules set installed_version = 'not-a-version' where id = $1", [bad.manifest.id]);
+
+    const listed = await service().list();
+    const row = listed.find((m) => m.id === bad.manifest.id);
+    assert.deepEqual([row?.invalidInstalledVersion, row?.installedVersion, row?.upgradePending], [true, "not-a-version", false]);
+    assert.equal(listed.find((m) => m.id === good.manifest.id)?.invalidInstalledVersion, false);
+
+    for (const run of [() => service().disable(bad.manifest.id), () => service().upgrade(bad.manifest.id), () => service().uninstall(bad.manifest.id, "keep")]) {
+      const error = await rejection(run());
+      assert.ok(error instanceof LifecycleRefusedError);
+      assert.equal(error.code, "invalid_installed_version");
+    }
+    assert.equal((await stateOf(bad.manifest.id))?.state, "enabled");
   });
 
   test("works before anything has been installed or migrated", async (box, hooks) => {

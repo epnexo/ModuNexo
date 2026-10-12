@@ -13,13 +13,13 @@ import {
   planTransition,
 } from "../src/lifecycle/transitions.ts";
 
-function manifest(id: string, options: { dependsOn?: string[]; version?: string; platform?: string } = {}): ModuleManifest {
+function manifest(id: string, options: { dependsOn?: string[]; ranges?: Record<string, string>; version?: string; platform?: string } = {}): ModuleManifest {
   return {
     id,
     version: options.version ?? "1.0.0",
     name: id,
     platform: options.platform ?? `^${SDK_VERSION}`,
-    dependsOn: Object.fromEntries((options.dependsOn ?? []).map((dep) => [dep, "*"])),
+    dependsOn: { ...Object.fromEntries((options.dependsOn ?? []).map((dep) => [dep, "*"])), ...options.ranges },
     schema: id.replaceAll("-", "_"),
     migrationsDir: "migrations",
     nav: [],
@@ -95,6 +95,60 @@ describe("planTransition: install", () => {
     const result = refusal({ action: "install", moduleId: "a" }, statesOf({}), registryOf(manifest("a", { platform: "^9.0.0" })));
     assert.equal(result.code, "platform_unsupported");
     assert.match(result.message, /platform "\^9\.0\.0".*SDK version/);
+  });
+});
+
+describe("planTransition: dependency versions", () => {
+  // The range is checked against the version that is INSTALLED (core.modules), not the package on disk.
+  const registry = () => registryOf(manifest("base", { version: "2.0.0" }), manifest("app", { ranges: { base: "^1.0.0" } }));
+
+  it("refuses install when the package on disk is newer than the installed dependency (upgrade pending)", () => {
+    // The package on disk (2.0.0) would satisfy ^2.0.0, but only 1.0.0 is installed and running.
+    const result = refusal({ action: "install", moduleId: "app" }, statesOf({ base: "enabled" }, { base: "1.0.0" }), registryOf(manifest("base", { version: "2.0.0" }), manifest("app", { ranges: { base: "^2.0.0" } })));
+    assert.equal(result.code, "dependency_version_mismatch");
+    assert.deepEqual(result.related, ["base"]);
+    assert.match(result.message, /"app" requires "base" \^2\.0\.0 but the installed version is 1\.0\.0/);
+  });
+
+  it("refuses enable on the same grounds", () => {
+    const result = refusal({ action: "enable", moduleId: "app" }, statesOf({ base: "enabled", app: "disabled" }, { base: "2.0.0" }), registry());
+    assert.equal(result.code, "dependency_version_mismatch");
+    assert.match(result.message, /requires "base" \^1\.0\.0 but the installed version is 2\.0\.0/);
+  });
+
+  it("accepts a dependency whose installed version satisfies the range, whatever the package on disk says", () => {
+    assert.equal(plan({ action: "install", moduleId: "app" }, statesOf({ base: "enabled" }, { base: "1.2.0" }), registry()).to, "enabled");
+  });
+
+  it("reports a dependency that is not enabled before one whose version is wrong", () => {
+    const states = statesOf({ base: "disabled" }, { base: "2.0.0" });
+    assert.equal(refusal({ action: "install", moduleId: "app" }, states, registry()).code, "dependency_not_enabled");
+  });
+
+  it("names every dependency that misses its range, sorted", () => {
+    const reg = registryOf(manifest("a"), manifest("b"), manifest("app", { ranges: { a: "^2.0.0", b: "^2.0.0" } }));
+    const result = refusal({ action: "install", moduleId: "app" }, statesOf({ a: "enabled", b: "enabled" }), reg);
+    assert.deepEqual(result.related, ["a", "b"]);
+  });
+});
+
+describe("planTransition: invalid stored version", () => {
+  const registry = () => registryOf(manifest("a"), manifest("app", { dependsOn: ["a"] }));
+  const broken = () => statesOf({ a: "enabled" }, { a: "not-a-version" });
+
+  it("refuses every action on a module whose stored version is malformed", () => {
+    for (const action of ["enable", "disable", "upgrade", "uninstall"] as const) {
+      const result = refusal({ action, moduleId: "a", mode: "keep" }, broken(), registry());
+      assert.equal(result.code, "invalid_installed_version", action);
+      assert.deepEqual(result.related, ["a"]);
+      assert.match(result.message, /"a".*"not-a-version"/);
+    }
+  });
+
+  it("refuses to depend on a module whose stored version is malformed", () => {
+    const result = refusal({ action: "install", moduleId: "app" }, broken(), registry());
+    assert.equal(result.code, "invalid_installed_version");
+    assert.deepEqual(result.related, ["a"]);
   });
 });
 
@@ -251,6 +305,7 @@ describe("deriveStatus", () => {
       upgradePending: false,
       orphaned: false,
       dataRetained: false,
+      invalidInstalledVersion: false,
     });
   });
 
@@ -263,6 +318,7 @@ describe("deriveStatus", () => {
       upgradePending: false,
       orphaned: false,
       dataRetained: false,
+      invalidInstalledVersion: false,
     });
   });
 
@@ -285,5 +341,12 @@ describe("deriveStatus", () => {
     assert.equal(deriveStatus({ id: "a", manifest: m("1.0.0"), schemaExists: true }).dataRetained, true);
     assert.equal(deriveStatus({ id: "a", manifest: m("1.0.0"), installed: row("enabled"), schemaExists: true }).dataRetained, false);
     assert.equal(deriveStatus({ id: "a", manifest: m("1.0.0"), schemaExists: false }).dataRetained, false);
+  });
+
+  it("flags a malformed stored version instead of throwing, and reports no pending upgrade", () => {
+    const status = deriveStatus({ id: "a", manifest: m("1.0.0"), installed: row("enabled", "garbage"), schemaExists: true });
+    assert.equal(status.invalidInstalledVersion, true);
+    assert.equal(status.upgradePending, false);
+    assert.equal(status.installedVersion, "garbage");
   });
 });

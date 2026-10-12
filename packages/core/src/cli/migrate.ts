@@ -1,7 +1,6 @@
 // Thin wrapper behind `npm run db:migrate`; the full CLI arrives with the lifecycle.
-import { resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { discoverModules, MODULES_DIR } from "../discovery.ts";
+import { discoverModules, resolveModulesDir } from "../discovery.ts";
 import { createPool, resolveDatabaseUrl } from "../pool.ts";
 import { Registry } from "../registry.ts";
 import { MigrationRunError, migrate } from "../runner.ts";
@@ -9,7 +8,7 @@ import { MigrationRunError, migrate } from "../runner.ts";
 async function main(): Promise<void> {
   // The modules directory is an argument, not an environment variable: the environment is for infrastructure only.
   const { values } = parseArgs({ options: { "modules-dir": { type: "string" } }, allowPositionals: false });
-  const modulesDir = values["modules-dir"] === undefined ? MODULES_DIR : resolve(values["modules-dir"]);
+  const modulesDir = resolveModulesDir(values["modules-dir"]);
   const url = resolveDatabaseUrl();
 
   const registry = new Registry();

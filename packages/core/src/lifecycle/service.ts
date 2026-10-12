@@ -2,7 +2,7 @@ import type pg from "pg";
 import type { ModuleManifest } from "@epnexo/sdk";
 import { CORE_MODULE_ID } from "../core-module.ts";
 import { MODULES_DIR } from "../discovery.ts";
-import { purgeModuleLocked } from "../purge.ts";
+import { purgeModuleInTransaction } from "../purge.ts";
 import { type Registry, compareIds } from "../registry.ts";
 import { type MigrateOptions, migrateModuleLocked, withMigrationLock } from "../runner.ts";
 import { LifecycleRefusedError, LifecycleStepError, type LifecycleStep } from "./errors.ts";
@@ -21,10 +21,13 @@ export interface LifecycleServiceOptions extends MigrateOptions {
  * the migration runner and `purgeModule`, the state from `core.modules` and `core.module_events`.
  *
  * Failure semantics. An action is all-or-nothing as far as `core.modules` is concerned:
- * - The rules are checked first. A refusal throws `LifecycleRefusedError`; nothing runs, nothing is audited.
+ * - The rules are checked first, before the core's own migrations: a refusal throws `LifecycleRefusedError`;
+ *   nothing runs, nothing is written or created, nothing is audited. A failure to read the state or to plan is
+ *   reported as step `read state` or `plan`.
  * - Steps then run in order (install: migrations, onInstall, onEnable; enable: onEnable; disable: onDisable;
- *   upgrade: migrations, onUpgrade; uninstall: onDisable if enabled, onUninstall, then the purge for `purge`).
- *   The row is written, and the `ok` event appended, in one transaction after the last step.
+ *   upgrade: migrations, onUpgrade; uninstall: onDisable if enabled, onUninstall). The last step is one
+ *   transaction: for `purge` the schema drop and history deletion, then the row and the `ok` event, so a
+ *   failure at the purge or the record leaves schema, history and row as they were.
  * - If any step throws, `core.modules` stays exactly as it was, a `failed` event is appended (its detail is
  *   `<step>: <message>`) and a `LifecycleStepError` naming module, action and step is thrown, with the
  *   original error as `cause`.
@@ -94,22 +97,27 @@ export class LifecycleService {
     try {
       return await withMigrationLock(this.#pool, this.#options, async (client) => {
         started = true;
-        let step: LifecycleStep = "core migrations";
+        let step: LifecycleStep = "read state";
         let plan: TransitionPlan | undefined;
         try {
-          // The lifecycle tables belong to the core's migrations, so make sure they exist before reading them.
-          await migrateModuleLocked(client, this.#registry, CORE_MODULE_ID, this.#options);
-          const decision = planTransition(request, await readStates(client), this.#registry);
+          // Rules first, and before anything is written: a refusal must change nothing, not even create the core
+          // schema. When the lifecycle tables do not exist yet, `readStates` returns no rows, which is exactly
+          // right: nothing can be installed in a database that was never migrated.
+          const states = await readStates(client);
+          step = "plan";
+          const decision = planTransition(request, states, this.#registry);
           if (!decision.ok) throw new LifecycleRefusedError(moduleId, action, decision.refusal);
           plan = decision.plan;
           if (plan.noop) return plan;
 
+          // Only an accepted action reaches the database: the core's migrations create the lifecycle tables.
+          step = "core migrations";
+          await migrateModuleLocked(client, this.#registry, CORE_MODULE_ID, this.#options);
           const manifest = this.#registry.get(moduleId)!;
           step = "load hooks";
           const hooks = await this.#loadHooks(manifest);
           await this.#steps(client, plan, manifest, hooks ?? {}, (next) => (step = next));
-          step = "record";
-          await this.#record(client, plan);
+          await this.#record(client, plan, manifest, (next) => (step = next));
           return plan;
         } catch (error) {
           if (error instanceof LifecycleRefusedError) throw error;
@@ -167,18 +175,24 @@ export class LifecycleService {
       case "uninstall":
         if (plan.disableFirst) await hook("onDisable");
         await hook("onUninstall");
-        if (plan.mode === "purge") {
-          at("purge");
-          await purgeModuleLocked(client, this.#registry, manifest.id);
-        }
         break;
     }
   }
 
-  /** The new state and the `ok` event in one transaction, so the audit log and `core.modules` cannot disagree. */
-  async #record(client: pg.PoolClient, plan: TransitionPlan): Promise<void> {
+  /**
+   * The last step, in one transaction: for an uninstall with `purge`, dropping the schema and deleting the
+   * migration history, then the new state and the `ok` event. Either all of it commits or none of it does, so
+   * a failure at the purge or at the record leaves the schema, the history and the row exactly as they were,
+   * and `core.modules` and the audit log cannot disagree.
+   */
+  async #record(client: pg.PoolClient, plan: TransitionPlan, manifest: ModuleManifest, at: (step: LifecycleStep) => void): Promise<void> {
     try {
       await client.query("begin");
+      if (plan.mode === "purge") {
+        at("purge");
+        await purgeModuleInTransaction(client, this.#registry, manifest.id);
+      }
+      at("record");
       if (plan.to === "available") {
         await deleteState(client, plan.moduleId);
       } else {

@@ -76,7 +76,7 @@ before its schema is created, so a refused plan leaves nothing behind. A run tha
 
 ```bash
 npm run db:migrate                                  # the core plus every module under modules/
-npm run db:migrate -- --modules-dir /path/to/dir    # discover modules somewhere else
+npm run db:migrate -- --modules-dir /path/to/dir    # discover modules somewhere else (the path must exist)
 ```
 
 `db:migrate` prints discovery warnings to stderr and, when a run fails, the files applied before the failure.
@@ -92,8 +92,8 @@ already says is stored.
 
 | Action | From | To | What it does |
 | --- | --- | --- | --- |
-| `install` | available | enabled | runs the module's migrations, then `onInstall` and `onEnable`. Needs every dependency enabled and the `platform` range satisfied. |
-| `enable` | disabled | enabled | runs `onEnable`. Needs every dependency enabled. |
+| `install` | available | enabled | runs the module's migrations, then `onInstall` and `onEnable`. Needs every dependency enabled, its INSTALLED version inside the declared range, and the `platform` range satisfied. |
+| `enable` | disabled | enabled | runs `onEnable`. Needs every dependency enabled and at an installed version inside the declared range. |
 | `disable` | enabled | disabled | runs `onDisable`; all data is kept. Refused while an enabled module depends on it, directly or not. |
 | `upgrade` | enabled or disabled | same | applies pending migrations, runs `onUpgrade` (previous and new version), records the new version. Only to a higher package version: no downgrade; an equal version is a no-op. |
 | `uninstall` | enabled or disabled | available | disables first if enabled, runs `onUninstall`, then removes the row. Refused while any installed module depends on it. |
@@ -102,7 +102,8 @@ already says is stored.
 
 - `keep` leaves the module's schema and its migration history in place. The module is available again
   with `dataRetained` set, and installing it later finds its data.
-- `purge` drops the schema (cascade) and deletes the module's migration history.
+- `purge` drops the schema (cascade) and deletes the module's migration history. The drop, the history
+  deletion and the removal of the `core.modules` row commit together or not at all.
 
 The `core` module can never be installed, enabled, disabled, upgraded or uninstalled. The rules are a pure
 function (`planTransition`) that returns a plan or a coded refusal naming the blocking modules.
@@ -118,8 +119,10 @@ await lifecycle.list();   // status, upgradePending, orphaned (row without a pac
 Hooks come from the manifest's `hooks` entry (a path relative to `modules/<id>/`; the loader is injectable).
 Every export is optional and receives `{ moduleId, version, previousVersion?, mode?, db }`.
 
-Every action is serialised with the migration advisory lock, so two actions never interleave. A refused action
-changes nothing and is not audited. If a migration or hook throws, `core.modules` is left as it was, a `failed`
+Every action is serialised with the migration advisory lock, so two actions never interleave. The rules are evaluated
+before anything else, including the core's own migrations, so a refused action changes and creates nothing and is
+not audited. A stored version that is not valid semver does not break `list()`: the row is flagged
+(`invalidInstalledVersion`) and every action on it is refused with `invalid_installed_version`. If a migration or hook throws, `core.modules` is left as it was, a `failed`
 event is recorded and the error names the module, the action and the step. Migration files already committed
 stay applied and hooks that already ran are not undone, so retrying the action is the way forward (hooks should
 be idempotent).

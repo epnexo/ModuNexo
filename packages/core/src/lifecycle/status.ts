@@ -1,6 +1,6 @@
 import type { ModuleManifest } from "@epnexo/sdk";
 import { gt } from "semver";
-import type { InstalledModule, ModuleStatusKind } from "./transitions.ts";
+import { type InstalledModule, type ModuleStatusKind, isValidInstalledVersion } from "./transitions.ts";
 
 /** What a listing shows for one module. */
 export interface ModuleStatus {
@@ -16,6 +16,8 @@ export interface ModuleStatus {
   orphaned: boolean;
   /** Available again after an uninstall with `keep`: the module's schema still exists. */
   dataRetained: boolean;
+  /** The version stored in `core.modules` is not valid semver. The row is listed, but every action on it is refused. */
+  invalidInstalledVersion: boolean;
 }
 
 export interface StatusInput {
@@ -29,12 +31,14 @@ export interface StatusInput {
 }
 
 export function deriveStatus({ id, manifest, installed, schemaExists }: StatusInput): ModuleStatus {
+  const invalid = installed !== undefined && !isValidInstalledVersion(installed.installedVersion);
   const status: ModuleStatus = {
     id,
     status: installed?.state ?? "available",
-    upgradePending: manifest !== undefined && installed !== undefined && gt(manifest.version, installed.installedVersion),
+    upgradePending: manifest !== undefined && installed !== undefined && !invalid && gt(manifest.version, installed.installedVersion),
     orphaned: installed !== undefined && manifest === undefined,
     dataRetained: installed === undefined && manifest !== undefined && schemaExists,
+    invalidInstalledVersion: invalid,
   };
   if (manifest !== undefined) status.packageVersion = manifest.version;
   if (installed !== undefined) status.installedVersion = installed.installedVersion;

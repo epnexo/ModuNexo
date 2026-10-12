@@ -93,6 +93,15 @@ describe("db:migrate script", () => {
     });
   });
 
+  it("fails with a non-zero exit when --modules-dir points at a path that does not exist", async () => {
+    const missing = join(modulesDir, "nope");
+    await assert.rejects(run(["--modules-dir", missing], { DATABASE_URL: "postgres://u:p@127.0.0.1:1/x_test" }), (error: { stderr: string; code: number }) => {
+      assert.equal(error.code, 1);
+      assert.match(error.stderr, /modules directory ".*nope" does not exist/);
+      return true;
+    });
+  });
+
   it("rejects an option it does not know", async () => {
     await assert.rejects(run(["--bogus"], { DATABASE_URL: "postgres://u:p@127.0.0.1:1/x_test" }), (error: { stderr: string; code: number }) => {
       return error.code === 1 && /--bogus/.test(error.stderr);
