@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { MODULES_DIR, discoverModules } from "../src/discovery.ts";
+import { MODULES_DIR, discoverModules, resolveModulesDir } from "../src/discovery.ts";
 
 let root: string;
 beforeEach(() => {
@@ -100,6 +100,25 @@ describe("discoverModules", () => {
     mkdirSync(join(root, "alpha"));
     writeFileSync(join(root, "alpha", "manifest.ts"), "export const manifest = {};\n");
     await assert.rejects(discoverModules(root), /must have a default export/);
+  });
+});
+
+describe("resolveModulesDir", () => {
+  it("uses the repository's modules directory when no path is given, whether or not it exists", () => {
+    assert.equal(resolveModulesDir(undefined), MODULES_DIR);
+  });
+
+  it("resolves an explicit path that exists", () => {
+    assert.equal(resolveModulesDir(root), root);
+  });
+
+  it("rejects an explicit path that does not exist, naming it", () => {
+    assert.throws(() => resolveModulesDir(join(root, "nope")), /modules directory ".*nope" does not exist/);
+  });
+
+  it("rejects an explicit path that is a file", () => {
+    writeFileSync(join(root, "file"), "");
+    assert.throws(() => resolveModulesDir(join(root, "file")), /is not a directory/);
   });
 });
 

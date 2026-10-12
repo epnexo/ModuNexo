@@ -7,6 +7,19 @@ import { compareIds } from "./registry.ts";
 /** The repository's `modules/` directory, where installed module packages are unpacked. */
 export const MODULES_DIR = fileURLToPath(new URL("../../../modules", import.meta.url));
 
+/**
+ * The modules directory to use for a `--modules-dir` value. No value means the repository's `modules/`, which
+ * may be absent or empty (nothing installed). A path the caller named must exist and be a directory: typing a
+ * wrong path must be an error, not a silent run with zero modules.
+ */
+export function resolveModulesDir(option?: string): string {
+  if (option === undefined) return MODULES_DIR;
+  const dir = resolve(option);
+  if (!existsSync(dir)) throw new Error(`modules directory "${dir}" does not exist`);
+  if (!statSync(dir).isDirectory()) throw new Error(`modules directory "${dir}" is not a directory`);
+  return dir;
+}
+
 export interface DiscoveryResult {
   modules: ModuleManifest[];
   /** Entries that were skipped instead of loaded (a broken symlink, say), each naming the entry. The caller decides whether to print them. */

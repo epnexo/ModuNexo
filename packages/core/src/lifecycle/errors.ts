@@ -3,6 +3,8 @@ import type { LifecycleAction, Refusal, RefusalCode } from "./transitions.ts";
 /** Where in an action a failure happened; the step names the hook, so `onEnable` means the module's own hook threw. */
 export type LifecycleStep =
   | "lock"
+  | "read state"
+  | "plan"
   | "core migrations"
   | "load hooks"
   | "migrations"

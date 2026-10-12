@@ -1,5 +1,5 @@
 import { type ModuleManifest, SDK_VERSION } from "@epnexo/sdk";
-import { gt, lt } from "semver";
+import { gt, lt, satisfies, valid } from "semver";
 import { CORE_MODULE_ID } from "../core-module.ts";
 import { type Registry, compareIds } from "../registry.ts";
 
@@ -32,6 +32,8 @@ export type RefusalCode =
   | "platform_unsupported"
   | "dependency_missing"
   | "dependency_not_enabled"
+  | "dependency_version_mismatch"
+  | "invalid_installed_version"
   | "has_enabled_dependents"
   | "has_installed_dependents"
   | "downgrade"
@@ -76,12 +78,36 @@ function refuse(code: RefusalCode, message: string, related: string[] = []): Tra
   return { ok: false, refusal: { code, message, related } };
 }
 
+/** A stored version is only trusted when it is canonical semver; anything else cannot be compared and is flagged, not guessed at. */
+export const isValidInstalledVersion = (version: string): boolean => valid(version) === version;
+
+function invalidVersionProblem(id: string, version: string): TransitionResult {
+  return refuse(
+    "invalid_installed_version",
+    `module "${id}" has an invalid installed version "${version}" recorded in core.modules; correct or remove that row before managing it`,
+    [id],
+  );
+}
+
+/**
+ * Every dependency must have a package, be enabled, and be INSTALLED at a version inside the declared range.
+ * The installed version (from `core.modules`) is what runs; the package on disk may already be newer while
+ * its upgrade is pending, so it is deliberately not consulted for the range.
+ */
 function dependencyProblem(manifest: ModuleManifest, states: ReadonlyMap<string, InstalledModule>, registry: Registry): TransitionResult | undefined {
   const dependencies = Object.keys(manifest.dependsOn).sort(compareIds);
   const missing = dependencies.filter((id) => registry.get(id) === undefined);
   if (missing.length > 0) return refuse("dependency_missing", `module "${manifest.id}" depends on ${quoted(missing)}, which has no package on disk`, missing);
   const notEnabled = dependencies.filter((id) => states.get(id)?.state !== "enabled");
   if (notEnabled.length > 0) return refuse("dependency_not_enabled", `module "${manifest.id}" needs ${quoted(notEnabled)} to be enabled first`, notEnabled);
+
+  const unreadable = dependencies.find((id) => !isValidInstalledVersion(states.get(id)!.installedVersion));
+  if (unreadable !== undefined) return invalidVersionProblem(unreadable, states.get(unreadable)!.installedVersion);
+  const mismatched = dependencies.filter((id) => !satisfies(states.get(id)!.installedVersion, manifest.dependsOn[id]!));
+  if (mismatched.length > 0) {
+    const detail = mismatched.map((id) => `"${id}" ${manifest.dependsOn[id]} but the installed version is ${states.get(id)!.installedVersion}`).join("; ");
+    return refuse("dependency_version_mismatch", `module "${manifest.id}" requires ${detail}`, mismatched);
+  }
   return undefined;
 }
 
@@ -119,6 +145,8 @@ export function planTransition(request: TransitionRequest, states: ReadonlyMap<s
         : `module "${moduleId}" is recorded as installed but its package is not on disk`,
     );
   }
+
+  if (installed !== undefined && !isValidInstalledVersion(installed.installedVersion)) return invalidVersionProblem(moduleId, installed.installedVersion);
 
   const plan = (to: ModuleStatusKind, extra: Partial<TransitionPlan> = {}): TransitionResult => ({
     ok: true,

@@ -24,6 +24,20 @@ export async function purgeModuleLocked(client: pg.PoolClient, registry: Registr
   await dropModule(client, purgeTarget(registry, moduleId));
 }
 
+/**
+ * The statements of a purge for a caller that owns the transaction: nothing is begun, committed or rolled back
+ * here, so the lifecycle can put the purge and the removal of the module's row into one commit. The caller must
+ * hold the migration lock on `client` and have begun a transaction; on an error it must roll that transaction back.
+ */
+export async function purgeModuleInTransaction(client: pg.PoolClient, registry: Registry, moduleId: string): Promise<void> {
+  const target = purgeTarget(registry, moduleId);
+  try {
+    await dropStatements(client, target);
+  } catch (error) {
+    throw purgeFailure(target, error);
+  }
+}
+
 interface PurgeTarget {
   id: string;
   schema: string;
@@ -38,20 +52,25 @@ function purgeTarget(registry: Registry, moduleId: string): PurgeTarget {
   return { id: manifest.id, schema: manifest.schema };
 }
 
+async function dropStatements(client: pg.PoolClient, target: PurgeTarget): Promise<void> {
+  await client.query(`drop schema if exists ${quoteIdentifier(target.schema)} cascade`);
+  // Before the core's first migration there is no history table, so there is nothing to delete.
+  const tracked = await client.query("select to_regclass('core.schema_migrations') is not null as present");
+  if (tracked.rows[0].present) {
+    await client.query("delete from core.schema_migrations where module_id = $1", [target.id]);
+  }
+}
+
+const purgeFailure = (target: PurgeTarget, error: unknown): Error =>
+  new Error(`purging module "${target.id}" failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+
 async function dropModule(client: pg.PoolClient, target: PurgeTarget): Promise<void> {
-  const schema = quoteIdentifier(target.schema);
   try {
     await client.query("begin");
-    await client.query(`drop schema if exists ${schema} cascade`);
-    // Before the core's first migration there is no history table, so there is nothing to delete.
-    const tracked = await client.query("select to_regclass('core.schema_migrations') is not null as present");
-    if (tracked.rows[0].present) {
-      await client.query("delete from core.schema_migrations where module_id = $1", [target.id]);
-    }
+    await dropStatements(client, target);
     await client.query("commit");
   } catch (error) {
     await client.query("rollback").catch(() => undefined);
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`purging module "${target.id}" failed: ${message}`, { cause: error });
+    throw purgeFailure(target, error);
   }
 }
