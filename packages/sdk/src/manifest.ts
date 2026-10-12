@@ -14,6 +14,12 @@ export interface NavEntry {
   permission?: string;
 }
 
+/** Next.js `dynamic` segment config. It must be written literally in a route file, so the manifest declares it. */
+export type PageDynamic = "auto" | "force-dynamic" | "force-static" | "error";
+
+/** HTTP methods a `route` entry can export. */
+export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
+
 /** A route a module contributes. The codegen turns each page into a generated route file. */
 export interface PageDeclaration {
   /**
@@ -25,6 +31,13 @@ export interface PageDeclaration {
   entry: string;
   /** `page` renders UI; `route` is an HTTP handler. */
   kind: "page" | "route";
+  /**
+   * Next.js `dynamic` segment config for this route. Next.js reads it from the route file itself, so the codegen
+   * writes it there literally; it cannot be re-exported from the module. Omitted means Next.js's default.
+   */
+  dynamic?: PageDynamic;
+  /** `route` only: the handlers the entry exports, re-exported by the generated route file. Default `["GET"]`. */
+  methods?: HttpMethod[];
 }
 
 export type SettingType = "string" | "number" | "boolean" | "select" | "secret" | "path";
@@ -96,10 +109,12 @@ const KNOWN_FIELDS = new Set([
   "id", "version", "name", "platform", "dependsOn", "schema", "migrationsDir", "nav", "pages", "settings", "permissions", "hooks",
 ]);
 const KNOWN_NAV_FIELDS = new Set(["label", "href", "icon", "group", "order", "permission"]);
-const KNOWN_PAGE_FIELDS = new Set(["path", "entry", "kind"]);
+const KNOWN_PAGE_FIELDS = new Set(["path", "entry", "kind", "dynamic", "methods"]);
 const KNOWN_SETTING_FIELDS = new Set(["key", "label", "type", "default", "required", "options", "description"]);
 const KNOWN_PERMISSION_FIELDS = new Set(["key", "label"]);
 const PAGE_KINDS = ["page", "route"];
+const PAGE_DYNAMIC_MODES = ["auto", "force-dynamic", "force-static", "error"];
+const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 const SETTING_TYPES = ["string", "number", "boolean", "select", "secret", "path"];
 /** Lowercase dotted identifier, for example "api_key" or "reports.read". */
 const KEY = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/;
@@ -198,6 +213,16 @@ function checkPages(pages: unknown, problems: string[]): void {
     }
     if (!isRelativeEntry(page.entry)) problems.push(`${where}.entry must be a relative path starting with "./"`);
     if (typeof page.kind !== "string" || !PAGE_KINDS.includes(page.kind)) problems.push(`${where}.kind must be "page" or "route"`);
+    if (page.dynamic !== undefined && (typeof page.dynamic !== "string" || !PAGE_DYNAMIC_MODES.includes(page.dynamic))) {
+      problems.push(`${where}.dynamic must be one of ${PAGE_DYNAMIC_MODES.join(", ")}`);
+    }
+    if (page.methods !== undefined) {
+      if (page.kind !== "route") {
+        problems.push(`${where}.methods is only allowed for kind "route"`);
+      } else if (!Array.isArray(page.methods) || page.methods.length === 0 || !page.methods.every((m) => typeof m === "string" && HTTP_METHODS.includes(m)) || new Set(page.methods).size !== page.methods.length) {
+        problems.push(`${where}.methods must be a non-empty array of distinct HTTP methods (${HTTP_METHODS.join(", ")})`);
+      }
+    }
   });
 }
 
