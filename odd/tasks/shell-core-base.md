@@ -119,12 +119,18 @@ previous repository to prepare the write).
   pinned by tests (prerelease accepted, build metadata rejected).
 - [x] **T2** `@epnexo/core` registry: dependency ordering with semver ranges, `platform`
   compatibility check, dependents lookup.
-- [ ] **T2b** Registry follow-ups from the T2 review: one locale-independent id comparator
+- [x] **T2b** Registry follow-ups from the T2 review: one locale-independent id comparator
   everywhere with a dependents-order test; a test pinning that a prerelease dependency
   does not satisfy an ordinary range (semver default, kept on purpose); `allowCoreSchema`
   bound to the id `core`; manifests frozen on admission.
-- [ ] **T3** Migration runner port: per-module schema, checksums, history guards, bounded
+- [x] **T3** Migration runner port: per-module schema, checksums, history guards, bounded
   lock, named errors, and `purge` of a module schema.
+- [ ] **T3b** Migration follow-ups from the T3 review: hermetic `db:migrate` test (own
+  modules directory, no ambient modules); the `MODULES_DIR` test asserts the resolved path
+  only; a dangling symlink in the modules directory is skipped with a named warning, not
+  a raw `ENOENT`; the plan is validated before the module schema is created; a failed run
+  reports what was applied before the failure; unit cases for purge without a history
+  table and for the connection-terminated branch.
 - [ ] **T4** Lifecycle state: `core.modules` with state, `core.module_events`, and the
   transition rules as a pure function.
 - [ ] **T5** Lifecycle service: install, enable, disable, upgrade, uninstall (keep or
@@ -208,6 +214,29 @@ for a large decision. Review consent for each work unit is granted under that in
   `review-35b6d4ba54a24fd0`). Reviewed boundary: `2ef0ddd`.
 - Advisory findings, none blocking: two warnings and two suggestions, all taken as T2b.
 
+### T2b and T3 — done (2026-10-13)
+
+- Commits: `d8d9356` registry follow-ups, `6fb64c9` migration planner and runner,
+  `bee545b` fixture rename, `ca3c85f` purge, discovery and `db:migrate`.
+- Checks observed by the orchestrator with `TEST_DATABASE_URL` exported: `npm test` 139
+  pass, 0 fail, 0 skipped; `npm run typecheck` clean. For new files the writer's RED was
+  a missing module, so individual assertions were first exercised at GREEN.
+- Database: compose project `epnexo-shell-core`, container `epnexo-db` on 127.0.0.1:5436.
+  The test database is created on demand; an unreachable server is a visible skip, a
+  reachable server that refuses is a failure.
+- Pending for the owner: the local `.env` could not be created (a permission rule denies
+  writing `.env*` files to the agent). Until it exists, a bare `npm test` skips the 21
+  integration tests; agents export the two URLs inline.
+- Decisions taken where this document was silent: the core migration creates only
+  `core.schema_migrations` (lifecycle tables belong to T4); `migrateModule` brings the
+  core up to date first and does not check dependencies; database names used by the test
+  helper are lowercase letters, digits and underscores.
+- Size: `6fb64c9` is 1,023 authored lines, about 600 of them tests; not split.
+- Review: `medium` (`slice_budget_reached`), consent granted under the working agreement,
+  lens `review-reliability`, approved and acknowledged (lineage
+  `review-d493631001bfee03`). Reviewed boundary: `ca3c85f`.
+- Advisory findings, none blocking: three warnings and three suggestions, taken as T3b.
+
 ## Next step
 
-T2b, then T3.
+T3b, then T4 and T5.
