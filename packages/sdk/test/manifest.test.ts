@@ -59,6 +59,15 @@ describe("validateManifest: base rules", () => {
     }
   });
 
+  it("admits the core schema only when asked, and never another reserved schema", () => {
+    const core = { ...valid, id: "core", schema: "core" };
+    assert.throws(() => validateManifest(core), /schema must be/);
+    assert.equal(validateManifest(core, { allowCoreSchema: true }).schema, "core");
+    for (const schema of ["public", "information_schema", "pg_catalog"]) {
+      assert.throws(() => validateManifest({ ...valid, schema }, { allowCoreSchema: true }), /schema must be/, schema);
+    }
+  });
+
   it("rejects an empty migrationsDir", () => {
     assert.throws(() => validateManifest({ ...valid, migrationsDir: "" }), /migrationsDir/);
   });
