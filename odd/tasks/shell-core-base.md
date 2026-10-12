@@ -145,7 +145,7 @@ previous repository to prepare the write).
   empty output with zero modules.
 - [x] **T7** CLI: `modules list | install | enable | disable | upgrade | uninstall`,
   `db:migrate`, `registry:generate`; README for the core.
-- [ ] **T7b** Follow-ups from the T7 review and one design correction:
+- [x] **T7b** Follow-ups from the T7 review and one design correction:
   - codegen: conflicting dynamic segment names at the same position are caught for
     prefixes, not only for whole paths; a run that fails partway cannot leave untracked
     generated files (ownership is recorded before deletion and recovered on the next run);
@@ -312,7 +312,46 @@ for a large decision. Review consent for each work unit is granted under that in
   `review-cc793818a025e075`). Reviewed boundary: `586634c`.
 - Advisory findings, none blocking: two warnings and two suggestions, taken as T7b.
 
+### T7b — done (2026-10-13)
+
+- Commits: `7a4fbe7` codegen hardening, `3fc87fb` `db:migrate` correction and prerelease
+  pin.
+- Checks observed by the orchestrator with `TEST_DATABASE_URL` exported: `npm test` 317
+  pass, 0 fail, 0 skipped; `npm run typecheck` clean; no file under `packages/` names a
+  business module.
+- `db:migrate` rule chosen: it applies the core's migrations only. Module schemas change
+  only through the lifecycle (`install`, `upgrade`), which is what keeps
+  `installed_version` in step with the schema. For installed modules it warns about
+  pending files; a never-installed module is ignored; an orphan is a warning.
+- Codegen ownership: the manifest lists a superset of owned files before anything is
+  touched and is rewritten to the final list only after writes, deletions and prunes
+  succeed, so an interrupted run is cleaned by the next one.
+- Review: `medium` (`slice_budget_reached`), consent granted under the working agreement,
+  lens `review-reliability`, approved and acknowledged (lineage
+  `review-b36bf5e0f4aa6b64`). Reviewed boundary: `3fc87fb`.
+
+## Status
+
+Feature complete: T1 to T7 and their follow-ups are done, every acceptance criterion is
+proven by a test, and every work unit was reviewed and approved.
+
+## Open follow-ups (not blocking, carry into the next feature)
+
+- `db:migrate` exits 0 with only a warning when the pending-migration check of an
+  installed module throws (unreadable files or a rewritten applied file). A tampered
+  history should be detectable from the exit status, and the branch has no test.
+- Test gaps reported by the last review: the "nothing to do" codegen test should observe
+  that the manifest is not rewritten; the failed-deletion and failed-prune recovery tests
+  are skipped when the suite runs as root; the CLI report of migrations applied before a
+  failure lost its test; an illegal character or leading digit in a dynamic segment name
+  is not covered.
+- Orphaned modules (row in `core.modules`, package gone) have no cleanup path yet.
+- `.tsx` files are outside `npm run typecheck` until the web app exists.
+- The local `.env` must be created by the owner (`cp .env.example .env`); agents cannot
+  write `.env*` files.
+- The repository has no remote; the chain strategy for pull requests is still unchosen.
+
 ## Next step
 
-T7b, then close this feature. The next feature (A2, shell UI and admin login) needs the
-owner's decisions before it starts.
+Feature A2 (shell UI and admin login) in a new feature document. It needs the owner's
+decisions on authentication and on the UI component approach before it starts.
