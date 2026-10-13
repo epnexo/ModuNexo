@@ -11,7 +11,9 @@ import { LifecycleRefusedError, LifecycleService, type ModuleStatus, fileHookLoa
 import { createPool, resolveDatabaseUrl } from "../pool.ts";
 import { Registry } from "../registry.ts";
 import { MigrationRunError, migrate, pendingMigrations } from "../runner.ts";
+import { SettingValueError, SettingsError } from "../settings/service.ts";
 import { readPassword } from "./password.ts";
+import { runSettingsCommand } from "./settings.ts";
 
 /** Exit codes: a script can tell a refused action (the rules said no) from a bug or an environment problem. */
 export const EXIT_OK = 0;
@@ -42,6 +44,13 @@ commands:
   admin create --email <email> --name <name>
                                    create an administrator; the password is read from standard input
                                    (a hidden prompt on a terminal), never from an argument
+  settings list [--module <id>] [--json]
+                                   platform appearance, or a module's declared settings (and its appearance)
+  settings get <key> [--module <id>]
+  settings set <key> [<value>] [--module <id>]
+                                   a secret's value is read from standard input, never from an argument
+  settings unset <key> [--module <id>]
+                                   keys: appearance.theme|accentHue|radius, or a key the module declares
   auth status                      whether the shell asks for a sign-in
   auth require                     ask for a sign-in (refused while no administrator exists)
   auth disable                     serve local requests without a sign-in
@@ -50,12 +59,10 @@ options for every command:
   --modules-dir <path>             where module packages are unpacked (default: modules/ at the repository root)
   --help                           print this text
 
-environment: DATABASE_URL (and TEST_DATABASE_URL for the tests); admin create also needs ${MASTER_KEY_ENV}
+environment: DATABASE_URL (and TEST_DATABASE_URL for the tests); admin create and module settings also need ${MASTER_KEY_ENV}
 exit codes: 0 done, 1 error, 2 usage error, 3 refused by a rule (lifecycle, registration conflict, administrator or sign-in mode)`;
 
-class UsageError extends Error {}
-/** The action was understood and refused by a rule; nothing was changed. */
-class Refusal extends Error {}
+import { Refusal, UsageError } from "./errors.ts";
 
 const OPTIONS = {
   "modules-dir": { type: "string" },
@@ -66,6 +73,7 @@ const OPTIONS = {
   out: { type: "string" },
   email: { type: "string" },
   name: { type: "string" },
+  module: { type: "string" },
   help: { type: "boolean" },
 } as const;
 
@@ -80,6 +88,10 @@ const COMMAND_OPTIONS: Record<string, readonly string[]> = {
   "db:migrate": [],
   "registry:generate": ["dry-run", "out"],
   "admin create": ["email", "name"],
+  "settings list": ["module", "json"],
+  "settings get": ["module"],
+  "settings set": ["module"],
+  "settings unset": ["module"],
   "auth status": [],
   "auth require": [],
   "auth disable": [],
@@ -114,6 +126,12 @@ function parse(argv: string[]): Parsed | "help" {
     if (second !== "list" && !ACTION_COMMANDS.includes(second as ActionCommand)) throw new UsageError(`unknown modules command "${second}"`);
     command = `modules ${second}`;
     ids = rest;
+  } else if (first === "settings") {
+    if (second !== "list" && second !== "get" && second !== "set" && second !== "unset") {
+      throw new UsageError(second === undefined ? "no settings command given" : `unknown settings command "${second}"`);
+    }
+    command = `settings ${second}`;
+    ids = rest;
   } else if (first === "auth") {
     if (second !== "status" && second !== "require" && second !== "disable") {
       throw new UsageError(second === undefined ? "no auth command given" : `unknown auth command "${second}"`);
@@ -134,9 +152,20 @@ function parse(argv: string[]): Parsed | "help" {
   for (const option of Object.keys(parsed.values)) {
     if (option !== "modules-dir" && option !== "help" && !allowed.includes(option)) throw new UsageError(`option --${option} does not apply to ${command}`);
   }
+  if (command.startsWith("settings ")) {
+    const limits: Record<string, [number, number]> = { "settings list": [0, 0], "settings get": [1, 1], "settings unset": [1, 1], "settings set": [1, 2] };
+    const [least, most] = limits[command]!;
+    if (ids.length < least || ids.length > most) {
+      throw new UsageError(
+        command === "settings list" ? `${command} takes no arguments` : command === "settings set" ? `${command} takes a key and, except for a secret, a value` : `${command} takes exactly one key`,
+      );
+    }
+  }
   const takesId = command !== "modules list" && command.startsWith("modules ");
-  if (takesId && ids.length === 0) throw new UsageError(`${command} needs a module id`);
-  if (takesId ? ids.length !== 1 : ids.length > 0) throw new UsageError(takesId ? `${command} takes exactly one module id` : `${command} takes no arguments`);
+  if (!command.startsWith("settings ")) {
+    if (takesId && ids.length === 0) throw new UsageError(`${command} needs a module id`);
+    if (takesId ? ids.length !== 1 : ids.length > 0) throw new UsageError(takesId ? `${command} takes exactly one module id` : `${command} takes no arguments`);
+  }
   if (parsed.values.keep && parsed.values.purge) throw new UsageError("uninstall takes --keep or --purge, not both");
   if (command === "admin create") {
     for (const option of ["email", "name"] as const) {
@@ -335,6 +364,26 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
       io.out(USAGE);
       return EXIT_OK;
     }
+    if (parsed.command.startsWith("settings ")) {
+      let modulesDir: string;
+      try {
+        modulesDir = resolveModulesDir(typeof parsed.values["modules-dir"] === "string" ? parsed.values["modules-dir"] : undefined);
+      } catch (error) {
+        throw new UsageError(error instanceof Error ? error.message : String(error));
+      }
+      const context = await loadContext(modulesDir, io);
+      pool = createPool(resolveDatabaseUrl(), { connectionTimeoutMillis: 5000 });
+      await runSettingsCommand(
+        {
+          action: parsed.command.slice("settings ".length) as "list" | "get" | "set" | "unset",
+          args: parsed.ids,
+          module: typeof parsed.values.module === "string" ? parsed.values.module : undefined,
+          json: parsed.values.json === true,
+        },
+        { pool, registry: context.registry, io },
+      );
+      return EXIT_OK;
+    }
     if (parsed.command.startsWith("auth ")) {
       pool = createPool(resolveDatabaseUrl(), { connectionTimeoutMillis: 5000 });
       await authCommand(parsed, pool, io);
@@ -367,7 +416,7 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
       io.err(`${USAGE.split("\n")[0]} (run with --help for the commands)`);
       return EXIT_USAGE;
     }
-    if (error instanceof Refusal || error instanceof LifecycleRefusedError || error instanceof RegistrationError || error instanceof AdminRefusedError || error instanceof ModeRefusedError) {
+    if (error instanceof Refusal || error instanceof LifecycleRefusedError || error instanceof RegistrationError || error instanceof AdminRefusedError || error instanceof ModeRefusedError || error instanceof SettingsError || error instanceof SettingValueError) {
       io.err(`refused: ${error.message}`);
       return EXIT_REFUSED;
     }
