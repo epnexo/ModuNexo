@@ -110,4 +110,24 @@ Forecast: about 1,200 authored changed lines; one slice per task.
     identities (`::ffff:10.0.0.2` and `10.0.0.2`).
   - Verifier advisory, spec reworded (S2 above): a visitor without a session is redirected, not given `403`.
     The echo of a refused entry in the 422 body is the operator's own input and stays.
-  `npm test` result is recorded in L6.
+  `npm test` 671 pass, 0 fail, 0 skipped.
+- **L6** (2026-10-13) T6 closed. Native review of `4e9c620..d1c9871` (the L5 fixes; lenses `risk`,
+  `reliability`; 12 files, 199 lines): approved, acknowledged, burned; two warnings that are one: a range
+  shorter than /8 that was already stored (valid before this narrowing) now invalidates the whole stored list,
+  so nobody is trusted and the limiter silently counts the proxy. No deployment has this value (the setting was
+  introduced on this branch and has never shipped), so no migration was written; but silence is a defect on its
+  own, so `readTrustedProxyState` reports `invalid`, the Security section shows a notice that the stored list is
+  being ignored and does not list it as active, and a test covers four kinds of invalid stored value. Every
+  commit of the feature is inside a reviewed range: `a5f2b60..4e9c620`, `4e9c620..d1c9871`.
+  Final state: `npm test` 672 pass, 0 fail, 0 skipped; `npm run typecheck` clean.
+- **L7** (2026-10-13) Open follow-ups, none blocking:
+  - Granting a permission to a user other than an administrator (a users-and-roles feature): until it exists
+    every module permission is held by the operator and the administrator alone, and it fails closed.
+  - A module route without a session redirects to sign in instead of answering `401`, because only `/api` is
+    treated as an API. A client that is not a browser gets an HTML redirect; telling navigations from fetches
+    (by `Sec-Fetch-Mode` or `Accept`) would be a refinement.
+  - One settings read per request when `x-forwarded-for` is present and a trusted list may apply; measured at
+    about 2 ms, left uncached on purpose.
+  - Carried: no git remote (so no pull requests; chain strategy unchosen), `db:migrate` warns instead of failing
+    on an unreadable module history, orphaned module rows have no cleanup path, and the `impeccable` PRODUCT.md
+    and DESIGN.md do not exist.

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import type pg from "pg";
-import { MAX_TRUSTED_PROXIES, readTrustedProxies, readTrustedProxyList, setTrustedProxies, validateTrustedProxies } from "../src/auth/trusted-proxies.ts";
+import { MAX_TRUSTED_PROXIES, readTrustedProxies, readTrustedProxyList, readTrustedProxyState, setTrustedProxies, validateTrustedProxies } from "../src/auth/trusted-proxies.ts";
 import { migrate } from "../src/runner.ts";
 import { Registry } from "../src/registry.ts";
 import { openTestPool } from "../src/testing.ts";
@@ -128,6 +128,17 @@ describe("trusted proxies in the database", () => {
     assert.deepEqual(await readTrustedProxyList(pool!), ["10.0.0.2", "192.168.1.0/24"]);
     await pool!.query("update core.platform_settings set value = '[\"10.0.0.2\", \"nope\"]'::jsonb where key = 'security.trustedProxies'");
     assert.deepEqual(await readTrustedProxyList(pool!), []);
+  });
+
+  test("says so when what is stored is not a valid list, instead of silently trusting nobody", async () => {
+    assert.deepEqual(await readTrustedProxyState(pool!), { list: [], invalid: false });
+    await setTrustedProxies(pool!, "10.0.0.2", "tester");
+    assert.deepEqual(await readTrustedProxyState(pool!), { list: ["10.0.0.2"], invalid: false });
+    for (const value of ['["0.0.0.0/1", "10.0.0.2"]', '["10.0.0.2", "nope"]', '"10.0.0.2"', "5"]) {
+      await pool!.query("update core.platform_settings set value = $1::jsonb where key = 'security.trustedProxies'", [value]);
+      assert.deepEqual(await readTrustedProxies(pool!), [], value);
+      assert.deepEqual(await readTrustedProxyState(pool!), { list: [], invalid: true }, value);
+    }
   });
 
   test("the list shown on the screen is the same one that is trusted: a stored string is neither", async () => {

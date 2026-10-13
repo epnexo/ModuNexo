@@ -585,6 +585,12 @@ describe("web app: with a module installed", () => {
     const events = (await db!.query("select actor, action from core.settings_events where key = 'security.trustedProxies' and actor = $1 order by id", [EMAIL])).rows;
     assert.deepEqual(events, [{ actor: EMAIL, action: "set" }]);
 
+    // What is stored but no longer valid is ignored, and the screen says so instead of looking as if it were active.
+    await db!.query("update core.platform_settings set value = '[\"0.0.0.0/1\"]'::jsonb where key = 'security.trustedProxies'");
+    const stale = html(await call("GET", "/settings", { cookie }));
+    assert.match(stale, /The stored list is not valid any more/);
+    assert.ok(!stale.includes("0.0.0.0/1"), "and it does not show the ignored list as if it were trusted");
+
     assert.equal((await put("/api/settings/security", { trustedProxies: [] }, { cookie })).status, 200);
     assert.equal((await db!.query("select 1 from core.platform_settings where key = 'security.trustedProxies'")).rowCount, 0);
   });
