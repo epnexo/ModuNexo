@@ -88,7 +88,7 @@ and is marked as an assumption where the owner did not state it.
   is the fallback. Route: inline. Risk: item 2, independent verifier after T3 covering T6 and T3.
 - [x] **T4** (S5, S6) Shell layout: sidebar from the registry, top bar, home screen, Apps
   and Settings placeholders. Route: inline.
-- [ ] **T5** (S7, S8) End-to-end smoke of the built app (sign-in, guard, sign-out), build
+- [x] **T5** (S7, S8) End-to-end smoke of the built app (sign-in, guard, sign-out), build
   time on the Pi, README. Route: inline.
 
 Forecast: about 2,000 authored changed lines, above the 400-line review budget, so the
@@ -274,3 +274,35 @@ feature is a chain with one slice per task.
   proven by the codegen tests and by Stage B, not by an end-to-end fixture here; the `impeccable`
   PRODUCT.md and DESIGN.md still do not exist. Two scripts of mine killed their own shell with
   `pkill -f` and left a scratch database once; both were cleaned (0 scratch databases, no listener).
+- **L19** (2026-10-13) Review `25c2649..80fbd97` (T4 and the L17 fixes; lenses `risk`, `resilience`,
+  `reliability`): approved, acknowledged, burned; reviewed boundary is now `80fbd97`. Seven findings:
+  - Fixed, tests first (RED then GREEN, 7 new generator cases): moving module routes into the `(shell)`
+    group narrowed the clash guard and the folder pruning. A route group adds no URL segment, so a
+    hand-written `src/app/<path>/page.tsx` outside the group serves the same URL and would only have
+    failed at `next build`; the generator now refuses it at generation time, naming the file. A page the
+    previous layout generated there is replaced (deleted, even when the manifest does not list it) and the
+    folders it emptied are pruned up to `src/app`, never the group, and never a folder holding something
+    hand-written.
+  - Fixed: the HTTPS warning had only its predicate tested; the end-to-end test now sends six requests
+    with `x-forwarded-proto: https` and asserts one log line and unchanged status.
+  - Accepted, already documented: `permission` hides a link and is not route enforcement (README);
+    the HTTPS hint reads headers a client can write and can only cause a log line.
+  `npm test` 483 pass, 0 fail, 0 skipped; typecheck clean.
+- **L20** (2026-10-13) T5 and feature close. Build on the Raspberry Pi against the empty registry: 7 to
+  22 s wall clock for `npm run web:build` (about 12 s inside the end-to-end test, which also builds).
+  README covers the master key, creating the administrator, the sign-in mode, building and starting the
+  web app, the access rules and their limits. No file under `packages/` or `apps/` names a business
+  module (searched). Acceptance by spec: S1, S2, S3, S4, S5, S6, S7, S8, S9 met and covered by tests;
+  S5's per-permission filtering is cosmetic by design (see L19). Open follow-ups, none blocking:
+  - Permission enforcement on module routes belongs to the permissions work; today a module must check
+    its own permissions.
+  - A trusted-proxy setting (so the sign-in limit keys on the real client behind a proxy) belongs to
+    the settings feature, A3.
+  - `.env.example` cannot be edited by the agent (permission rule): the owner should add
+    `EPNEXO_MASTER_KEY`, `WEB_HOST`, `WEB_PORT` and `WEB_PUBLIC_URL` to it.
+  - A sidebar with real module entries is proven by the pure nav tests and the generator tests, and
+    will be exercised end to end when the first module is installed (Stage B).
+  - The `impeccable` PRODUCT.md and DESIGN.md were not created.
+  - Carried from A1: `db:migrate` warns instead of failing on an unreadable module history, orphaned
+    module rows have no cleanup path, and no git remote exists so no pull request can be opened and the
+    chain strategy (stacked-to-main or feature-branch-chain) is still unchosen.
