@@ -167,6 +167,8 @@ npm run modules -- enable <id>
 npm run modules -- disable <id>
 npm run modules -- upgrade <id>
 npm run modules -- uninstall <id> --keep  # or --purge; no flag is refused, both is a usage error
+npm run epnexo -- modules pack <folder> [--out <file>]
+npm run epnexo -- modules add <archive> [--sha256 <hex>] [--json]
 npm run db:migrate                        # the core only; reports installed modules that need "modules upgrade"
 npm run registry:generate [-- --dry-run] [-- --out <dir>]
 npm run epnexo -- admin create --email <email> --name <name>
@@ -190,7 +192,8 @@ Discovery warnings go to stderr. After a successful install, enable, disable, up
 prints a reminder that the registration must be regenerated and the web app rebuilt and restarted.
 
 Exit codes: `0` done, `1` unexpected error or an accepted action that failed, `2` usage error, `3` refused by a
-rule: a lifecycle rule, a registration conflict, an administrator rule or the sign-in mode.
+rule: a lifecycle rule, a registration conflict, an administrator rule, the sign-in mode or a package that is
+refused (see "Module packages").
 
 ### Administrators
 
@@ -247,10 +250,10 @@ next run deletes whatever in it is no longer wanted and removes the empty folder
 
 ## Not here yet
 
-Planned as later features: the shell UI and admin login (`apps/web`), the settings service and appearance, the
-Apps screen with the install pipeline (package upload, build, restart - until then the CLI prints the reminder
-and the regeneration, rebuild and restart are manual), and the module scaffold and packaging commands. A cleanup
-path for orphaned rows is not designed.
+Planned as later features: the install pipeline for a received package (promote it into `modules/`, install,
+build, restart, roll back), the Apps screen on top of it (until then the CLI prints the reminder and the
+regeneration, rebuild and restart are manual), and the module scaffold. A cleanup path for orphaned rows is not
+designed.
 
 ### Sign-in mode
 
@@ -473,3 +476,49 @@ request from a connection that is not trusted never has its forwarded headers be
 
 This changes only which client the limiter counts. What counts as local while sign-in is off still looks at
 every address a request carries, so a setting cannot loosen it.
+
+## Module packages
+
+A module travels as one gzip tarball, like `npm pack` makes: a single top-level folder that holds `package.json`,
+`manifest.ts`, `manifest.json`, the migrations folder, the web sources and, if it has them, hooks. `manifest.json` is
+the same manifest written as data, so the platform can read what a package is without running any of it.
+
+```bash
+npm run epnexo -- modules pack ../reports-src --out reports-1.0.0.tgz   # on the author's machine
+npm run epnexo -- modules add reports-1.0.0.tgz --sha256 <hex>          # on the platform
+```
+
+**`modules pack <folder> [--out <file>]`** evaluates the folder's `manifest.ts` (the author's own code, on the
+author's machine - the only place a manifest is ever executed), writes `manifest.json` into the archive, checks the
+result against this platform exactly as intake will, and prints the archive's size and SHA-256. Nothing is written
+when it is not valid, and the folder is never modified. `node_modules`, `.git`, `.next`, `.env*`, other `.tgz` files
+and `.DS_Store` are left out; a symbolic link is refused. The same folder always gives the same bytes. Without
+`--out` the file is `<id>-<version>.tgz` in the current folder.
+
+**`modules add <archive> [--sha256 <hex>] [--data-dir <path>] [--json]`** brings an archive in and prints a review:
+what the module is, its pages, nav entries, permissions, settings, migrations, whether it has hooks, what it depends
+on, the libraries it uses and the npm scripts it declares. **Nothing is installed.** The archive is copied into
+`var/packages/<sha256>.tgz` while it is hashed, unpacked into `var/staging/<sha256>/` and read as data; no file of the
+package is imported, required, executed or built, and its npm scripts never run. Every attempt, accepted or refused,
+is recorded in `core.module_packages` with the SHA-256, the module and version when they could be read, the problems
+and who did it. Adding the same archive again reuses the staged copy (and is recorded again). Exit codes: `0` staged, `3` refused (every problem is
+listed, and nothing of the archive is kept), `1` environment error such as a missing file, `2` usage error.
+
+What the platform refuses, so a package cannot choose where it writes or what it brings along:
+
+- **The archive.** Absolute paths, `..`, links, devices and FIFOs, a second top-level folder, paths that differ only
+  by case, `node_modules` and `.git`; more than 50 MB compressed, 200 MB unpacked, 5,000 entries or 255 characters
+  in a path.
+- **The checksum.** The platform computes the SHA-256 itself; with `--sha256` it must equal the one the publisher
+  gave. Without it the hash is only recorded, so give it whenever you have one from a channel other than the archive.
+- **The package.** A name in the platform's own `@epnexo` scope or one that collides with an installed package; a
+  `package.json` version that differs from the manifest's; a manifest that does not validate; entries, hooks or
+  migrations that are missing or point outside the package; pages under a path the shell reserves; a `platform` range
+  this platform does not satisfy.
+- **Dependencies.** A module cannot bring npm packages. Every dependency must already be installed in the platform and
+  satisfy the declared range; links, URLs, tags and bundled dependencies are refused. Adding a library is a decision
+  taken on the platform, on purpose, not something a package does.
+
+Installing a module is code execution with database access: its migrations run as SQL, and its hooks and pages run
+inside the platform. Review what `modules add` prints, and install only what you trust. Installing from a staged
+package is the next feature; today the staged tree is only inspected.

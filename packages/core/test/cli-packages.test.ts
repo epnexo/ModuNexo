@@ -243,3 +243,45 @@ describe("cli: modules add", () => {
     assert.match(result.stdout, /--data-dir/);
   });
 });
+
+describe("cli: nothing from a package runs", () => {
+  it("adds a package whose every file would leave a mark if it were run, and no mark appears", async (t) => {
+    await inScratchDatabase(t, async (db, cli, data) => {
+      const { tgz } = await import("./helpers/tarball.ts");
+      const mark = join(work, "ran-marker");
+      const code = `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(mark)}, "ran");\n`;
+      const manifest = {
+        id: "reports",
+        version: "1.0.0",
+        name: "Reports",
+        platform: `^${SDK_VERSION}`,
+        dependsOn: {},
+        schema: "reports",
+        migrationsDir: "migrations",
+        hooks: "./hooks.ts",
+        nav: [],
+        pages: [{ path: "/reports", entry: "./web/page.tsx", kind: "page" }],
+      };
+      const scripts = Object.fromEntries(["preinstall", "install", "postinstall", "prepare", "prepack"].map((name) => [name, `node -e "require('fs').writeFileSync(${JSON.stringify(mark)},'ran')"`]));
+      const archive = join(work, "hostile.tgz");
+      writeFileSync(
+        archive,
+        tgz([
+          { name: "package/package.json", data: JSON.stringify({ name: "@acme/reports", version: "1.0.0", scripts }) },
+          { name: "package/manifest.json", data: JSON.stringify(manifest) },
+          { name: "package/manifest.ts", data: code },
+          { name: "package/hooks.ts", data: code },
+          { name: "package/web/page.tsx", data: `${code}export default function Page() { return null; }\n` },
+          { name: "package/migrations/0001_init.sql", data: "select 1;\n" },
+        ]),
+      );
+      const result = await cli("modules", "add", archive);
+      assert.equal(result.code, 0, result.stderr);
+      assert.match(result.stdout, /hooks\s+yes/);
+      assert.match(result.stdout, /scripts\s+install, postinstall, preinstall, prepack, prepare \(never run\)/);
+      assert.equal(existsSync(mark), false, "something from the package ran");
+      assert.equal((await db.query("select 1 from core.modules")).rowCount, 0);
+      assert.equal((await db.query("select 1 from information_schema.schemata where schema_name = 'reports'")).rowCount, 0);
+    });
+  });
+});
