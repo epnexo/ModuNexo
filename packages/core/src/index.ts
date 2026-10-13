@@ -8,5 +8,6 @@ export * from "./pool.ts";
 export * from "./purge.ts";
 export * from "./registry.ts";
 export * from "./runner.ts";
+export * from "./settings/index.ts";
 export * from "./sql.ts";
 export * from "./version.ts";
