@@ -246,3 +246,15 @@ feature is a chain with one slice per task.
     a proxy that rewrites `Host` to a local name and forwards no address looks local; the library's
     `x-retry-after` on a 429 is not a sane number (library behaviour, nothing in the app reads it).
   `npm test` 458 pass, 0 fail, 0 skipped; typecheck clean.
+- **L17** (2026-10-13) Review `f9a8f59..25c2649` (the L16 fixes; lenses `risk`, `resilience`,
+  `reliability`): approved, acknowledged, burned; reviewed boundary is now `25c2649`. Two warnings,
+  both accepted and fixed with tests first:
+  - Secure cookie default: an operator serving HTTPS behind a proxy without `WEB_PUBLIC_URL` silently
+    gets cookies without `Secure`. The gate now logs one line a minute when a request evidently came
+    over HTTPS (`x-forwarded-proto` or an https `Origin`) and `WEB_PUBLIC_URL` is not an https
+    origin (`servedOverHttpsWithoutPublicUrl`, 4 tests).
+  - Shutdown teardown unbounded: closing Next.js and `pool.end()` had no limit, and a handler running
+    after `closePlatform()` could build a pool nothing closes. The teardown is raced against 3 s, the
+    entry calls `process.exit(0)` afterwards, and `platform()` throws once closed (3 tests; the end to
+    end shutdown test still stops in under 9 s).
+  `npm test` 465 pass, 0 fail, 0 skipped; typecheck clean.
