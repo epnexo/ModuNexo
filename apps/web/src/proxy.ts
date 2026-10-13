@@ -2,6 +2,8 @@ import { isLocalHostName, readSignInMode, requestIsLocal } from "@epnexo/core/au
 import { type NextRequest, NextResponse } from "next/server";
 import { decideAccess } from "./server/access.ts";
 import { requestAddresses } from "./server/client-address.ts";
+import { resolvePublicUrl } from "./server/launch.ts";
+import { servedOverHttpsWithoutPublicUrl } from "./server/public-url-warning.ts";
 import { platform } from "./server/platform.ts";
 import { createRefusalLog } from "./server/refusal-log.ts";
 import { sessionIsUsable } from "./server/session.ts";
@@ -29,6 +31,9 @@ export async function proxy(request: NextRequest) {
     const session = needsSession ? await auth.api.getSession({ headers: request.headers }) : null;
     const hasSession = session !== null && sessionIsUsable(session.user);
 
+    if (servedOverHttpsWithoutPublicUrl(request.headers, resolvePublicUrl())) {
+      refusalLog("https-without-public-url", 'requests arrive over HTTPS but WEB_PUBLIC_URL is not an https origin, so session cookies are not marked Secure; set WEB_PUBLIC_URL to the public https address.');
+    }
     const decision = decideAccess({ pathname, mode, hasSession, local, hostOk });
     if (decision.action === "allow") return NextResponse.next();
     if (decision.action === "redirect") {

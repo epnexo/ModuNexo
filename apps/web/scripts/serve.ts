@@ -22,8 +22,10 @@ export interface ServeOptions {
 
 /** After a stop signal: idle connections are closed at once, the rest get this long to finish, then they are cut. */
 export const GRACE_MS = 5_000;
-/** The hard limit: the process ends even if something refuses to close. */
+/** The hard limit for the HTTP server to finish closing. */
 export const DEADLINE_MS = 8_000;
+/** What is left for closing Next.js and the database pool once the server is down. */
+export const TEARDOWN_MS = 3_000;
 
 /** Starts the server and resolves when it has been stopped by SIGINT or SIGTERM. */
 export async function serve({ dev, host, port, dir }: ServeOptions): Promise<void> {
@@ -79,7 +81,8 @@ export async function serve({ dev, host, port, dir }: ServeOptions): Promise<voi
     process.on("SIGINT", stop);
     process.on("SIGTERM", stop);
   });
-  await Promise.allSettled([app.close(), closePlatform()]);
+  // Closing the pool waits for checked-out clients, so one stuck query could hold the process open: bound it.
+  await Promise.race([Promise.allSettled([app.close(), closePlatform()]), new Promise((resolve) => setTimeout(resolve, TEARDOWN_MS))]);
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -91,6 +94,8 @@ if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.a
   }
   try {
     await serve({ dev: mode === "dev", host, port, dir: fileURLToPath(new URL("../", import.meta.url)) });
+    // Whatever refused to close inside the limits above does not get to keep the process alive.
+    process.exit(0);
   } catch (error) {
     const code = (error as { code?: string }).code;
     console.error(code === "EADDRINUSE" ? `error: ${host}:${port} is already in use; change WEB_PORT or stop the other process` : `error: ${error instanceof Error ? error.message : String(error)}`);
