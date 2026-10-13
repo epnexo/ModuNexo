@@ -9,6 +9,8 @@ export interface AccessInput {
   local: boolean;
   /** The `Host` header names a place on the local network (see `isLocalHostName`). */
   hostOk: boolean;
+  /** The visitor holds every permission the path needs (true when it needs none). */
+  permitted: boolean;
 }
 
 export type AccessDecision =
@@ -35,16 +37,18 @@ const isApi = (pathname: string) => pathname === "/api" || pathname.startsWith("
  * (the server log does). While sign-in is required the host does not matter: the session cookie belongs to the
  * host that set it, so a page on another site has no session to ride.
  */
-export function decideAccess({ pathname, mode, hasSession, local, hostOk }: AccessInput): AccessDecision {
+export function decideAccess({ pathname, mode, hasSession, local, hostOk, permitted }: AccessInput): AccessDecision {
   if (mode === "disabled") {
     if (!local || !hostOk) return { action: "deny", status: 403, message: "Forbidden" };
     // There is no sign-in page to show, and nobody to sign out.
     if (pathname === LOGIN_PATH || pathname === `${LOGIN_PATH}/`) return { action: "redirect", to: "/" };
-    return { action: "allow" };
+    return permitted ? { action: "allow" } : { action: "deny", status: 403, message: "Forbidden" };
   }
 
   if (pathname === LOGIN_PATH || pathname === `${LOGIN_PATH}/`) return hasSession ? { action: "redirect", to: "/" } : { action: "allow" };
-  if (isPublicPath(pathname) || hasSession) return { action: "allow" };
+  if (isPublicPath(pathname)) return { action: "allow" };
+  // Authentication first: a visitor without a session is sent to sign in and told nothing about permissions.
+  if (hasSession) return permitted ? { action: "allow" } : { action: "deny", status: 403, message: "Forbidden" };
   if (isApi(pathname)) return { action: "deny", status: 401, message: "Sign-in required" };
   return { action: "redirect", to: LOGIN_PATH };
 }

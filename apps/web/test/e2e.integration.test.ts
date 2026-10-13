@@ -10,7 +10,7 @@ import { createServer } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, describe, it } from "node:test";
-import { createAdministrator, createAuth, setSignInMode } from "@epnexo/core/auth";
+import { createAdministrator, createAuth, setSignInMode, setTrustedProxies } from "@epnexo/core/auth";
 import { createPool } from "@epnexo/core/pool";
 import { Registry, migrate } from "@epnexo/core";
 import { createScratchDatabase } from "@epnexo/core/testing";
@@ -345,8 +345,18 @@ export default defineModule({
   dependsOn: {},
   schema: "e2e_fixture",
   migrationsDir: "migrations",
-  nav: [{ label: "Fixture", href: "/e2e-fixture", group: "Fixtures", order: 1, icon: "chart" }],
-  pages: [{ path: "/e2e-fixture", entry: "./web/page.tsx", kind: "page" }],
+  permissions: [{ key: "reports.read", label: "Read reports" }],
+  nav: [
+    { label: "Fixture", href: "/e2e-fixture", group: "Fixtures", order: 1, icon: "chart" },
+    { label: "Restricted", href: "/e2e-fixture/area", group: "Fixtures", order: 2, permission: "reports.read" },
+  ],
+  pages: [
+    { path: "/e2e-fixture", entry: "./web/page.tsx", kind: "page" },
+    { path: "/e2e-fixture/restricted", entry: "./web/restricted.tsx", kind: "page", permission: "reports.read" },
+    { path: "/e2e-fixture/area/[id]", entry: "./web/area.tsx", kind: "page" },
+    { path: "/e2e-fixture/data", entry: "./web/data.ts", kind: "route", permission: "reports.read" },
+    { path: "/e2e-fixture/open-data", entry: "./web/open-data.ts", kind: "route" },
+  ],
   settings: [
     { key: "site.title", label: "Site title", type: "string", default: "Untitled" },
     { key: "page.size", label: "Page size", type: "number", default: 25 },
@@ -373,6 +383,18 @@ export default async function Page() {
 }
 `,
   );
+  writeFileSync(join(FIXTURE_DIR, "web", "restricted.tsx"), `export const metadata = { title: "Restricted" };\nexport default function Page() {\n  return <h1>Restricted page</h1>;\n}\n`);
+  writeFileSync(
+    join(FIXTURE_DIR, "web", "area.tsx"),
+    `export const metadata = { title: "Area" };
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  return <h1>Area {id}</h1>;
+}
+`,
+  );
+  writeFileSync(join(FIXTURE_DIR, "web", "data.ts"), `export async function GET() {\n  return Response.json({ secret: "restricted-data" });\n}\n`);
+  writeFileSync(join(FIXTURE_DIR, "web", "open-data.ts"), `export async function GET() {\n  return Response.json({ open: true });\n}\n`);
   // What `npm install` does for a workspace package: a link from node_modules to the package folder.
   mkdirSync(FIXTURE_SCOPE_DIR, { recursive: true });
   symlinkSync("../../modules/e2e-fixture", join(FIXTURE_SCOPE_DIR, "fixture"));
@@ -443,6 +465,77 @@ describe("web app: with a module installed", () => {
     for (const text of ["Appearance", "E2E Fixture", "Site title", "Page size", "Report format", "Export directory", "API token", "2 required settings are not set"]) {
       assert.ok(html(page).includes(text), `expected "${text}" on the settings screen`);
     }
+  });
+
+  test("a path that asks for a permission is served to an administrator and refused to everyone else", async () => {
+    for (const path of ["/e2e-fixture/restricted", "/e2e-fixture/area/5", "/e2e-fixture/data"]) {
+      assert.equal((await call("GET", path, { cookie })).status, 200, `administrator ${path}`);
+      const refused = await call("GET", path, { cookie: userCookie });
+      assert.equal(refused.status, 403, `user ${path}`);
+      assert.equal(refused.body, "Forbidden");
+    }
+    // A trailing slash is Next.js's to normalise; whatever it does, the user is never served the page.
+    assert.notEqual((await call("GET", "/e2e-fixture/area/5/", { cookie: userCookie })).status, 200);
+    assert.match(html(await call("GET", "/e2e-fixture/area/5", { cookie })), /Area 5/);
+    assert.match((await call("GET", "/e2e-fixture/data", { cookie })).body, /restricted-data/);
+    assert.ok(!(await call("GET", "/e2e-fixture/data", { cookie: userCookie })).body.includes("restricted-data"));
+  });
+
+  test("a path that asks for nothing stays open to a signed-in user, and the link that is hidden is hidden", async () => {
+    assert.equal((await call("GET", "/e2e-fixture", { cookie: userCookie })).status, 200);
+    assert.equal((await call("GET", "/e2e-fixture/open-data", { cookie: userCookie })).status, 200);
+    const userHome = html(await call("GET", "/", { cookie: userCookie }));
+    assert.match(userHome, /href="\/e2e-fixture"/);
+    assert.ok(!userHome.includes('href="/e2e-fixture/area"'), "the user is not shown the restricted link");
+    assert.match(html(await call("GET", "/", { cookie })), /href="\/e2e-fixture\/area"/, "the administrator is");
+  });
+
+  test("asks for a session before it talks about permissions", async () => {
+    // A module's route is not under /api (that prefix is the shell's), so without a session it is sent to sign in.
+    for (const path of ["/e2e-fixture/restricted", "/e2e-fixture/data", "/e2e-fixture/area/5"]) {
+      const reply = await call("GET", path);
+      assert.equal(reply.status, 307, path);
+      assert.equal(location(reply), "/login");
+      assert.ok(!reply.body.includes("restricted-data"));
+    }
+  });
+
+  test("while sign-in is off the local operator holds every permission and a public address still gets nothing", async () => {
+    await setSignInMode(db!, "disabled", "test");
+    try {
+      assert.equal((await call("GET", "/e2e-fixture/restricted")).status, 200);
+      assert.equal((await call("GET", "/e2e-fixture/data")).status, 200);
+      assert.equal((await call("GET", "/e2e-fixture/data", { "x-forwarded-for": "8.8.8.8" })).status, 403);
+    } finally {
+      await setSignInMode(db!, "required", "test");
+    }
+  });
+
+  test("behind a trusted proxy the sign-in limit counts the client the proxy saw, reading from the right", async () => {
+    await setTrustedProxies(db!, "127.0.0.1", "test");
+    try {
+      await db!.query("delete from core.auth_rate_limit");
+      const wrong = (headers: Record<string, string>) => signIn("wrong password here", headers).then((reply) => reply.status);
+      const first: number[] = [];
+      for (let i = 0; i < 6; i++) first.push(await wrong({ "x-forwarded-for": "203.0.113.7" }));
+      assert.deepEqual(first, [401, 401, 401, 401, 401, 429], "one client is limited");
+      assert.equal(await wrong({ "x-forwarded-for": "203.0.113.8" }), 401, "another client is not locked out with it");
+      assert.equal(await wrong({}), 401, "nor is a request that carries no forwarded address");
+      assert.equal(await wrong({ "x-forwarded-for": "198.51.100.99, 203.0.113.7" }), 429, "a forged first entry does not buy a new identity");
+      assert.equal(await wrong({ "x-forwarded-for": "garbage" }), 401, "junk falls back to the proxy's own bucket, and does not mint identities");
+    } finally {
+      await setTrustedProxies(db!, "", "test");
+      await db!.query("delete from core.auth_rate_limit");
+    }
+  });
+
+  test("with no trusted proxy a forwarded header is never believed: every client behind it shares one bucket", async () => {
+    await db!.query("delete from core.auth_rate_limit");
+    const seen: number[] = [];
+    for (let i = 1; i <= 7; i++) seen.push((await signIn("wrong password here", { "x-forwarded-for": `203.0.113.${i}` })).status);
+    assert.deepEqual(seen.slice(0, 5), [401, 401, 401, 401, 401]);
+    assert.ok(seen.slice(5).every((status) => status === 429), seen.join(" "));
+    await db!.query("delete from core.auth_rate_limit");
   });
 
   test("refuses a write without a session, from another origin, without an origin, and from a non-administrator", async () => {

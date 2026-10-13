@@ -1,5 +1,5 @@
 import type pg from "pg";
-import { SettingValueError } from "../settings/service.ts";
+import { SettingValueError } from "../settings/errors.ts";
 import { type Cidr, parseCidr } from "./ip.ts";
 
 export const TRUSTED_PROXIES_KEY = "security.trustedProxies";

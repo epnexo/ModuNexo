@@ -97,6 +97,25 @@ describe("exitCodeFor", () => {
   });
 });
 
+describe("the server entry", () => {
+  const serveScript = fileURLToPath(new URL("../scripts/serve.ts", import.meta.url));
+  const run = (args: string[]) =>
+    new Promise<{ code: number; stderr: string }>((resolve) => {
+      execFile(process.execPath, ["--disable-warning=ExperimentalWarning", serveScript, ...args], { env: { PATH: process.env.PATH } as unknown as NodeJS.ProcessEnv, timeout: 20_000 }, (error, _stdout, stderr) => {
+        resolve({ code: error === null ? 0 : ((error as { code?: number }).code ?? 1), stderr });
+      });
+    });
+
+  it("loads under Node's own TypeScript support, which only strips types", async () => {
+    // The production server is started this way, not through tsx: anything in its import chain that needs a
+    // transform (parameter properties, enums, namespaces) stops it from starting, and only here is that seen.
+    const result = await run(["not-a-mode", "127.0.0.1", "3000"]);
+    assert.doesNotMatch(result.stderr, /ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX|SyntaxError|Cannot find module/);
+    assert.equal(result.code, 2);
+    assert.match(result.stderr, /usage: serve\.ts/);
+  });
+});
+
 describe("the launcher script", () => {
   const script = fileURLToPath(new URL("../scripts/run.ts", import.meta.url));
   const run = (args: string[], env: Record<string, string>) =>

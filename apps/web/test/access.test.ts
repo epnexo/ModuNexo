@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { type AccessInput, decideAccess, isPublicPath } from "../src/server/access.ts";
 
-const input = (overrides: Partial<AccessInput>): AccessInput => ({ pathname: "/", mode: "required", hasSession: false, local: true, hostOk: true, ...overrides });
+const input = (overrides: Partial<AccessInput>): AccessInput => ({ pathname: "/", mode: "required", hasSession: false, local: true, hostOk: true, permitted: true, ...overrides });
 
 describe("isPublicPath", () => {
   it("is true for the sign-in page and the auth endpoints only", () => {
@@ -76,5 +76,31 @@ describe("decideAccess: sign-in disabled", () => {
   it("does not reveal the configuration in the refusal", () => {
     const decision = decideAccess(input({ mode: "disabled", local: false }));
     assert.ok(decision.action === "deny" && !/sign-in|disabled|auth|local/i.test(decision.message));
+  });
+});
+
+describe("decideAccess: permissions", () => {
+  it("refuses a signed-in visitor who does not hold the permission a path needs", () => {
+    assert.deepEqual(decideAccess(input({ pathname: "/finance", hasSession: true, permitted: false })), { action: "deny", status: 403, message: "Forbidden" });
+    assert.deepEqual(decideAccess(input({ pathname: "/api/finance/export", hasSession: true, permitted: false })), { action: "deny", status: 403, message: "Forbidden" });
+  });
+
+  it("serves one who holds it", () => {
+    assert.deepEqual(decideAccess(input({ pathname: "/finance", hasSession: true, permitted: true })), { action: "allow" });
+  });
+
+  it("asks for a session first: a visitor without one is sent to sign in, not told about permissions", () => {
+    assert.deepEqual(decideAccess(input({ pathname: "/finance", hasSession: false, permitted: false })), { action: "redirect", to: "/login" });
+    assert.deepEqual(decideAccess(input({ pathname: "/api/finance", hasSession: false, permitted: false })), { action: "deny", status: 401, message: "Sign-in required" });
+  });
+
+  it("applies while sign-in is off too, so the rule does not depend on the mode", () => {
+    assert.deepEqual(decideAccess(input({ pathname: "/finance", mode: "disabled", permitted: false })), { action: "deny", status: 403, message: "Forbidden" });
+    assert.deepEqual(decideAccess(input({ pathname: "/finance", mode: "disabled", permitted: true })), { action: "allow" });
+  });
+
+  it("does not touch the sign-in page or the auth endpoints", () => {
+    assert.deepEqual(decideAccess(input({ pathname: "/login", permitted: false })), { action: "allow" });
+    assert.deepEqual(decideAccess(input({ pathname: "/api/auth/sign-in/email", permitted: false })), { action: "allow" });
   });
 });
