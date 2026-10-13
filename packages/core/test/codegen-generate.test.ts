@@ -50,10 +50,10 @@ describe("generateRegistration: output", () => {
 
   it("writes the registry, one route file per declared page, and records them in the ownership manifest", () => {
     const plan = generate([fixture("alpha", [page("/alpha"), route("/alpha/export")]), fixture("beta", [page("/beta/[id]")], { dependsOn: { alpha: "*" } })]);
-    assert.deepEqual(plan.writes.map((w) => w.path).sort(), [OWNERSHIP_FILE, REGISTRY_FILE, "src/app/alpha/export/route.ts", "src/app/alpha/page.tsx", "src/app/beta/[id]/page.tsx"].sort());
+    assert.deepEqual(plan.writes.map((w) => w.path).sort(), [OWNERSHIP_FILE, REGISTRY_FILE, "src/app/(shell)/alpha/export/route.ts", "src/app/(shell)/alpha/page.tsx", "src/app/(shell)/beta/[id]/page.tsx"].sort());
     for (const path of ownership().files) assert.ok(read(path).startsWith(GENERATED_HEADER), path);
     assert.deepEqual(ownership().packages, ["@fixture/alpha", "@fixture/beta"]);
-    assert.deepEqual(ownership().files, ["src/app/alpha/export/route.ts", "src/app/alpha/page.tsx", "src/app/beta/[id]/page.tsx", REGISTRY_FILE]);
+    assert.deepEqual(ownership().files, ["src/app/(shell)/alpha/export/route.ts", "src/app/(shell)/alpha/page.tsx", "src/app/(shell)/beta/[id]/page.tsx", REGISTRY_FILE]);
   });
 
   it("is idempotent: a second run changes nothing and reports every file as unchanged", () => {
@@ -68,8 +68,8 @@ describe("generateRegistration: output", () => {
   it("updates a generated file whose content must change", () => {
     generate([fixture("alpha", [page("/alpha")])]);
     const plan = generate([fixture("alpha", [{ ...page("/alpha"), dynamic: "force-dynamic" }])]);
-    assert.deepEqual(plan.writes.map((w) => [w.path, w.change]), [["src/app/alpha/page.tsx", "update"]]);
-    assert.match(read("src/app/alpha/page.tsx"), /export const dynamic = "force-dynamic";/);
+    assert.deepEqual(plan.writes.map((w) => [w.path, w.change]), [["src/app/(shell)/alpha/page.tsx", "update"]]);
+    assert.match(read("src/app/(shell)/alpha/page.tsx"), /export const dynamic = "force-dynamic";/);
   });
 });
 
@@ -84,65 +84,65 @@ describe("generateRegistration: dry run", () => {
   it("plans the deletion of stale files and leaves them in place", () => {
     generate([fixture("alpha", [page("/alpha")])]);
     const plan = generate([], { dryRun: true });
-    assert.deepEqual(plan.deletions, ["src/app/alpha/page.tsx"]);
-    assert.ok(existsSync(join(root, "src/app/alpha/page.tsx")));
+    assert.deepEqual(plan.deletions, ["src/app/(shell)/alpha/page.tsx"]);
+    assert.ok(existsSync(join(root, "src/app/(shell)/alpha/page.tsx")));
     assert.equal(ownership().files.length, 2, "the ownership manifest is not rewritten either");
   });
 });
 
 describe("generateRegistration: owning its output", () => {
   it("removes the routes of a module that is gone, prunes the folders it emptied, and keeps hand-written files", () => {
-    put("src/app/custom/page.tsx", "export default function Custom() { return null; }\n");
+    put("src/app/(shell)/custom/page.tsx", "export default function Custom() { return null; }\n");
     generate([fixture("alpha", [page("/alpha/deep/er"), route("/alpha/data")]), fixture("beta", [page("/beta")])]);
     const plan = generate([fixture("beta", [page("/beta")])]);
-    assert.deepEqual(plan.deletions, ["src/app/alpha/data/route.ts", "src/app/alpha/deep/er/page.tsx"]);
-    assert.equal(existsSync(join(root, "src/app/alpha")), false, "empty folders are removed");
-    assert.ok(existsSync(join(root, "src/app/beta/page.tsx")));
-    assert.ok(existsSync(join(root, "src/app/custom/page.tsx")), "a file it did not generate is untouched");
-    assert.ok(existsSync(join(root, "src/app")), "src/app itself stays");
-    assert.deepEqual(ownership().files, ["src/app/beta/page.tsx", REGISTRY_FILE]);
+    assert.deepEqual(plan.deletions, ["src/app/(shell)/alpha/data/route.ts", "src/app/(shell)/alpha/deep/er/page.tsx"]);
+    assert.equal(existsSync(join(root, "src/app/(shell)/alpha")), false, "empty folders are removed");
+    assert.ok(existsSync(join(root, "src/app/(shell)/beta/page.tsx")));
+    assert.ok(existsSync(join(root, "src/app/(shell)/custom/page.tsx")), "a file it did not generate is untouched");
+    assert.ok(existsSync(join(root, "src/app/(shell)")), "src/app/(shell) itself stays");
+    assert.deepEqual(ownership().files, ["src/app/(shell)/beta/page.tsx", REGISTRY_FILE]);
   });
 
   it("does not remove a folder that still holds a hand-written file", () => {
     generate([fixture("alpha", [page("/alpha")])]);
-    put("src/app/alpha/notes.md", "mine\n");
+    put("src/app/(shell)/alpha/notes.md", "mine\n");
     generate([]);
-    assert.equal(existsSync(join(root, "src/app/alpha/page.tsx")), false);
-    assert.ok(existsSync(join(root, "src/app/alpha/notes.md")));
+    assert.equal(existsSync(join(root, "src/app/(shell)/alpha/page.tsx")), false);
+    assert.ok(existsSync(join(root, "src/app/(shell)/alpha/notes.md")));
   });
 
   it("never deletes a listed file that no longer carries the header, and says so", () => {
     generate([fixture("alpha", [page("/alpha")])]);
-    put("src/app/alpha/page.tsx", "// rewritten by hand\nexport default function A() { return null; }\n");
+    put("src/app/(shell)/alpha/page.tsx", "// rewritten by hand\nexport default function A() { return null; }\n");
     const plan = generate([]);
     assert.deepEqual(plan.deletions, []);
-    assert.match(plan.warnings[0] ?? "", /src\/app\/alpha\/page\.tsx.*not generated.*left in place/);
-    assert.ok(read("src/app/alpha/page.tsx").startsWith("// rewritten by hand"));
+    assert.match(plan.warnings[0] ?? "", /src\/app\/\(shell\)\/alpha\/page\.tsx.*not generated.*left in place/);
+    assert.ok(read("src/app/(shell)/alpha/page.tsx").startsWith("// rewritten by hand"));
   });
 
   it("replaces a page by a route at the same path, deleting the old generated file", () => {
     generate([fixture("alpha", [page("/alpha")])]);
     const plan = generate([fixture("alpha", [route("/alpha")])]);
-    assert.deepEqual(plan.deletions, ["src/app/alpha/page.tsx"]);
-    assert.ok(existsSync(join(root, "src/app/alpha/route.ts")));
-    assert.equal(existsSync(join(root, "src/app/alpha/page.tsx")), false);
+    assert.deepEqual(plan.deletions, ["src/app/(shell)/alpha/page.tsx"]);
+    assert.ok(existsSync(join(root, "src/app/(shell)/alpha/route.ts")));
+    assert.equal(existsSync(join(root, "src/app/(shell)/alpha/page.tsx")), false);
   });
 
   it("refuses a path occupied by a hand-written file, and writes nothing at all", () => {
-    put("src/app/alpha/page.tsx", "export default function Mine() { return null; }\n");
+    put("src/app/(shell)/alpha/page.tsx", "export default function Mine() { return null; }\n");
     assert.throws(() => generate([fixture("alpha", [page("/alpha")])]), (error: unknown) => {
       assert.ok(error instanceof RegistrationError);
-      assert.match(error.message, /src\/app\/alpha\/page\.tsx.*not generated by registry:generate/);
+      assert.match(error.message, /src\/app\/\(shell\)\/alpha\/page\.tsx.*not generated by registry:generate/);
       return true;
     });
     assert.equal(existsSync(join(root, REGISTRY_FILE)), false, "the check happens before the first write");
-    assert.equal(read("src/app/alpha/page.tsx").includes("Mine"), true);
+    assert.equal(read("src/app/(shell)/alpha/page.tsx").includes("Mine"), true);
   });
 
   it("refuses when a hand-written file of another extension would clash in the same folder", () => {
-    put("src/app/alpha/page.ts", "export default function Mine() { return null; }\n");
-    assert.throws(() => generate([fixture("alpha", [page("/alpha")])]), /src\/app\/alpha\/page\.ts.*would clash/);
-    put("src/app/alpha/route.js", "export const GET = () => null;\n");
+    put("src/app/(shell)/alpha/page.ts", "export default function Mine() { return null; }\n");
+    assert.throws(() => generate([fixture("alpha", [page("/alpha")])]), /src\/app\/\(shell\)\/alpha\/page\.ts.*would clash/);
+    put("src/app/(shell)/alpha/route.js", "export const GET = () => null;\n");
     assert.throws(() => generate([fixture("alpha", [page("/alpha")])]), RegistrationError);
   });
 
@@ -207,28 +207,28 @@ describe("generateRegistration: a run that fails partway", () => {
     const alpha = fixture("alpha", [page("/alpha")]);
     generate([alpha]);
     // "/blocked" is a hand-written file, so the folder a later page needs cannot be created.
-    put("src/app/blocked", "not a folder\n");
+    put("src/app/(shell)/blocked", "not a folder\n");
     const beta = fixture("beta", [page("/beta"), page("/blocked/inside")]);
     assert.throws(() => generate([alpha, beta]), /ENOTDIR|EEXIST/);
-    assert.ok(existsSync(join(root, "src/app/beta/page.tsx")), "the failed run did write the file before the failing one");
+    assert.ok(existsSync(join(root, "src/app/(shell)/beta/page.tsx")), "the failed run did write the file before the failing one");
 
     const plan = generate([alpha]);
-    assert.deepEqual(plan.deletions, ["src/app/beta/page.tsx"]);
-    assert.deepEqual(treeOf(root), cleanTree([alpha], { "src/app/blocked": "not a folder\n" }));
-    assert.deepEqual(ownership().files, ["src/app/alpha/page.tsx", REGISTRY_FILE]);
+    assert.deepEqual(plan.deletions, ["src/app/(shell)/beta/page.tsx"]);
+    assert.deepEqual(treeOf(root), cleanTree([alpha], { "src/app/(shell)/blocked": "not a folder\n" }));
+    assert.deepEqual(ownership().files, ["src/app/(shell)/alpha/page.tsx", REGISTRY_FILE]);
   });
 
   it("converges after a failed deletion", { skip: !unprivileged && "needs an unprivileged user" }, () => {
     const alpha = fixture("alpha", [page("/alpha")]);
     const beta = fixture("beta", [page("/beta")]);
     generate([alpha, beta]);
-    chmodSync(join(root, "src/app/alpha"), 0o555);
+    chmodSync(join(root, "src/app/(shell)/alpha"), 0o555);
     try {
       assert.throws(() => generate([beta]), /EACCES|EPERM/);
     } finally {
-      chmodSync(join(root, "src/app/alpha"), 0o755);
+      chmodSync(join(root, "src/app/(shell)/alpha"), 0o755);
     }
-    assert.ok(ownership().files.includes("src/app/alpha/page.tsx"), "the interrupted run still records the file it has not removed");
+    assert.ok(ownership().files.includes("src/app/(shell)/alpha/page.tsx"), "the interrupted run still records the file it has not removed");
 
     generate([beta]);
     assert.deepEqual(treeOf(root), cleanTree([beta]));
@@ -239,13 +239,13 @@ describe("generateRegistration: a run that fails partway", () => {
     const beta = fixture("beta", [page("/beta")]);
     generate([alpha, beta]);
     // The file can be deleted from its own folder, but the folder cannot be removed from its parent.
-    chmodSync(join(root, "src/app/alpha"), 0o555);
+    chmodSync(join(root, "src/app/(shell)/alpha"), 0o555);
     try {
       assert.throws(() => generate([beta]), /EACCES|EPERM/);
     } finally {
-      chmodSync(join(root, "src/app/alpha"), 0o755);
+      chmodSync(join(root, "src/app/(shell)/alpha"), 0o755);
     }
-    assert.equal(existsSync(join(root, "src/app/alpha/deep/er/page.tsx")), false);
+    assert.equal(existsSync(join(root, "src/app/(shell)/alpha/deep/er/page.tsx")), false);
 
     generate([beta]);
     assert.deepEqual(treeOf(root), cleanTree([beta]));

@@ -135,8 +135,11 @@ describe("web app: sign-in required", () => {
     assert.equal(root.status, 307);
     assert.equal(location(root), "/login");
     assert.equal((await call("GET", "/apps")).status, 307);
-    assert.equal((await call("GET", "/login")).status, 200);
+    const login = await call("GET", "/login");
+    assert.equal(login.status, 200);
+    assert.doesNotMatch(login.body, /href="\/apps"/, "the sign-in page is shown without the shell around it");
     assert.equal((await call("GET", "/api/modules")).status, 401);
+    assert.equal((await call("GET", "/settings")).status, 307);
   });
 
   test("does not let a path trick past the gate", async () => {
@@ -174,6 +177,14 @@ describe("web app: sign-in required", () => {
     const home = await call("GET", "/", { cookie });
     assert.equal(home.status, 200);
     assert.match(home.body, new RegExp(EMAIL));
+    assert.match(home.body, /href="\/apps"/, "the sidebar lists the shell's own entries");
+    assert.match(home.body, /href="\/settings"/);
+    assert.match(home.body, /No modules are installed yet/, "with zero modules the home screen says so");
+    assert.match(home.body, /Sign out/);
+    const apps = await call("GET", "/apps", { cookie });
+    assert.equal(apps.status, 200);
+    assert.match(apps.body, /No modules are enabled in this build/);
+    assert.equal((await call("GET", "/settings", { cookie })).status, 200);
     assert.equal(location(await call("GET", "/login", { cookie })), "/");
 
     await db!.query(`update core.auth_user set "banned" = true where "email" = $1`, [EMAIL]);
@@ -197,7 +208,9 @@ describe("web app: sign-in disabled", () => {
   test("serves a local request without a session and has no sign-in page", async () => {
     const home = await call("GET", "/");
     assert.equal(home.status, 200);
-    assert.match(home.body, /switched off/);
+    assert.match(home.body, /Local operator/, "the top bar says the shell is acting as a local operator");
+    assert.doesNotMatch(home.body, /Sign out/, "there is no session to end");
+    assert.equal((await call("GET", "/apps")).status, 200);
     assert.equal(location(await call("GET", "/login")), "/");
   });
 

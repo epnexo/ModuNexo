@@ -68,9 +68,11 @@ export function LoginForm() {
           className="h-10 rounded-md border border-border-strong bg-surface px-3 outline-none transition-colors duration-150 focus-visible:border-accent disabled:opacity-60"
         />
       </div>
-      <p role="alert" className="min-h-5 text-sm text-danger">
-        {failure === null ? "" : MESSAGES[failure]}
-      </p>
+      {failure === null ? null : (
+        <p role="alert" className="text-sm text-danger">
+          {MESSAGES[failure]}
+        </p>
+      )}
       <button
         type="submit"
         disabled={pending}

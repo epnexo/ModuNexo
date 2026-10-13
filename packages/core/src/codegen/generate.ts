@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, r
 import { basename, dirname, isAbsolute, join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
 import { compareIds } from "../registry.ts";
-import { GENERATED_HEADER, RegistrationError, type RegistrationModule, type RenderedFile, renderRegistration } from "./render.ts";
+import { GENERATED_HEADER, ROUTES_DIR, RegistrationError, type RegistrationModule, type RenderedFile, renderRegistration } from "./render.ts";
 
 /** The web app the registration is generated for; it is built by a later feature, so tests inject their own root. */
 export const DEFAULT_WEB_ROOT = fileURLToPath(new URL("../../../../apps/web", import.meta.url));
@@ -111,7 +111,7 @@ function plan(modules: RegistrationModule[], root: string, reservedPaths: readon
     else writes.push({ path: file.path, content: file.content, change: existing === undefined ? "create" : "update" });
 
     // A page and a route (or two extensions) in one folder make Next.js fail, so a hand-written sibling is a clash too.
-    if (file.path.startsWith("src/app/")) {
+    if (file.path.startsWith(`${ROUTES_DIR}/`)) {
       for (const sibling of ROUTE_FILE_NAMES.filter((name) => name !== basename(file.path))) {
         const rival = posix.join(posix.dirname(file.path), sibling);
         const content = readIfPresent(root, rival, problems);
@@ -154,9 +154,9 @@ function writeAtomically(absolute: string, content: string): void {
   renameSync(temporary, absolute);
 }
 
-/** Remove the folders a deletion emptied, from the file's folder up to, and not including, `src/app`. */
+/** Remove the folders a deletion emptied, from the file's folder up to, and not including, the routes folder. */
 function pruneEmptyFolders(root: string, deleted: string): void {
-  const stop = join(root, "src/app");
+  const stop = join(root, ROUTES_DIR);
   for (let dir = dirname(join(root, deleted)); dir.startsWith(`${stop}/`); dir = dirname(dir)) {
     // A folder that is already gone (an earlier run removed it) is not a reason to stop: its parent may be empty now.
     if (existsSync(dir)) {

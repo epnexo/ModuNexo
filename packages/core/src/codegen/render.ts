@@ -54,6 +54,13 @@ export const REGISTRY_FILE = "src/generated/modules.ts";
  * equals an entry or sits below it (`/api` reserves `/api/x`, not `/apiary`); `/` reserves only the root itself.
  * The shell UI may add to this list when it is built.
  */
+/**
+ * Where generated route files go, relative to the web app root. `(shell)` is a route group: it adds no segment to
+ * the URL, and it is the group whose layout draws the shell (sidebar and top bar) around every page. Putting
+ * module routes inside it is what gives them the shell without a module having to know about it.
+ */
+export const ROUTES_DIR = "src/app/(shell)";
+
 export const RESERVED_PATHS: readonly string[] = ["/", "/apps", "/settings", "/login", "/logout", "/api", "/_next"];
 
 export interface RenderOptions {
@@ -146,7 +153,7 @@ function planRoutes(ordered: RegistrationModule[], reserved: readonly string[], 
       }
       exact.set(path, manifest.id);
       for (const [key, owner] of claimed) positions.set(key, owner);
-      plans.push({ moduleId: manifest.id, path, file: `src/app${path === "/" ? "" : path}/${page.kind === "page" ? "page.tsx" : "route.ts"}`, page, packageName });
+      plans.push({ moduleId: manifest.id, path, file: `${ROUTES_DIR}${path === "/" ? "" : path}/${page.kind === "page" ? "page.tsx" : "route.ts"}`, page, packageName });
     }
   }
   return plans;

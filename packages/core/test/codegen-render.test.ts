@@ -95,7 +95,7 @@ describe("renderRegistration: registry file", () => {
 describe("renderRegistration: route files", () => {
   it("writes a page file that re-exports the default export and metadata from the entry", () => {
     const files = fileMap([fixture("alpha", { pages: [page("/alpha/reports/[id]", "./web/report.tsx")] })]);
-    const content = files.get("src/app/alpha/reports/[id]/page.tsx")!;
+    const content = files.get("src/app/(shell)/alpha/reports/[id]/page.tsx")!;
     assert.ok(content.startsWith(GENERATED_HEADER));
     assert.match(content, /^export \{ default, metadata \} from "@fixture\/alpha\/web\/report";$/m);
     assert.doesNotMatch(content, /export const dynamic/);
@@ -105,26 +105,26 @@ describe("renderRegistration: route files", () => {
     const files = fileMap([
       fixture("alpha", { pages: [route("/alpha/export"), route("/alpha/items", "./web/items.ts", { methods: ["POST", "GET"] })] }),
     ]);
-    assert.match(files.get("src/app/alpha/export/route.ts")!, /^export \{ GET \} from "@fixture\/alpha\/web\/handler";$/m);
-    assert.match(files.get("src/app/alpha/items/route.ts")!, /^export \{ POST, GET \} from "@fixture\/alpha\/web\/items";$/m);
+    assert.match(files.get("src/app/(shell)/alpha/export/route.ts")!, /^export \{ GET \} from "@fixture\/alpha\/web\/handler";$/m);
+    assert.match(files.get("src/app/(shell)/alpha/items/route.ts")!, /^export \{ POST, GET \} from "@fixture\/alpha\/web\/items";$/m);
   });
 
   it("writes segment config literally, never as a re-export", () => {
     const files = fileMap([fixture("alpha", { pages: [page("/alpha", "./p.tsx", { dynamic: "force-dynamic" }), route("/alpha/r", "./r.ts", { dynamic: "force-static" })] })]);
-    assert.match(files.get("src/app/alpha/page.tsx")!, /^export const dynamic = "force-dynamic";$/m);
-    assert.match(files.get("src/app/alpha/r/route.ts")!, /^export const dynamic = "force-static";$/m);
+    assert.match(files.get("src/app/(shell)/alpha/page.tsx")!, /^export const dynamic = "force-dynamic";$/m);
+    assert.match(files.get("src/app/(shell)/alpha/r/route.ts")!, /^export const dynamic = "force-static";$/m);
   });
 
   it("keeps an entry's extension out of the import and a trailing slash out of the path", () => {
     const files = fileMap([fixture("alpha", { pages: [page("/alpha/", "./web/index.ts"), page("/alpha/b", "./web/b.mjs")] })]);
-    assert.match(files.get("src/app/alpha/page.tsx")!, /from "@fixture\/alpha\/web\/index";/);
-    assert.match(files.get("src/app/alpha/b/page.tsx")!, /from "@fixture\/alpha\/web\/b";/);
+    assert.match(files.get("src/app/(shell)/alpha/page.tsx")!, /from "@fixture\/alpha\/web\/index";/);
+    assert.match(files.get("src/app/(shell)/alpha/b/page.tsx")!, /from "@fixture\/alpha\/web\/b";/);
   });
 
   it("supports catch-all segments", () => {
     const files = fileMap([fixture("alpha", { pages: [page("/alpha/[...slug]"), page("/alpha/docs/[[...rest]]")] })]);
-    assert.ok(files.has("src/app/alpha/[...slug]/page.tsx"));
-    assert.ok(files.has("src/app/alpha/docs/[[...rest]]/page.tsx"));
+    assert.ok(files.has("src/app/(shell)/alpha/[...slug]/page.tsx"));
+    assert.ok(files.has("src/app/(shell)/alpha/docs/[[...rest]]/page.tsx"));
   });
 });
 
@@ -167,7 +167,7 @@ describe("renderRegistration: conflicts are found before anything is produced", 
   });
 
   it("does not treat a longer sibling name as reserved", () => {
-    assert.ok(fileMap([fixture("alpha", { pages: [page("/applications"), page("/settings-extra")] })]).has("src/app/applications/page.tsx"));
+    assert.ok(fileMap([fixture("alpha", { pages: [page("/applications"), page("/settings-extra")] })]).has("src/app/(shell)/applications/page.tsx"));
   });
 
   it("rejects a segment that cannot be a file name, and reports every problem at once", () => {
