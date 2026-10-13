@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import type pg from "pg";
-import { MAX_TRUSTED_PROXIES, readTrustedProxies, setTrustedProxies, validateTrustedProxies } from "../src/auth/trusted-proxies.ts";
+import { MAX_TRUSTED_PROXIES, readTrustedProxies, readTrustedProxyList, setTrustedProxies, validateTrustedProxies } from "../src/auth/trusted-proxies.ts";
 import { migrate } from "../src/runner.ts";
 import { Registry } from "../src/registry.ts";
 import { openTestPool } from "../src/testing.ts";
@@ -109,6 +109,14 @@ describe("trusted proxies in the database", () => {
     await assert.rejects(setTrustedProxies(pool!, "10.0.0.2, nope", "tester"), /security\.trustedProxies/);
     assert.deepEqual((await readTrustedProxies(pool!)).length, 1);
     assert.equal((await pool!.query("select 1 from core.settings_events where key = 'security.trustedProxies'")).rowCount, 1);
+  });
+
+  test("reads the list as the owner wrote it, for the screen, and an empty one when nothing valid is stored", async () => {
+    assert.deepEqual(await readTrustedProxyList(pool!), []);
+    await setTrustedProxies(pool!, ["10.0.0.2", "192.168.1.0/24"], "tester");
+    assert.deepEqual(await readTrustedProxyList(pool!), ["10.0.0.2", "192.168.1.0/24"]);
+    await pool!.query("update core.platform_settings set value = '[\"10.0.0.2\", \"nope\"]'::jsonb where key = 'security.trustedProxies'");
+    assert.deepEqual(await readTrustedProxyList(pool!), []);
   });
 
   test("a stored value that is no longer valid trusts nobody instead of failing", async () => {
