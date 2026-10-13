@@ -1,4 +1,4 @@
-import { readTrustedProxyList, resolveMasterKey } from "@epnexo/core/auth";
+import { readTrustedProxyState, resolveMasterKey } from "@epnexo/core/auth";
 import { AppearanceService, SettingsService } from "@epnexo/core/settings";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
@@ -31,7 +31,7 @@ export default async function SettingsPage() {
   const registry = webRegistry();
   const enabled = await enabledModuleIds(pool);
   const appearance = await new AppearanceService(pool, registry).get();
-  const trustedProxies = await readTrustedProxyList(pool);
+  const trustedProxies = await readTrustedProxyState(pool);
   const settings = new SettingsService(pool, registry, { masterKey: resolveMasterKey() });
   const sections = await Promise.all(modules.filter((manifest) => enabled.has(manifest.id)).map(async (manifest) => ({ id: manifest.id, name: manifest.name, entries: await settings.describe(manifest.id) })));
 
@@ -53,7 +53,7 @@ export default async function SettingsPage() {
         <h2 id="security-heading" className="text-lg font-semibold tracking-tight">
           Security
         </h2>
-        <SecurityForm initial={trustedProxies} canWrite={viewer.canWrite} />
+        <SecurityForm initial={trustedProxies.list} invalidStored={trustedProxies.invalid} canWrite={viewer.canWrite} />
       </section>
 
       {sections.length === 0 ? (

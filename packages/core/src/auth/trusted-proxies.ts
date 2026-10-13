@@ -39,14 +39,23 @@ export function validateTrustedProxies(input: unknown): TrustedProxiesValidation
   return { ok: true, value };
 }
 
+/**
+ * What the screen needs: the stored list as the owner wrote it, and whether something is stored that is not
+ * trusted because it does not validate (a hand edit, or a range the rules have since narrowed). The same
+ * strictness as `readTrustedProxies`: only a valid stored list counts, so the screen never shows as active
+ * something that is not trusted, and says so when it is ignoring something.
+ */
+export async function readTrustedProxyState(pool: pg.Pool): Promise<{ list: string[]; invalid: boolean }> {
+  const { rows } = await pool.query("select value from core.platform_settings where key = $1", [TRUSTED_PROXIES_KEY]);
+  if (rows.length === 0) return { list: [], invalid: false };
+  const stored: unknown = rows[0].value;
+  const checked = Array.isArray(stored) ? validateTrustedProxies(stored) : null;
+  return checked !== null && checked.ok ? { list: checked.value, invalid: false } : { list: [], invalid: true };
+}
+
 /** The stored list as the owner wrote it, for the screen. Empty when nothing is stored or what is stored is not valid. */
 export async function readTrustedProxyList(pool: pg.Pool): Promise<string[]> {
-  const { rows } = await pool.query("select value from core.platform_settings where key = $1", [TRUSTED_PROXIES_KEY]);
-  // The same strictness as `readTrustedProxies`: only a stored list counts, so the screen never shows as active
-  // something that is not trusted.
-  if (!Array.isArray(rows[0]?.value)) return [];
-  const checked = validateTrustedProxies(rows[0].value);
-  return checked.ok ? checked.value : [];
+  return (await readTrustedProxyState(pool)).list;
 }
 
 /**
