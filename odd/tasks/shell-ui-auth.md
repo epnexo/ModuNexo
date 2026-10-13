@@ -307,3 +307,8 @@ feature is a chain with one slice per task.
   - Carried from A1: `db:migrate` warns instead of failing on an unreadable module history, orphaned
     module rows have no cleanup path, and no git remote exists so no pull request can be opened and the
     chain strategy (stacked-to-main or feature-branch-chain) is still unchosen.
+- **L21** (2026-10-13) Review `80fbd97..35cd4ff` (the generator fix; lenses `risk`, `reliability`, 4
+  files, 124 lines): approved with no findings, acknowledged, burned. Every commit of the feature is
+  now inside a reviewed range: `981c8a7..e7be714`, `e7be714..58594bd`, `58594bd..f9a8f59`,
+  `f9a8f59..25c2649`, `25c2649..80fbd97`, `80fbd97..35cd4ff`. Final state: `npm test` 483 pass, 0 fail,
+  0 skipped; `npm run typecheck` clean.
