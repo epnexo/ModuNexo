@@ -24,6 +24,18 @@ describe("stampClientAddress", () => {
     assert.equal(headers[CLIENT_IP_HEADER], "203.0.113.9");
   });
 
+  it("writes the connection in one canonical form, so one client is one rate-limit identity however it connected", () => {
+    const stamped = (remote: string) => {
+      const headers: Record<string, string | string[] | undefined> = {};
+      stampClientAddress(headers, remote);
+      return headers[CLIENT_IP_HEADER];
+    };
+    assert.equal(stamped("::ffff:10.0.0.2"), "10.0.0.2");
+    assert.equal(stamped("10.0.0.2"), "10.0.0.2");
+    assert.equal(stamped("2001:DB8::1"), "2001:db8:0:0:0:0:0:1");
+    assert.equal(stamped("not-an-address"), "not-an-address", "what cannot be read is kept as it is, and is not local");
+  });
+
   it("leaves no header at all when the connection has no address, so the request is not treated as local", () => {
     const headers: Record<string, string | string[] | undefined> = { [CLIENT_IP_HEADER]: "127.0.0.1" };
     stampClientAddress(headers, undefined);

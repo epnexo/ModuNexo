@@ -229,6 +229,22 @@ describe("pages[].permission", () => {
     );
   });
 
+  it("names the page by its path as well as its index", () => {
+    assert.throws(
+      () => validateManifest({ ...base, pages: [{ path: "/alpha/reports", entry: "./web/page.tsx", kind: "page", permission: "nope" }] }),
+      (error: unknown) => error instanceof ManifestError && /pages\[0\]\.permission "nope" is not a declared permission \(page "\/alpha\/reports"\)/.test(error.message),
+    );
+  });
+
+  it("refuses a permission on a navigation entry that points at the root, which would cover the whole shell", () => {
+    assert.throws(
+      () => validateManifest({ ...base, nav: [{ label: "Home", href: "/", permission: "reports.read" }] }),
+      (error: unknown) => error instanceof ManifestError && /nav\[0\]\.permission cannot be combined with href "\/"/.test(error.message),
+    );
+    assert.doesNotThrow(() => validateManifest({ ...base, nav: [{ label: "Home", href: "/" }] }));
+    assert.doesNotThrow(() => validateManifest({ ...base, nav: [{ label: "Reports", href: "/reports", permission: "reports.read" }] }));
+  });
+
   it("refuses a permission that is not text", () => {
     assert.throws(() => validateManifest({ ...base, pages: [{ path: "/alpha", entry: "./web/page.tsx", kind: "page", permission: 5 }] }), ManifestError);
   });

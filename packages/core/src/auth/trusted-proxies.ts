@@ -4,6 +4,9 @@ import { type Cidr, parseCidr } from "./ip.ts";
 
 export const TRUSTED_PROXIES_KEY = "security.trustedProxies";
 export const MAX_TRUSTED_PROXIES = 50;
+/** The shortest prefix accepted, in bits. A list of proxies is not a place for half the internet. */
+export const MIN_IPV4_PREFIX = 8;
+export const MIN_IPV6_PREFIX = 8;
 
 export type TrustedProxiesValidation = { ok: true; value: string[] } | { ok: false; message: string };
 
@@ -25,7 +28,11 @@ export function validateTrustedProxies(input: unknown): TrustedProxiesValidation
     if (entry === "" || value.includes(entry)) continue;
     const range = parseCidr(entry);
     if (range === null) return refuse(`"${entry}" is not an IP address or a CIDR range such as 10.0.0.0/24`);
-    if (range.mask === 0n) return refuse(`"${entry}" would trust every address, which defeats the purpose; list the proxies themselves`);
+    if (range.prefix === 0) return refuse(`"${entry}" would trust every address, which defeats the purpose; list the proxies themselves`);
+    const shortest = range.version === 4 ? MIN_IPV4_PREFIX : MIN_IPV6_PREFIX;
+    if (range.prefix < shortest) {
+      return refuse(`"${entry}" is too broad to be a list of proxies: use a prefix of /${shortest} or longer, or list the proxies themselves`);
+    }
     value.push(entry);
   }
   if (value.length > MAX_TRUSTED_PROXIES) return refuse(`at most ${MAX_TRUSTED_PROXIES} entries are allowed`);
@@ -35,7 +42,10 @@ export function validateTrustedProxies(input: unknown): TrustedProxiesValidation
 /** The stored list as the owner wrote it, for the screen. Empty when nothing is stored or what is stored is not valid. */
 export async function readTrustedProxyList(pool: pg.Pool): Promise<string[]> {
   const { rows } = await pool.query("select value from core.platform_settings where key = $1", [TRUSTED_PROXIES_KEY]);
-  const checked = validateTrustedProxies(rows[0]?.value);
+  // The same strictness as `readTrustedProxies`: only a stored list counts, so the screen never shows as active
+  // something that is not trusted.
+  if (!Array.isArray(rows[0]?.value)) return [];
+  const checked = validateTrustedProxies(rows[0].value);
   return checked.ok ? checked.value : [];
 }
 

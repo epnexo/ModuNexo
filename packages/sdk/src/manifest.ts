@@ -203,6 +203,9 @@ function checkNav(nav: unknown, permissionKeys: Set<string>, problems: string[])
     if (entry.order !== undefined && !(typeof entry.order === "number" && Number.isFinite(entry.order))) {
       problems.push(`${where}.order must be a finite number when present`);
     }
+    if (entry.permission !== undefined && entry.href === "/") {
+      problems.push(`${where}.permission cannot be combined with href "/": it would cover the whole shell`);
+    }
     if (entry.permission !== undefined) {
       if (typeof entry.permission !== "string" || !permissionKeys.has(entry.permission)) {
         problems.push(`${where}.permission "${String(entry.permission)}" is not a declared permission`);
@@ -230,7 +233,7 @@ function checkPages(pages: unknown, permissionKeys: Set<string>, problems: strin
       problems.push(`${where}.dynamic must be one of ${PAGE_DYNAMIC_MODES.join(", ")}`);
     }
     if (page.permission !== undefined && (typeof page.permission !== "string" || !permissionKeys.has(page.permission))) {
-      problems.push(`${where}.permission "${String(page.permission)}" is not a declared permission`);
+      problems.push(`${where}.permission "${String(page.permission)}" is not a declared permission${typeof page.path === "string" ? ` (page "${page.path}")` : ""}`);
     }
     if (page.methods !== undefined) {
       if (page.kind !== "route") {

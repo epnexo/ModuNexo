@@ -59,6 +59,33 @@ describe("permissionRules and requiredPermissions", () => {
     assert.deepEqual(needs("/Reports/Export", rules), []);
   });
 
+  it("also matches the decoded form of the path, because the router decodes and the gate sees it raw", () => {
+    const rules = permissionRules([mod([{ path: "/reports/export", permission: "p.export" }], [{ href: "/finance", permission: "p.finance" }])]);
+    assert.deepEqual(needs("/reports/%65xport", rules), ["p.export"]);
+    assert.deepEqual(needs("/%72eports/export", rules), ["p.export"]);
+    assert.deepEqual(needs("/reports%2Fexport", rules), ["p.export"], "an encoded slash splits the segment once decoded");
+    assert.deepEqual(needs("/%66inance/ledger", rules), ["p.finance"]);
+  });
+
+  it("decodes more than once, so a double encoding does not hide a segment", () => {
+    const rules = permissionRules([mod([{ path: "/reports/export", permission: "p.export" }])]);
+    assert.deepEqual(needs("/reports/%2565xport", rules), ["p.export"]);
+    assert.deepEqual(needs("/reports/%252565xport", rules), ["p.export"]);
+  });
+
+  it("uses what it can read of a path with a malformed escape instead of giving up", () => {
+    const rules = permissionRules([mod([{ path: "/reports/export", permission: "p.export" }])]);
+    assert.deepEqual(needs("/reports/export%E0%A4%A", rules), []);
+    assert.deepEqual(needs("/%72eports/export/%E0%A4%A", rules), [], "an extra segment is a different route either way");
+    assert.deepEqual(needs("/reports/%65xport%", rules), []);
+  });
+
+  it("does not match something that only looks alike once decoded", () => {
+    const rules = permissionRules([mod([{ path: "/reports/export", permission: "p.export" }])]);
+    assert.deepEqual(needs("/reports/%65xports", rules), []);
+    assert.deepEqual(needs("/reportsx/%65xport", rules), []);
+  });
+
   it("is empty for a registry with no permissions, and for the root", () => {
     assert.deepEqual(permissionRules([mod([{ path: "/x" }])]), []);
     assert.deepEqual(needs("/", permissionRules([mod([{ path: "/x", permission: "p" }])])), []);

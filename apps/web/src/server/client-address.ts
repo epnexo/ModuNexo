@@ -1,4 +1,4 @@
-import { CLIENT_IP_HEADER, splitForwarded } from "@epnexo/core/auth";
+import { CLIENT_IP_HEADER, formatIp, parseIp, splitForwarded } from "@epnexo/core/auth";
 
 export { CLIENT_IP_HEADER };
 
@@ -11,7 +11,11 @@ type NodeHeaders = Record<string, string | string[] | undefined>;
  */
 export function stampClientAddress(headers: NodeHeaders, remoteAddress: string | undefined): void {
   delete headers[CLIENT_IP_HEADER];
-  if (remoteAddress !== undefined && remoteAddress !== "") headers[CLIENT_IP_HEADER] = remoteAddress;
+  if (remoteAddress === undefined || remoteAddress === "") return;
+  // One canonical text per client (an IPv4 client of a dual-stack listener arrives as ::ffff:a.b.c.d), so it is one
+  // identity for the limiter however it connected. What cannot be read is kept as it is, and is never local.
+  const ip = parseIp(remoteAddress);
+  headers[CLIENT_IP_HEADER] = ip === null ? remoteAddress : formatIp(ip);
 }
 
 /** The `for=` value of each hop in an RFC 7239 `Forwarded` header, unquoted and without brackets or port. */
