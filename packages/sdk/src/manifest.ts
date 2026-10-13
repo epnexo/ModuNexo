@@ -38,6 +38,11 @@ export interface PageDeclaration {
   dynamic?: PageDynamic;
   /** `route` only: the handlers the entry exports, re-exported by the generated route file. Default `["GET"]`. */
   methods?: HttpMethod[];
+  /**
+   * Key of a permission declared in `permissions`. The shell refuses the route to anyone who does not hold it,
+   * for the page and for the handler alike; it is enforced at the gate, not only by hiding a link.
+   */
+  permission?: string;
 }
 
 export type SettingType = "string" | "number" | "boolean" | "select" | "secret" | "path";
@@ -109,7 +114,7 @@ const KNOWN_FIELDS = new Set([
   "id", "version", "name", "platform", "dependsOn", "schema", "migrationsDir", "nav", "pages", "settings", "permissions", "hooks",
 ]);
 const KNOWN_NAV_FIELDS = new Set(["label", "href", "icon", "group", "order", "permission"]);
-const KNOWN_PAGE_FIELDS = new Set(["path", "entry", "kind", "dynamic", "methods"]);
+const KNOWN_PAGE_FIELDS = new Set(["path", "entry", "kind", "dynamic", "methods", "permission"]);
 const KNOWN_SETTING_FIELDS = new Set(["key", "label", "type", "default", "required", "options", "description"]);
 const KNOWN_PERMISSION_FIELDS = new Set(["key", "label"]);
 const PAGE_KINDS = ["page", "route"];
@@ -206,7 +211,7 @@ function checkNav(nav: unknown, permissionKeys: Set<string>, problems: string[])
   });
 }
 
-function checkPages(pages: unknown, problems: string[]): void {
+function checkPages(pages: unknown, permissionKeys: Set<string>, problems: string[]): void {
   const seen = new Set<string>();
   eachItem(pages, "pages", problems, (page, where) => {
     checkUnknownFields(page, KNOWN_PAGE_FIELDS, where, problems);
@@ -223,6 +228,9 @@ function checkPages(pages: unknown, problems: string[]): void {
     if (typeof page.kind !== "string" || !PAGE_KINDS.includes(page.kind)) problems.push(`${where}.kind must be "page" or "route"`);
     if (page.dynamic !== undefined && (typeof page.dynamic !== "string" || !PAGE_DYNAMIC_MODES.includes(page.dynamic))) {
       problems.push(`${where}.dynamic must be one of ${PAGE_DYNAMIC_MODES.join(", ")}`);
+    }
+    if (page.permission !== undefined && (typeof page.permission !== "string" || !permissionKeys.has(page.permission))) {
+      problems.push(`${where}.permission "${String(page.permission)}" is not a declared permission`);
     }
     if (page.methods !== undefined) {
       if (page.kind !== "route") {
@@ -340,7 +348,7 @@ export function validateManifest(input: unknown, options: ValidateOptions = {}):
 
   const permissionKeys = raw.permissions === undefined ? new Set<string>() : checkPermissions(raw.permissions, problems);
   checkNav(raw.nav, permissionKeys, problems);
-  if (raw.pages !== undefined) checkPages(raw.pages, problems);
+  if (raw.pages !== undefined) checkPages(raw.pages, permissionKeys, problems);
   if (raw.settings !== undefined) checkSettings(raw.settings, problems);
   if (raw.hooks !== undefined && !isRelativeEntry(raw.hooks)) problems.push('hooks must be a relative path starting with "./"');
 

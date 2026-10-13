@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { isDynamicRouteSegment, validateManifest } from "../src/index.ts";
+import { ManifestError, isDynamicRouteSegment, validateManifest } from "../src/index.ts";
 
 const base = {
   id: "reports",
@@ -201,5 +201,45 @@ describe("validateManifest: page segment config and route methods", () => {
     assert.throws(() => validateManifest(withPage({ kind: "route", methods: ["GET", "GET"] })), /pages\[0\]\.methods must be a non-empty array of distinct/);
     assert.throws(() => validateManifest(withPage({ kind: "route", methods: [] })), /pages\[0\]\.methods must be a non-empty array/);
     assert.throws(() => validateManifest(withPage({ kind: "page", methods: ["GET"] })), /pages\[0\]\.methods is only allowed for kind "route"/);
+  });
+});
+
+describe("pages[].permission", () => {
+  const base = {
+    id: "alpha",
+    version: "1.0.0",
+    name: "Alpha",
+    platform: "^0.1.0",
+    dependsOn: {},
+    schema: "alpha",
+    migrationsDir: "migrations",
+    nav: [],
+    permissions: [{ key: "reports.read", label: "Read reports" }],
+  };
+
+  it("accepts a page that names a permission the manifest declares", () => {
+    const manifest = validateManifest({ ...base, pages: [{ path: "/alpha", entry: "./web/page.tsx", kind: "page", permission: "reports.read" }] });
+    assert.equal(manifest.pages?.[0]?.permission, "reports.read");
+  });
+
+  it("refuses a permission the manifest does not declare, naming the page", () => {
+    assert.throws(
+      () => validateManifest({ ...base, pages: [{ path: "/alpha", entry: "./web/page.tsx", kind: "page", permission: "reports.write" }] }),
+      (error: unknown) => error instanceof ManifestError && /pages\[0\]\.permission "reports\.write" is not a declared permission/.test(error.message),
+    );
+  });
+
+  it("refuses a permission that is not text", () => {
+    assert.throws(() => validateManifest({ ...base, pages: [{ path: "/alpha", entry: "./web/page.tsx", kind: "page", permission: 5 }] }), ManifestError);
+  });
+
+  it("refuses a page permission when the manifest declares no permissions at all", () => {
+    const { permissions: _unused, ...withoutPermissions } = base;
+    assert.throws(() => validateManifest({ ...withoutPermissions, pages: [{ path: "/alpha", entry: "./web/page.tsx", kind: "page", permission: "reports.read" }] }), ManifestError);
+  });
+
+  it("leaves a page without a permission as it was", () => {
+    const manifest = validateManifest({ ...base, pages: [{ path: "/alpha", entry: "./web/page.tsx", kind: "page" }] });
+    assert.equal(manifest.pages?.[0]?.permission, undefined);
   });
 });
