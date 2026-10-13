@@ -52,16 +52,24 @@ describe("purgeModule: guards and atomicity", () => {
       'drop schema if exists "a_b" cascade',
       "select to_regclass('core.schema_migrations') is not null as present",
       "delete from core.schema_migrations where module_id = $1",
+      "select to_regclass('core.module_settings') is not null as present",
+      "delete from core.module_settings where module_id = $1",
       "commit",
     ]);
     assert.ok(statements.some((s) => s.includes("pg_try_advisory_lock")));
   });
 
-  it("only drops the schema when the history table does not exist yet", async () => {
+  it("only drops the schema when the history and settings tables do not exist yet", async () => {
     const { pool, statements } = recordingPool(undefined, false);
     await purgeModule(pool, registryWith({ id: "a", schema: "a" }), "a");
     const body = statements.filter((s) => !s.includes("advisory"));
-    assert.deepEqual(body, ["begin", 'drop schema if exists "a" cascade', "select to_regclass('core.schema_migrations') is not null as present", "commit"]);
+    assert.deepEqual(body, [
+      "begin",
+      'drop schema if exists "a" cascade',
+      "select to_regclass('core.schema_migrations') is not null as present",
+      "select to_regclass('core.module_settings') is not null as present",
+      "commit",
+    ]);
   });
 
   it("rolls everything back and surfaces the error when a step fails", async () => {

@@ -59,6 +59,11 @@ async function dropStatements(client: pg.PoolClient, target: PurgeTarget): Promi
   if (tracked.rows[0].present) {
     await client.query("delete from core.schema_migrations where module_id = $1", [target.id]);
   }
+  // The module's settings go with its data. The audit trail in core.settings_events stays, and holds no values.
+  const settings = await client.query("select to_regclass('core.module_settings') is not null as present");
+  if (settings.rows[0].present) {
+    await client.query("delete from core.module_settings where module_id = $1", [target.id]);
+  }
 }
 
 const purgeFailure = (target: PurgeTarget, error: unknown): Error =>
