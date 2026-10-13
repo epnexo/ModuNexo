@@ -110,6 +110,44 @@ describe("cli: settings, platform appearance", () => {
   });
 });
 
+describe("cli: settings, trusted proxies", () => {
+  it("lists the setting as empty, sets it, reads it back, refuses a bad list with exit code 3 and clears it", async (t) => {
+    await inScratchDatabase(t, async (db, cli) => {
+      const list = await cli(["settings", "list"], { masterKey: false });
+      assert.match(list.stdout, /security\.trustedProxies\s+list\s+\(none\)\s+default/);
+
+      const set = await cli(["settings", "set", "security.trustedProxies", "10.0.0.2, 192.168.1.0/24"], { masterKey: false });
+      assert.equal(set.code, 0, set.stderr);
+      assert.equal(set.stdout.trim(), "set security.trustedProxies");
+      assert.equal((await cli(["settings", "get", "security.trustedProxies"], { masterKey: false })).stdout.trim(), "10.0.0.2, 192.168.1.0/24");
+      assert.match((await cli(["settings", "list"], { masterKey: false })).stdout, /security\.trustedProxies\s+list\s+10\.0\.0\.2, 192\.168\.1\.0\/24\s+stored/);
+
+      const bad = await cli(["settings", "set", "security.trustedProxies", "10.0.0.2, nope"], { masterKey: false });
+      assert.equal(bad.code, 3);
+      assert.match(bad.stderr, /^refused: security\.trustedProxies: "nope" is not an IP address/);
+      const everyone = await cli(["settings", "set", "security.trustedProxies", "0.0.0.0/0"], { masterKey: false });
+      assert.equal(everyone.code, 3);
+      assert.match(everyone.stderr, /every address/);
+      assert.equal((await cli(["settings", "get", "security.trustedProxies"], { masterKey: false })).stdout.trim(), "10.0.0.2, 192.168.1.0/24");
+
+      assert.equal((await cli(["settings", "unset", "security.trustedProxies"], { masterKey: false })).code, 0);
+      assert.equal((await cli(["settings", "get", "security.trustedProxies"], { masterKey: false })).stdout.trim(), "(none)");
+      const events = await db.query("select action from core.settings_events where key = 'security.trustedProxies' order by id");
+      assert.deepEqual(events.rows.map((r) => r.action), ["set", "unset"]);
+    });
+  });
+
+  it("is a platform setting: it cannot be given a module, and a value is required", async (t) => {
+    await inScratchDatabase(t, async (_db, cli) => {
+      const withModule = await cli(["settings", "set", "security.trustedProxies", "10.0.0.2", "--module", "alpha"], { masterKey: false });
+      assert.equal(withModule.code, 3);
+      assert.match(withModule.stderr, /platform setting/);
+      const noValue = await cli(["settings", "set", "security.trustedProxies"], { masterKey: false });
+      assert.equal(noValue.code, 2);
+    });
+  });
+});
+
 describe("cli: settings, module settings", () => {
   it("lists the declared settings with defaults, sources and what is incomplete", async (t) => {
     await inScratchDatabase(t, async (_db, cli) => {
