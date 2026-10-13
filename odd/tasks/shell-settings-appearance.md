@@ -137,3 +137,19 @@ Forecast: about 1,800 authored changed lines, above the 400-line review budget, 
     settings screen, secret placeholder, required markers and the incomplete badge read correctly; the
     per-module corners select was clipping its label and was widened.
   `npm test` 593 pass, 0 fail, 0 skipped; typecheck clean.
+- **L8** (2026-10-13) Native review of `2ad1978..eb56d3b` plus the L6 fix (T5, the settings screen and API,
+  appearance applied through tokens; escalated to high; lenses `risk`, `resilience`, `reliability`; 39 files,
+  1,680 lines). This one did not close in a single pass, so it is worth recording how it went:
+  - The reviewers produced candidate-caused severe findings and the lifecycle asked for a provider refuter
+    (`review.capture-refuter`). My driver script only knew `review.capture-result` and stopped; I ran the
+    refuter with the exact returned tokens, then the correction plan (`--correction-lines`, a number from 1 to
+    200 of how many lines the fix may touch), made the fix, and ran the targeted validator, which approved;
+    acknowledgement burned the authority. The driver script is not in the repository.
+  - One finding survived refutation, CRITICAL and deterministic: the module accent-hue field was sent as
+    `Number(hue)`, so text such as `abc` became `NaN`, which JSON writes as `null`, and `null` means "follow the
+    platform": typing garbage deleted the stored override and the screen said "Saved." Fixed in `1fe9188`, tests
+    first: the body is built by `moduleAppearanceBody` (what was typed travels as text, the server answers 422;
+    only an empty field is `null`), plus an end-to-end probe that a refused hue keeps the stored override.
+  - The independent verifier's first run died on the API session limit before reporting anything (an
+    infrastructure failure, not a result); it left nothing in the tree. It was run again on `1fe9188`.
+  `npm test` 596 pass, 0 fail, 0 skipped; typecheck clean. Reviewed boundary is now `1fe9188`.
