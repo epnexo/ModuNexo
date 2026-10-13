@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { SettingDeclaration } from "@epnexo/sdk";
-import { planModuleSettingsUpdate } from "../src/server/settings-form.ts";
+import { moduleAppearanceBody, planModuleSettingsUpdate } from "../src/server/settings-form.ts";
 
 const DECLARATIONS: SettingDeclaration[] = [
   { key: "site.title", label: "Site title", type: "string" },
@@ -66,5 +66,26 @@ describe("planModuleSettingsUpdate", () => {
     const result = plan({ values: { "api.token": "super-secret-value", "not.declared": "x" } });
     assert.equal(result.ok, false);
     if (!result.ok) assert.ok(!result.message.includes("super-secret-value"));
+  });
+});
+
+describe("moduleAppearanceBody", () => {
+  it("sends what was typed as text, so the server decides whether it is a valid hue", () => {
+    assert.deepEqual(moduleAppearanceBody("abc", ""), { accentHue: "abc", radius: null });
+    assert.deepEqual(moduleAppearanceBody(" 140 ", "round"), { accentHue: "140", radius: "round" });
+    assert.deepEqual(moduleAppearanceBody("12.5", "sharp"), { accentHue: "12.5", radius: "sharp" });
+  });
+
+  it("sends null, meaning follow the platform, only for a field that was left empty", () => {
+    assert.deepEqual(moduleAppearanceBody("", ""), { accentHue: null, radius: null });
+    assert.deepEqual(moduleAppearanceBody("   ", "default"), { accentHue: null, radius: "default" });
+  });
+
+  it("never turns text into NaN, which would be serialized as null and clear a stored override", () => {
+    for (const typed of ["abc", "1e999", "--5", "NaN", "Infinity"]) {
+      const body = moduleAppearanceBody(typed, "");
+      assert.equal(typeof body.accentHue, "string", typed);
+      assert.equal(JSON.parse(JSON.stringify(body)).accentHue, typed);
+    }
   });
 });

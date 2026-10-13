@@ -3,6 +3,7 @@
 import { LoaderCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
+import { moduleAppearanceBody } from "../../server/settings-form";
 
 /** What the page knows about one declared setting. A secret's value is never part of it. */
 export interface SettingView {
@@ -107,10 +108,7 @@ export function ModuleSettings({ moduleId, name, entries: initialEntries, overri
     setAppearancePending(true);
     setAppearanceStatus(null);
     try {
-      const { ok, data } = await put(`/api/settings/modules/${encodeURIComponent(moduleId)}/appearance`, {
-        accentHue: hue === "" ? null : Number(hue),
-        radius: radius === "" ? null : radius,
-      });
+      const { ok, data } = await put(`/api/settings/modules/${encodeURIComponent(moduleId)}/appearance`, moduleAppearanceBody(hue, radius));
       if (ok) {
         setAppearanceStatus({ kind: "ok", text: "Saved." });
         router.refresh();

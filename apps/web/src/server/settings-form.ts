@@ -46,3 +46,13 @@ export function planModuleSettingsUpdate(declarations: readonly SettingDeclarati
   }
   return { ok: true, operations };
 }
+
+/**
+ * The body of a module's appearance form. What was typed travels as text and the server validates it; an empty
+ * field means "follow the platform" and is the only thing sent as null. Converting the hue to a number here would
+ * turn unparseable text into NaN, which JSON writes as null, and silently clear the override that was stored.
+ */
+export function moduleAppearanceBody(hue: string, radius: string): { accentHue: string | null; radius: string | null } {
+  const typed = hue.trim();
+  return { accentHue: typed === "" ? null : typed, radius: radius === "" ? null : radius };
+}
