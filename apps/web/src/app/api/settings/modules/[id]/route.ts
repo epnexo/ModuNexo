@@ -1,7 +1,7 @@
 import { resolveMasterKey } from "@epnexo/core/auth";
 import { SettingsService, validateSetting } from "@epnexo/core/settings";
 import { platform } from "../../../../../server/platform.ts";
-import { webRegistry } from "../../../../../server/registry.ts";
+import { enabledModuleIds, webRegistry } from "../../../../../server/registry.ts";
 import { authorizeWrite, json, readJsonBody } from "../../../../../server/settings-api.ts";
 import { planModuleSettingsUpdate } from "../../../../../server/settings-form.ts";
 
@@ -16,7 +16,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   if (authorized instanceof Response) return authorized;
   const { id } = await context.params;
   const manifest = webRegistry().get(id);
-  if (manifest === undefined || id === "core") return json({ error: `module "${id}" is not enabled in this build` }, 404);
+  if (manifest === undefined || id === "core" || !(await enabledModuleIds(platform().pool)).has(id)) return json({ error: `module "${id}" is not enabled` }, 404);
 
   const parsed = await readJsonBody(request);
   if (!parsed.ok) return json({ error: parsed.message }, 400);
@@ -34,9 +34,6 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   if (Object.keys(errors).length > 0) return json({ errors }, 422);
 
   const service = new SettingsService(platform().pool, webRegistry(), { masterKey: resolveMasterKey() });
-  for (const operation of plan.operations) {
-    if (operation.op === "set") await service.set(id, operation.key, operation.value, authorized.actor);
-    else await service.unset(id, operation.key, authorized.actor);
-  }
+  await service.applyMany(id, plan.operations, authorized.actor);
   return json({ entries: await service.describe(id) });
 }

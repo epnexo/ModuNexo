@@ -386,11 +386,16 @@ screen flags them, and each is replaced by typing it again. Nothing else breaks.
 
 ### The screen and the API
 
-`/settings` shows Appearance and one section per enabled module. Only an administrator, or the local operator
-while sign-in is off, can change anything. The screen saves through `PUT /api/settings/appearance`,
+`/settings` shows Appearance and one section per enabled module (its declared settings, and its appearance
+override). Only an administrator, or the local operator while sign-in is off, can see or change anything; anyone
+else is told so and shown no value. A module counts as enabled only when the database says so, so a build that has
+not been rebuilt since an uninstall cannot bring a purged module's settings back. The screen saves through `PUT /api/settings/appearance`,
 `PUT /api/settings/modules/<id>` and `PUT /api/settings/modules/<id>/appearance`. Each insists on a same-origin
 request (`Origin` naming the `Host`) and on an administrator or the local operator, and a form with one bad field
-changes none of its fields: the response names each refused key.
+changes none of its fields: the response names each refused key. A form is applied as one transaction, and a body is
+cut off at 64 KB while it is being read, not after. The origin check compares `Origin` with the `Host` the request
+arrived with, so behind a proxy that rewrites `Host` a legitimate save is refused (never wrongly accepted); have
+the proxy pass `Host` through.
 
 ### Appearance
 

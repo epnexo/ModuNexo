@@ -430,6 +430,13 @@ describe("web app: with a module installed", () => {
     assert.match(html(apps), /E2E Fixture/);
   });
 
+  test("a signed-in non-administrator is told they cannot see settings and is shown none of the values", async () => {
+    const page = await call("GET", "/settings", { cookie: userCookie });
+    assert.equal(page.status, 200);
+    assert.match(html(page), /Only an administrator can view or change settings/);
+    for (const text of ["Page size", "Export directory", "Save settings", "Save appearance"]) assert.ok(!html(page).includes(text), `"${text}" must not be shown`);
+  });
+
   test("the settings screen shows the declared fields, the appearance, and what is still required", async () => {
     const page = await call("GET", "/settings", { cookie });
     assert.equal(page.status, 200);
@@ -563,6 +570,18 @@ describe("web app: with a module installed", () => {
     assert.equal((await db!.query("select 1 from core.module_settings where module_id = $1", [FIXTURE_ID])).rowCount, 0);
     assert.equal((await db!.query("select 1 from core.platform_settings where key like $1", [`appearance.module.${FIXTURE_ID}.%`])).rowCount, 0);
     assert.ok(((await db!.query("select 1 from core.settings_events where scope = $1", [FIXTURE_ID])).rowCount ?? 0) > 0, "the trail outlives the data");
+
+    // The running build still has the module in its registry until it is rebuilt; the database says it is gone,
+    // and a write must not bring its rows back.
+    for (const [path, body] of [
+      [`/api/settings/modules/${FIXTURE_ID}`, { values: { "site.title": "Zombie" } }],
+      [`/api/settings/modules/${FIXTURE_ID}/appearance`, { accentHue: 99 }],
+    ] as const) {
+      assert.equal((await put(path, body, { cookie })).status, 404, path);
+    }
+    assert.equal((await db!.query("select 1 from core.module_settings where module_id = $1", [FIXTURE_ID])).rowCount, 0);
+    assert.equal((await db!.query("select 1 from core.platform_settings where key like $1", [`appearance.module.${FIXTURE_ID}.%`])).rowCount, 0);
+    assert.doesNotMatch(html(await call("GET", "/settings", { cookie })), /E2E Fixture/, "and the screen stops listing it");
   });
 
   test("stops within the grace period on SIGTERM and frees the port", async () => {

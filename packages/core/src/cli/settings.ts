@@ -111,6 +111,8 @@ export async function runSettingsCommand(command: SettingsCommand, { pool, regis
   const present = await pool.query("select to_regclass('core.module_settings') is not null and to_regclass('core.platform_settings') is not null as present");
   if (!present.rows[0].present) throw new Error('the settings tables do not exist yet: run "npm run db:migrate" first');
 
+  if (command.module === "core") throw new SettingsError('module "core" has no settings and no appearance of its own');
+
   const appearance = new AppearanceService(pool, registry);
   // The master key is only needed to read or write module settings (a secret may be among them).
   const moduleSettings = () => new SettingsService(pool, registry, { masterKey: resolveMasterKey() });

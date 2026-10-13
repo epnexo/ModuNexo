@@ -39,6 +39,8 @@ export interface SettingEntry {
   invalid: boolean;
 }
 
+export type SettingOperation = { op: "set"; key: string; value: unknown } | { op: "unset"; key: string };
+
 export interface SettingsServiceOptions {
   /** `EPNEXO_MASTER_KEY`. Secrets are encrypted under a key derived from it. */
   masterKey: string;
@@ -139,41 +141,53 @@ export class SettingsService {
 
   /** Validates and stores a value. A refused value changes nothing and leaves no audit row. */
   async set(moduleId: string, key: string, input: unknown, actor: string): Promise<void> {
-    const declaration = this.declaration(moduleId, key);
-    const checked = validateSetting(declaration, input);
-    if (!checked.ok) throw new SettingValueError(checked.message);
-
-    const isSecret = declaration.type === "secret";
-    const value = isSecret ? null : JSON.stringify(checked.value);
-    const secret = isSecret ? encryptSecret(this.options.masterKey, { moduleId, key }, String(checked.value)) : null;
-
-    const client = await this.pool.connect();
-    try {
-      await client.query("begin");
-      await client.query(
-        `insert into core.module_settings (module_id, key, value, secret, updated_by) values ($1, $2, $3::jsonb, $4, $5)
-         on conflict (module_id, key) do update set value = excluded.value, secret = excluded.secret, updated_at = now(), updated_by = excluded.updated_by`,
-        [moduleId, key, value, secret, actor],
-      );
-      await client.query("insert into core.settings_events (scope, key, action, actor) values ($1, $2, 'set', $3)", [moduleId, key, actor]);
-      await client.query("commit");
-    } catch (error) {
-      await client.query("rollback").catch(() => undefined);
-      throw error;
-    } finally {
-      client.release();
-    }
+    await this.applyMany(moduleId, [{ op: "set", key, value: input }], actor);
   }
 
   /** Removes the stored value so the default applies again. Nothing stored means nothing happens and nothing is logged. */
   async unset(moduleId: string, key: string, actor: string): Promise<void> {
-    this.declaration(moduleId, key);
+    await this.applyMany(moduleId, [{ op: "unset", key }], actor);
+  }
+
+  /**
+   * Applies several changes as one: every key is checked against its declaration and every value is validated and
+   * encrypted before the database is touched, then all of it is written in one transaction. A refused value, an
+   * undeclared key or a database error leaves every setting as it was and writes no audit row. An unset of
+   * something that was not stored is silent.
+   */
+  async applyMany(moduleId: string, operations: readonly SettingOperation[], actor: string): Promise<void> {
+    if (operations.length === 0) return;
+    const prepared = operations.map((operation) => {
+      const declaration = this.declaration(moduleId, operation.key);
+      if (operation.op === "unset") return { op: "unset" as const, key: operation.key };
+      const checked = validateSetting(declaration, operation.value);
+      if (!checked.ok) throw new SettingValueError(checked.message);
+      const isSecret = declaration.type === "secret";
+      return {
+        op: "set" as const,
+        key: operation.key,
+        value: isSecret ? null : JSON.stringify(checked.value),
+        secret: isSecret ? encryptSecret(this.options.masterKey, { moduleId, key: operation.key }, String(checked.value)) : null,
+      };
+    });
+
     const client = await this.pool.connect();
     try {
       await client.query("begin");
-      const removed = await client.query("delete from core.module_settings where module_id = $1 and key = $2", [moduleId, key]);
-      if ((removed.rowCount ?? 0) > 0) {
-        await client.query("insert into core.settings_events (scope, key, action, actor) values ($1, $2, 'unset', $3)", [moduleId, key, actor]);
+      for (const step of prepared) {
+        if (step.op === "set") {
+          await client.query(
+            `insert into core.module_settings (module_id, key, value, secret, updated_by) values ($1, $2, $3::jsonb, $4, $5)
+             on conflict (module_id, key) do update set value = excluded.value, secret = excluded.secret, updated_at = now(), updated_by = excluded.updated_by`,
+            [moduleId, step.key, step.value, step.secret, actor],
+          );
+          await client.query("insert into core.settings_events (scope, key, action, actor) values ($1, $2, 'set', $3)", [moduleId, step.key, actor]);
+        } else {
+          const removed = await client.query("delete from core.module_settings where module_id = $1 and key = $2", [moduleId, step.key]);
+          if ((removed.rowCount ?? 0) > 0) {
+            await client.query("insert into core.settings_events (scope, key, action, actor) values ($1, $2, 'unset', $3)", [moduleId, step.key, actor]);
+          }
+        }
       }
       await client.query("commit");
     } catch (error) {

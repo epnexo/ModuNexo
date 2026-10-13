@@ -234,6 +234,16 @@ describe("cli: settings, module appearance", () => {
     });
   });
 
+  it("treats the core as no module for settings and appearance", async (t) => {
+    await inScratchDatabase(t, async (_db, cli) => {
+      for (const args of [["settings", "list", "--module", "core"], ["settings", "get", "appearance.radius", "--module", "core"]]) {
+        const result = await cli(args, { masterKey: false });
+        assert.equal(result.code, 3, args.join(" "));
+        assert.match(result.stderr, /module "core"/);
+      }
+    });
+  });
+
   it("refuses to read a module's appearance for a module that is not registered", async (t) => {
     await inScratchDatabase(t, async (_db, cli) => {
       const result = await cli(["settings", "get", "appearance.accentHue", "--module", "nope"], { masterKey: false });
