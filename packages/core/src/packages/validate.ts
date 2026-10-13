@@ -134,6 +134,10 @@ export function validatePackageTree(root: string, context: PackageContext): Pack
       for (const [name, range] of Object.entries(section)) if (!wanted.has(name)) wanted.set(name, range);
     }
     for (const [name, range] of [...wanted].sort(([a], [b]) => (a < b ? -1 : 1))) {
+      if (!PACKAGE_NAME.test(name) || name.length > 214) {
+        problems.push(`dependency name ${JSON.stringify(name)} is not a valid package name`);
+        continue;
+      }
       if (typeof range !== "string" || semver.validRange(range) === null) {
         problems.push(`dependency "${name}" ${JSON.stringify(range)} is not a semver range (links, URLs, tags and workspace specifiers are not accepted)`);
         continue;
