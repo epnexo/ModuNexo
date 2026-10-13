@@ -92,7 +92,7 @@ describe("cli: modules pack", () => {
 
   it("leaves out node_modules, .git, build output, environment files and archives, which must not travel", async () => {
     const folder = moduleFolder();
-    for (const path of ["node_modules/x/index.js", ".git/config", ".next/cache.bin", ".env", ".env.production", "old.tgz", ".DS_Store", "web/.env.local"]) put(folder, path, "secret");
+    for (const path of ["node_modules/x/index.js", ".git/config", ".next/cache.bin", ".env", ".env.production", "old.tgz", ".DS_Store", "web/.env.local", ".envrc", ".env-prod", ".env_local"]) put(folder, path, "secret");
     const out = join(work, "out.tgz");
     assert.equal((await spawn(["modules", "pack", folder, "--out", out], {})).code, 0);
     const tar = await import("tar");
