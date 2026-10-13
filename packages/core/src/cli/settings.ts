@@ -9,6 +9,7 @@ import {
   platformKey,
 } from "../settings/appearance.ts";
 import { AppearanceService } from "../settings/appearance-service.ts";
+import { TRUSTED_PROXIES_KEY, setTrustedProxies } from "../auth/trusted-proxies.ts";
 import { type SettingEntry, SettingValueError, SettingsError, SettingsService } from "../settings/service.ts";
 import { UsageError } from "./errors.ts";
 import { readSecretValue } from "./password.ts";
@@ -83,16 +84,31 @@ async function moduleAppearanceRows(appearance: AppearanceService, moduleId: str
   });
 }
 
-async function platformAppearanceRows(appearance: AppearanceService): Promise<Row[]> {
+/** The stored list of trusted proxies as text, or null when none is stored (or what is stored is not a list). */
+async function storedTrustedProxies(pool: pg.Pool): Promise<string[] | null> {
+  const { rows } = await pool.query("select value from core.platform_settings where key = $1", [TRUSTED_PROXIES_KEY]);
+  const value: unknown = rows[0]?.value;
+  return Array.isArray(value) && value.every((item) => typeof item === "string") ? (value as string[]) : null;
+}
+
+async function platformAppearanceRows(appearance: AppearanceService, pool: pg.Pool): Promise<Row[]> {
   const state = await appearance.get();
   const stored = new Set((await appearance.stored()).map((row) => row.key));
-  return APPEARANCE_NAMES.map((name) => ({
+  const proxies = await storedTrustedProxies(pool);
+  const security: Row = {
+    key: TRUSTED_PROXIES_KEY,
+    type: "list",
+    value: proxies === null || proxies.length === 0 ? "(none)" : proxies.join(", "),
+    source: proxies === null ? "default" : "stored",
+    flags: "-",
+  };
+  return [...APPEARANCE_NAMES.map((name) => ({
     key: platformKey(name),
     type: appearanceType(name),
     value: String(state.platform[name]),
     source: stored.has(platformKey(name)) ? "stored" : "default",
     flags: "-",
-  }));
+  })), security];
 }
 
 function appearanceName(key: string): AppearanceName {
@@ -121,7 +137,7 @@ export async function runSettingsCommand(command: SettingsCommand, { pool, regis
 
   if (command.action === "list") {
     if (command.module === undefined) {
-      const rows = await platformAppearanceRows(appearance);
+      const rows = await platformAppearanceRows(appearance, pool);
       if (command.json) io.out(JSON.stringify(rows.map((row) => ({ key: row.key, type: row.type, effective: row.key === platformKey("accentHue") ? Number(row.value) : row.value, source: row.source })), null, 2));
       else printTable(rows, io);
       return;
@@ -137,6 +153,24 @@ export async function runSettingsCommand(command: SettingsCommand, { pool, regis
   }
 
   if (key === undefined) throw new UsageError(`settings ${command.action} needs a key`);
+
+  if (key === TRUSTED_PROXIES_KEY) {
+    if (command.module !== undefined) throw new SettingValueError(`${TRUSTED_PROXIES_KEY} is a platform setting; it does not belong to a module`);
+    if (command.action === "get") {
+      const proxies = await storedTrustedProxies(pool);
+      io.out(proxies === null || proxies.length === 0 ? "(none)" : proxies.join(", "));
+      return;
+    }
+    if (command.action === "set") {
+      if (value === undefined) throw new UsageError(`settings set ${key} needs a value`);
+      await setTrustedProxies(pool, value, ACTOR);
+      io.out(`set ${key}`);
+      return;
+    }
+    await setTrustedProxies(pool, "", ACTOR);
+    io.out(`unset ${key}`);
+    return;
+  }
 
   if (isAppearanceKey(key)) {
     const name = appearanceName(key);
