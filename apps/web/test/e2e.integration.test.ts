@@ -277,6 +277,15 @@ describe("web app: limits and failure", () => {
     await db!.query("delete from core.platform_settings");
   });
 
+  test("warns once, not once per request, when requests arrive over HTTPS without WEB_PUBLIC_URL", async () => {
+    for (let i = 0; i < 6; i++) {
+      const reply = await call("GET", "/login", { "x-forwarded-proto": "https" });
+      assert.equal(reply.status, 200, "the warning is a hint; it never changes who gets in");
+    }
+    const lines = serverOutput.split("\n").filter((line) => line.includes("WEB_PUBLIC_URL is not an https origin"));
+    assert.equal(lines.length, 1, `expected one warning line, got ${lines.length}`);
+  });
+
   test("stops within the grace period on SIGTERM and frees the port", async () => {
     assert.ok(server?.pid !== undefined);
     const exited = new Promise<number | null>((resolve) => server!.once("exit", (code) => resolve(code)));

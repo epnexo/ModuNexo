@@ -294,3 +294,64 @@ describe("the generated registry", () => {
   });
 });
 
+describe("generateRegistration: the (shell) route group", () => {
+  const LEGACY_MANIFEST = (files: string[]) => JSON.stringify({ generator: "@epnexo/core registry:generate", version: 1, packages: [], files });
+  const generatedStub = `${GENERATED_HEADER}\nexport { default } from "@fixture/alpha/web/page.tsx";\n`;
+
+  it("refuses a hand-written page outside the group that would serve the same URL, and writes nothing", () => {
+    put("src/app/alpha/page.tsx", "export default function Mine() { return null; }\n");
+    assert.throws(
+      () => generate([fixture("alpha", [page("/alpha")])]),
+      (error: unknown) => error instanceof RegistrationError && /src\/app\/alpha\/page\.tsx/.test(error.message) && /outside the \(shell\) route group/.test(error.message),
+    );
+    assert.equal(existsSync(join(root, "src/app/(shell)/alpha/page.tsx")), false);
+    assert.equal(existsSync(join(root, REGISTRY_FILE)), false);
+  });
+
+  it("refuses a hand-written route of another kind outside the group for the same URL", () => {
+    put("src/app/alpha/route.ts", "export const GET = () => new Response();\n");
+    assert.throws(() => generate([fixture("alpha", [page("/alpha")])]), /outside the \(shell\) route group/);
+  });
+
+  it("looks at dynamic segments too", () => {
+    put("src/app/beta/[id]/page.tsx", "export default function Mine() { return null; }\n");
+    assert.throws(() => generate([fixture("beta", [page("/beta/[id]")])]), /src\/app\/beta\/\[id\]\/page\.tsx/);
+  });
+
+  it("replaces a page the previous layout generated outside the group, and prunes the folders it emptied", () => {
+    put("src/app/alpha/deep/page.tsx", generatedStub);
+    put(OWNERSHIP_FILE, LEGACY_MANIFEST(["src/app/alpha/deep/page.tsx", REGISTRY_FILE]));
+    const plan = generate([fixture("alpha", [page("/alpha/deep")])]);
+    assert.deepEqual(plan.deletions, ["src/app/alpha/deep/page.tsx"]);
+    assert.equal(existsSync(join(root, "src/app/alpha")), false, "the legacy folders are removed");
+    assert.ok(existsSync(join(root, "src/app/(shell)/alpha/deep/page.tsx")));
+    assert.ok(existsSync(join(root, "src/app")), "src/app itself stays");
+    assert.deepEqual(ownership().files, ["src/app/(shell)/alpha/deep/page.tsx", REGISTRY_FILE]);
+  });
+
+  it("replaces a generated twin outside the group even when the manifest does not list it", () => {
+    put("src/app/alpha/page.tsx", generatedStub);
+    const plan = generate([fixture("alpha", [page("/alpha")])]);
+    assert.deepEqual(plan.deletions, ["src/app/alpha/page.tsx"]);
+    assert.equal(existsSync(join(root, "src/app/alpha")), false);
+  });
+
+  it("keeps a legacy folder that holds something hand-written, and never prunes the group or src/app", () => {
+    put("src/app/alpha/page.tsx", generatedStub);
+    put("src/app/alpha/notes.md", "mine\n");
+    put(OWNERSHIP_FILE, LEGACY_MANIFEST(["src/app/alpha/page.tsx", REGISTRY_FILE]));
+    generate([]);
+    assert.equal(existsSync(join(root, "src/app/alpha/page.tsx")), false);
+    assert.ok(existsSync(join(root, "src/app/alpha/notes.md")));
+    put("src/app/(shell)/layout.tsx", "export default function L() { return null; }\n");
+    generate([]);
+    assert.ok(existsSync(join(root, "src/app/(shell)/layout.tsx")));
+  });
+
+  it("does not mistake the shell's own hand-written pages inside the group for a clash", () => {
+    put("src/app/(shell)/apps/page.tsx", "export default function Apps() { return null; }\n");
+    generate([fixture("alpha", [page("/alpha")])]);
+    assert.ok(existsSync(join(root, "src/app/(shell)/apps/page.tsx")));
+    assert.ok(existsSync(join(root, "src/app/(shell)/alpha/page.tsx")));
+  });
+});

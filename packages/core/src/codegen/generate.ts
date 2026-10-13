@@ -119,6 +119,18 @@ function plan(modules: RegistrationModule[], root: string, reservedPaths: readon
         if (isGenerated(content)) stale.add(rival);
         else problems.push(`"${rival}" would clash with generated "${file.path}" (one folder cannot hold both); move or remove it`);
       }
+
+      // A route group adds no URL segment, so the same folder outside the group serves the same URL: Next.js would
+      // fail the build on two pages for one path. A page the previous layout generated there is replaced; anything
+      // hand-written is a clash, found here and not at build time.
+      const twinFolder = posix.join("src/app", posix.dirname(file.path.slice(ROUTES_DIR.length + 1)));
+      for (const name of ROUTE_FILE_NAMES) {
+        const twin = posix.join(twinFolder, name);
+        const content = readIfPresent(root, twin, problems);
+        if (content === undefined) continue;
+        if (isGenerated(content)) stale.add(twin);
+        else problems.push(`"${twin}" is outside the (shell) route group but serves the same URL as generated "${file.path}"; move or remove it`);
+      }
     }
   }
   if (problems.length > 0) throw new RegistrationError(problems);
@@ -154,9 +166,12 @@ function writeAtomically(absolute: string, content: string): void {
   renameSync(temporary, absolute);
 }
 
-/** Remove the folders a deletion emptied, from the file's folder up to, and not including, the routes folder. */
+/**
+ * Remove the folders a deletion emptied, from the file's folder up to, and not including, the folder the file's
+ * routes live under: the routes folder, or `src/app` for a file the previous layout generated outside the group.
+ */
 function pruneEmptyFolders(root: string, deleted: string): void {
-  const stop = join(root, ROUTES_DIR);
+  const stop = join(root, deleted.startsWith(`${ROUTES_DIR}/`) ? ROUTES_DIR : "src/app");
   for (let dir = dirname(join(root, deleted)); dir.startsWith(`${stop}/`); dir = dirname(dir)) {
     // A folder that is already gone (an earlier run removed it) is not a reason to stop: its parent may be empty now.
     if (existsSync(dir)) {
