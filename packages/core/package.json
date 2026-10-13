@@ -10,7 +10,8 @@
     "./auth": "./src/auth/index.ts",
     "./cli": "./src/cli/run.ts",
     "./settings": "./src/settings/index.ts",
-    "./registry": "./src/registry.ts"
+    "./registry": "./src/registry.ts",
+    "./packages": "./src/packages/index.ts"
   },
   "dependencies": {
     "@epnexo/sdk": "^0.1.0",
