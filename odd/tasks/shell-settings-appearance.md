@@ -87,10 +87,21 @@ Forecast: about 1,800 authored changed lines, above the 400-line review budget, 
   - T3: `settings/appearance.ts` (pure: validation, `resolveAppearance`, `appearanceCss`, `themeInitScript`)
     and `AppearanceService` over `core.platform_settings`. Only a number from 0 to 360 and one of three radius
     names ever reach a stylesheet, and the test pins the output to a fixed alphabet. A module's override keys
-    are `appearance.module.<id>.accentHue|radius`; purge deletes them with `starts_with`, not `LIKE`, because a
-    module id may contain `_`. The theme is the visitor's and cannot be overridden per module.
+    are `appearance.module.<id>.accentHue|radius`; purge deletes them with `starts_with` so no character of an
+    id is ever a pattern. (An earlier version of this line said a module id may contain `_`; it may not: ids are
+    kebab-case, only schema names allow `_`. See L6.) The theme is the visitor's and cannot be overridden per module.
   - T4: `epnexo settings list|get|set|unset [--module <id>]`. Platform appearance needs no master key;
     anything that touches module settings does. A secret is read from standard input, refused as an argument
     (exit 2) and as an empty value (exit 3), and is never printed. `get` of an unreadable secret exits 1.
   Existing tests that pin exact statement lists were updated for the two new purge statements. `npm test`
   551 pass, 0 fail, 0 skipped; typecheck clean.
+- **L6** (2026-10-13) Native review of `8c796f3..2ad1978` (T1 to T4; escalated to high because it stores
+  credentials and deletes module data; lenses `risk`, `resilience`, `reliability`; 24 files, 1,925 lines):
+  approved, acknowledged, burned. Two findings, both closed with tests first:
+  - Override keys were matched with `[a-z0-9][a-z0-9-]*`. The reviewer, reading my own L5 note that an id may
+    contain `_`, said such an id's override would be silently ignored. The premise was my error: the SDK's
+    `KEBAB_CASE` rule means a module id cannot contain `_` (schema names can). The real defect was a pattern
+    looser than the rule (it accepted `1a`, `a-`, `a--b`); it now uses the SDK's exact rule, and a test lists
+    the ids it rejects. L5's sentence was corrected.
+  - `settings get appearance.* --module <typo>` printed the platform value with exit 0; it now refuses an
+    unregistered module like `set`, `unset` and `list`.

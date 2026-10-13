@@ -138,6 +138,9 @@ export async function runSettingsCommand(command: SettingsCommand, { pool, regis
 
   if (isAppearanceKey(key)) {
     const name = appearanceName(key);
+    if (command.module !== undefined && registry.get(command.module) === undefined) {
+      throw new SettingsError(`module "${command.module}" is not registered`);
+    }
     if (command.action === "get") {
       const state = await appearance.get();
       const own = command.module === undefined ? undefined : state.modules[command.module]?.[name as "accentHue" | "radius"];

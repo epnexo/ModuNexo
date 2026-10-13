@@ -55,7 +55,8 @@ export function validateAppearanceValue(name: string, input: unknown): Appearanc
 }
 
 const PLATFORM_KEY = /^appearance\.(theme|accentHue|radius)$/;
-const MODULE_KEY = /^appearance\.module\.([a-z0-9][a-z0-9-]*)\.(accentHue|radius)$/;
+// A module id is kebab-case (the manifest validator's rule), so the key can be split on its dots unambiguously.
+const MODULE_KEY = /^appearance\.module\.([a-z][a-z0-9]*(?:-[a-z0-9]+)*)\.(accentHue|radius)$/;
 
 /** The `core.platform_settings` key of a platform appearance value. */
 export const platformKey = (name: AppearanceName): string => `appearance.${name}`;

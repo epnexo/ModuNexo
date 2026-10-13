@@ -24,6 +24,21 @@ describe("resolveAppearance", () => {
     assert.deepEqual(state.modules, { alpha: { accentHue: 20, radius: "sharp" }, "beta-two": { accentHue: 300 } });
   });
 
+  it("only reads override keys whose module id is kebab-case, as the manifest validator requires", () => {
+    const state = resolveAppearance(
+      rows({
+        "appearance.module.alpha-beta.accentHue": 10,
+        "appearance.module.a1.accentHue": 20,
+        "appearance.module.1a.accentHue": 30,
+        "appearance.module.a_b.accentHue": 40,
+        "appearance.module.-a.accentHue": 50,
+        "appearance.module.a-.accentHue": 60,
+        "appearance.module.a--b.accentHue": 70,
+      }),
+    );
+    assert.deepEqual(state.modules, { "alpha-beta": { accentHue: 10 }, a1: { accentHue: 20 } });
+  });
+
   it("falls back to the default for a stored value it does not accept, and ignores keys it does not know", () => {
     const state = resolveAppearance(
       rows({
