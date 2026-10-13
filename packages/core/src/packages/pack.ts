@@ -11,10 +11,10 @@ import { type PackageContext, type PackageReview, validatePackageTree } from "./
 /** The folder every archive holds, like `npm pack`. */
 const TOP_LEVEL = "package";
 
-/** Names that never travel: dependencies, history, build output, local secrets, other archives, editor litter. */
+/** Names that never travel: dependencies, history, build output, local secrets (anything starting with ".env"), other archives, editor litter. */
 function isExcluded(name: string): boolean {
   return (
-    name === "node_modules" || name === ".git" || name === ".next" || name === ".turbo" || name === ".DS_Store" || name === ".env" || name.startsWith(".env.") || name.endsWith(".tgz")
+    name === "node_modules" || name === ".git" || name === ".next" || name === ".turbo" || name === ".DS_Store" || name.startsWith(".env") || name.endsWith(".tgz")
   );
 }
 
