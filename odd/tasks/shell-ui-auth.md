@@ -292,7 +292,8 @@ feature is a chain with one slice per task.
   22 s wall clock for `npm run web:build` (about 12 s inside the end-to-end test, which also builds).
   README covers the master key, creating the administrator, the sign-in mode, building and starting the
   web app, the access rules and their limits. No file under `packages/` or `apps/` names a business
-  module (searched). Acceptance by spec: S1, S2, S3, S4, S5, S6, S7, S8, S9 met and covered by tests;
+  module (searched for `ai-usage`, `marketing`, `documents` and `crm`; the only hits are the generic
+  icon key `documents` in `nav.ts` and `icon.tsx`). Acceptance by spec: S1, S2, S3, S4, S5, S6, S7, S8, S9 met and covered by tests;
   S5's per-permission filtering is cosmetic by design (see L19). Open follow-ups, none blocking:
   - Permission enforcement on module routes belongs to the permissions work; today a module must check
     its own permissions.
