@@ -1,0 +1,70 @@
+# Settings and appearance (stage A3)
+
+Objective: store and edit, from the UI and the CLI, the settings modules declare in their manifests and the
+platform's own appearance, with secrets encrypted at rest, and apply appearance through the design tokens, for the
+whole shell and per module.
+Branch `feat/shell-settings-appearance`, stacked on `feat/shell-ui-auth` (head `8c796f3`). Delivery strategy
+`auto-chain`; chain strategy not chosen (no remote). Test runner: `npm test`, `npm run typecheck`, the end-to-end
+test in `apps/web/test`. Strict test-first.
+
+## Specs
+
+Quoted fragments are the owner's words; the rest is the plan agreed in the session, assumptions marked.
+
+- **S1 Module settings are stored by the platform.** "todo configurable desde la UI (env solo cuando sea
+  obligatorio)". Values for the settings a manifest declares (`string`, `number`, `boolean`, `select`, `secret`,
+  `path`) live in the database, not in environment variables. Only declared keys are accepted; the value is
+  validated by its declared type and refused with a message naming the key and the rule.
+- **S2 Secrets are encrypted and write-only.** Assumption (agreed earlier, reopens "secrets never in the
+  database"): a `secret` value is stored encrypted with AES-256-GCM under a key derived from
+  `EPNEXO_MASTER_KEY`, bound to its module and key. It is never returned by the UI, the CLI or the audit log;
+  they show only "set" or "not set". Module server code can read it. If the master key changes the value is
+  reported as unreadable, not as an error that stops the page.
+- **S3 Defaults and required.** The effective value is the stored one, else the declared default. A module with
+  a `required` setting that has neither is reported as incomplete in the settings screen and by the CLI. Assumption:
+  it is only reported; it does not block enabling the module in this feature.
+- **S4 Platform appearance.** "la apariencia de la UI configurable". Three platform settings: theme (`system`,
+  `light`, `dark`), accent hue (0 to 360) and corner radius (`sharp`, `default`, `round`). They change the design
+  tokens only (assumption agreed earlier: no free CSS from the UI).
+- **S5 Appearance per module.** "incluso por modulo". A module may have its own accent hue and radius; its pages
+  use them, and the rest of the shell keeps the platform's.
+- **S6 Settings screen.** `/settings` shows Appearance and one section per enabled module that declares
+  settings. Saving shows the validation message beside the field; a secret field shows "set" and can be replaced
+  or cleared, never read. Only an administrator or the local operator may change settings.
+- **S7 CLI parity.** `epnexo settings list|get|set|unset`, with `--module <id>` for module settings. A secret's
+  value is read from standard input, never from an argument, and never printed.
+- **S8 No new environment variable.** Everything above lives in the database.
+- **S9 Data follows the module lifecycle.** Uninstall with `--keep` keeps a module's settings; `--purge` deletes
+  them (and their audit rows stay, without values).
+- **S10 Documentation.** The README explains the screen, the CLI, how a manifest declares settings, and what is
+  encrypted.
+
+## Tasks
+
+- [ ] **T1** (S2, S9) Encryption of secrets and the settings tables (migration `0005_settings.sql`:
+  `core.module_settings`, `core.settings_events`); purge removes a module's settings. Route: inline. Risk: item 1
+  (data) and item 2 (secrets).
+- [ ] **T2** (S1, S3, S8) Value validation by declared type and the settings service in `@epnexo/core`: describe,
+  get, set, unset, status, audit. Route: inline. Risk: item 2.
+- [ ] **T3** (S4, S5) Appearance model: platform settings and per-module overrides, and the pure functions that
+  turn them into token values. Route: inline.
+- [ ] **T4** (S7) CLI `settings` commands. Route: inline.
+- [ ] **T5** (S4, S5, S6) Web: apply appearance, the settings screen and its server actions. Route: inline. Risk:
+  item 2 (a write path behind the gate).
+- [ ] **T6** (S10) End-to-end test, README, independent verifier over the whole feature, native reviews. Route:
+  inline plus verifier.
+
+Forecast: about 1,800 authored changed lines, above the 400-line review budget, so one slice per task.
+
+## Log
+
+- **L1** (2026-10-13, owner, verbatim): "listo ya los cree continua". Context: the reply to the question
+  "¿Arranco con A3?" (ajustes y apariencia) asked at the close of A2; the standing instruction to continue tasks
+  and reviews automatically and stop only for a big decision still holds.
+- **L2** Original request that defines this feature (from the project's first turn, summarised): everything
+  configurable from the UI, environment only when mandatory; UI appearance configurable, including per module.
+  Earlier plan decisions kept: theming by tokens with no free CSS; secrets encrypted in the database.
+- **L3** (2026-10-13) Exploration. The manifest already declares `settings` (`key`, `label`, `type`, `default`,
+  `required`, `options`, `description`); nothing stores them. `core.platform_settings` (key, jsonb value,
+  `updated_by`) exists since A2 and is reused for the platform appearance keys. `deriveSecret(masterKey,
+  purpose)` exists (HKDF-SHA256) and is the way to get the settings encryption key.
