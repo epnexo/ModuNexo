@@ -41,7 +41,7 @@ Quoted fragments are the owner's words; the rest is the plan agreed in the sessi
 
 ## Tasks
 
-- [ ] **T1** (S2, S9) Encryption of secrets and the settings tables (migration `0005_settings.sql`:
+- [x] **T1** (S2, S9) Encryption of secrets and the settings tables (migration `0005_settings.sql`:
   `core.module_settings`, `core.settings_events`); purge removes a module's settings. Route: inline. Risk: item 1
   (data) and item 2 (secrets).
 - [ ] **T2** (S1, S3, S8) Value validation by declared type and the settings service in `@epnexo/core`: describe,
@@ -68,3 +68,11 @@ Forecast: about 1,800 authored changed lines, above the 400-line review budget, 
   `required`, `options`, `description`); nothing stores them. `core.platform_settings` (key, jsonb value,
   `updated_by`) exists since A2 and is reused for the platform appearance keys. `deriveSecret(masterKey,
   purpose)` exists (HKDF-SHA256) and is the way to get the settings encryption key.
+- **L4** (2026-10-13) T1 done. `settings/crypto.ts`: AES-256-GCM, key from `deriveSecret(master, "settings")`,
+  token `v1.<iv>.<tag>.<ciphertext>`, module and key as associated data, so a token moved to another slot, a
+  changed token or another master key is `SecretUnreadableError` (message names the slot, never a value or the
+  key). Migration `0005_settings.sql`: `core.module_settings` (one of value or secret, enforced by a check) and
+  `core.settings_events` (no values; not tied to the settings rows so it outlives a purge). Purge deletes a
+  module's settings when the table exists. RED first (module missing, tables missing), then GREEN: 6 crypto
+  tests, 5 table tests. Three existing tests that pinned exact lists were updated on purpose: the purge
+  statement sequence and the core's tables and migrations. `npm test` 494 pass, 0 fail, 0 skipped.
