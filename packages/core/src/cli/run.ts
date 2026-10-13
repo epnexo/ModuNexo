@@ -12,6 +12,8 @@ import { createPool, resolveDatabaseUrl } from "../pool.ts";
 import { Registry } from "../registry.ts";
 import { MigrationRunError, migrate, pendingMigrations } from "../runner.ts";
 import { SettingValueError, SettingsError } from "../settings/service.ts";
+import { DATA_DIR } from "../packages/paths.ts";
+import { runAddCommand, runPackCommand } from "./packages.ts";
 import { readPassword } from "./password.ts";
 import { runSettingsCommand } from "./settings.ts";
 
@@ -38,6 +40,10 @@ commands:
   modules upgrade <id>             apply the package's newer version
   modules uninstall <id> --keep    leave the module's schema and migration history
   modules uninstall <id> --purge   drop the schema and the migration history
+  modules pack <folder> [--out <file>]
+                                   build the archive of a module folder (writes manifest.json from manifest.ts)
+  modules add <archive> [--sha256 <hex>] [--data-dir <path>] [--json]
+                                   bring a package in and review it; nothing is installed or run
   db:migrate                       apply the core migrations; report installed modules that need "modules upgrade"
   registry:generate [--dry-run] [--out <dir>]
                                    write the web app registration for the enabled modules
@@ -57,6 +63,7 @@ commands:
 
 options for every command:
   --modules-dir <path>             where module packages are unpacked (default: modules/ at the repository root)
+  --data-dir <path>                where received packages are kept (modules add; default: var/ at the repository root)
   --help                           print this text
 
 environment: DATABASE_URL (and TEST_DATABASE_URL for the tests); admin create and module settings also need ${MASTER_KEY_ENV}
@@ -66,6 +73,8 @@ import { Refusal, UsageError } from "./errors.ts";
 
 const OPTIONS = {
   "modules-dir": { type: "string" },
+  sha256: { type: "string" },
+  "data-dir": { type: "string" },
   json: { type: "boolean" },
   keep: { type: "boolean" },
   purge: { type: "boolean" },
@@ -85,6 +94,8 @@ const COMMAND_OPTIONS: Record<string, readonly string[]> = {
   "modules disable": [],
   "modules upgrade": [],
   "modules uninstall": ["keep", "purge"],
+  "modules pack": ["out"],
+  "modules add": ["json", "sha256", "data-dir"],
   "db:migrate": [],
   "registry:generate": ["dry-run", "out"],
   "admin create": ["email", "name"],
@@ -123,7 +134,7 @@ function parse(argv: string[]): Parsed | "help" {
   let ids: string[];
   if (first === "modules") {
     if (second === undefined) throw new UsageError("no modules command given");
-    if (second !== "list" && !ACTION_COMMANDS.includes(second as ActionCommand)) throw new UsageError(`unknown modules command "${second}"`);
+    if (second !== "list" && second !== "pack" && second !== "add" && !ACTION_COMMANDS.includes(second as ActionCommand)) throw new UsageError(`unknown modules command "${second}"`);
     command = `modules ${second}`;
     ids = rest;
   } else if (first === "settings") {
@@ -163,8 +174,12 @@ function parse(argv: string[]): Parsed | "help" {
   }
   const takesId = command !== "modules list" && command.startsWith("modules ");
   if (!command.startsWith("settings ")) {
-    if (takesId && ids.length === 0) throw new UsageError(`${command} needs a module id`);
-    if (takesId ? ids.length !== 1 : ids.length > 0) throw new UsageError(takesId ? `${command} takes exactly one module id` : `${command} takes no arguments`);
+    const noun = command === "modules pack" ? "a folder" : command === "modules add" ? "an archive" : "a module id";
+    if (takesId && ids.length === 0) throw new UsageError(`${command} needs ${noun}`);
+    if (takesId ? ids.length !== 1 : ids.length > 0) throw new UsageError(takesId ? `${command} takes exactly one ${noun.slice(2)}` : `${command} takes no arguments`);
+  }
+  if (typeof parsed.values.sha256 === "string" && !/^[0-9a-fA-F]{64}$/.test(parsed.values.sha256)) {
+    throw new UsageError("--sha256 takes 64 hexadecimal characters");
   }
   if (parsed.values.keep && parsed.values.purge) throw new UsageError("uninstall takes --keep or --purge, not both");
   if (command === "admin create") {
@@ -381,6 +396,31 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
           json: parsed.values.json === true,
         },
         { pool, registry: context.registry, io },
+      );
+      return EXIT_OK;
+    }
+    if (parsed.command === "modules pack" || parsed.command === "modules add") {
+      let packagesModulesDir: string;
+      try {
+        packagesModulesDir = resolveModulesDir(typeof parsed.values["modules-dir"] === "string" ? parsed.values["modules-dir"] : undefined);
+      } catch (error) {
+        throw new UsageError(error instanceof Error ? error.message : String(error));
+      }
+      if (parsed.command === "modules pack") {
+        await runPackCommand({ folder: parsed.ids[0]!, ...(typeof parsed.values.out === "string" ? { out: parsed.values.out } : {}), modulesDir: packagesModulesDir }, io);
+        return EXIT_OK;
+      }
+      pool = createPool(resolveDatabaseUrl(), { connectionTimeoutMillis: 5000 });
+      await runAddCommand(
+        {
+          archive: parsed.ids[0]!,
+          ...(typeof parsed.values.sha256 === "string" ? { sha256: parsed.values.sha256 } : {}),
+          json: parsed.values.json === true,
+          dataDir: typeof parsed.values["data-dir"] === "string" ? parsed.values["data-dir"] : DATA_DIR,
+          modulesDir: packagesModulesDir,
+        },
+        pool,
+        io,
       );
       return EXIT_OK;
     }
