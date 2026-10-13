@@ -1,11 +1,11 @@
 import { type Dirent, existsSync, readdirSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { type ModuleManifest, ManifestError, validateManifest } from "@epnexo/sdk";
 import { compareIds } from "./registry.ts";
 
 /** The repository's `modules/` directory, where installed module packages are unpacked. */
-export const MODULES_DIR = fileURLToPath(new URL("../../../modules", import.meta.url));
+export const MODULES_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "../../../modules");
 
 /**
  * The modules directory to use for a `--modules-dir` value. No value means the repository's `modules/`, which

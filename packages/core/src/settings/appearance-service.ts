@@ -15,6 +15,12 @@ import {
 } from "./appearance.ts";
 import { SettingValueError, SettingsError } from "./service.ts";
 
+/** The stored appearance, for a reader that only needs to render it (no registry, no writes). */
+export async function readAppearance(pool: pg.Pool): Promise<AppearanceState> {
+  const { rows } = await pool.query("select key, value from core.platform_settings where starts_with(key, 'appearance.')");
+  return resolveAppearance(rows as { key: string; value: unknown }[]);
+}
+
 /** Reads and writes the platform appearance and the per-module overrides, in `core.platform_settings`. */
 export class AppearanceService {
   constructor(
@@ -29,7 +35,7 @@ export class AppearanceService {
   }
 
   async get(): Promise<AppearanceState> {
-    return resolveAppearance(await this.stored());
+    return readAppearance(this.pool);
   }
 
   /** Removes one stored platform value so its default applies again. Nothing stored means nothing is logged. */

@@ -1,11 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, rmdirSync, statSync, writeFileSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, posix } from "node:path";
+import { basename, dirname, isAbsolute, join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { compareIds } from "../registry.ts";
 import { GENERATED_HEADER, ROUTES_DIR, RegistrationError, type RegistrationModule, type RenderedFile, renderRegistration } from "./render.ts";
 
 /** The web app the registration is generated for; it is built by a later feature, so tests inject their own root. */
-export const DEFAULT_WEB_ROOT = fileURLToPath(new URL("../../../../apps/web", import.meta.url));
+export const DEFAULT_WEB_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../apps/web");
 
 /** The generator's record of what it wrote, relative to the web app root. */
 export const OWNERSHIP_FILE = "src/generated/.manifest.json";

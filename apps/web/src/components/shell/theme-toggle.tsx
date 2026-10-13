@@ -4,7 +4,7 @@ import { Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 
 type Theme = "light" | "dark";
-export const THEME_STORAGE_KEY = "epnexo.theme";
+import { THEME_STORAGE_KEY } from "../../lib/theme";
 
 const read = (): Theme => (document.documentElement.dataset.theme === "dark" ? "dark" : "light");
 
