@@ -198,3 +198,30 @@ describe("intakePackage: nothing in the package runs", () => {
     assert.equal((await pool!.query("select count(*)::int as n from core.modules")).rows[0].n, before);
   });
 });
+
+describe("intakePackage: the same archive, again and at the same time", () => {
+  test("concurrent intakes of one new archive all succeed and leave one good staged tree", async () => {
+    const file = archive({ id: `${MARKER_ID_PREFIX}-race` });
+    const results = await Promise.all([1, 2, 3, 4, 5].map(() => intake(file, { actor: "intake-test-race" })));
+    for (const result of results) assert.equal(result.ok, true, JSON.stringify(result));
+    const hash = sha(file);
+    assert.ok(existsSync(join(dataDir, "staging", hash, "manifest.json")));
+    assert.ok(existsSync(join(dataDir, "packages", `${hash}.tgz`)));
+    assert.equal((await rows(hash)).filter((row) => row.status === "refused").length, 0);
+  });
+
+  test("an already staged package that no longer passes is refused and its files are removed", async () => {
+    const file = archive({ id: `${MARKER_ID_PREFIX}-stale`, packageJson: { dependencies: { react: "^19.0.0" } } });
+    const first = await intake(file);
+    assert.equal(first.ok, true, JSON.stringify(first));
+    const hash = sha(file);
+    assert.ok(existsSync(join(dataDir, "staging", hash)));
+
+    const later: PackageContext = { ...context, installedVersion: () => null };
+    const second = await intakePackage({ pool: pool!, archive: file, dataDir, context: later, actor: "intake-test" });
+    assert.equal(second.ok, false);
+    assert.equal(existsSync(join(dataDir, "staging", hash)), false, "the staged tree is gone");
+    assert.equal(existsSync(join(dataDir, "packages", `${hash}.tgz`)), false, "and so is the archive");
+    assert.deepEqual((await rows(hash)).map((row) => row.status), ["staged", "refused"]);
+  });
+});
