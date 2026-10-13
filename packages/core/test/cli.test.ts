@@ -104,7 +104,7 @@ describe("cli: with no modules", () => {
       const generated = await cli("registry:generate", "--out", outDir);
       assert.equal(generated.code, 0, generated.stderr);
       assert.match(readFileSync(join(outDir, "src/generated/modules.ts"), "utf8"), /export const modules: readonly ModuleManifest\[\] = \[\];/);
-      assert.equal(existsSync(join(outDir, "src/app")), false);
+      assert.equal(existsSync(join(outDir, "src/app/(shell)")), false);
     });
   });
 
@@ -156,8 +156,8 @@ describe("cli: the module journey", () => {
       const generated = await cli("registry:generate", "--out", outDir);
       assert.equal(generated.code, 0, generated.stderr);
       assert.match(readFileSync(join(outDir, "src/generated/modules.ts"), "utf8"), /@fixture\/alpha\/manifest/);
-      assert.match(readFileSync(join(outDir, "src/app/alpha/page.tsx"), "utf8"), /export const dynamic = "force-dynamic";/);
-      assert.ok(existsSync(join(outDir, "src/app/alpha/export/route.ts")));
+      assert.match(readFileSync(join(outDir, "src/app/(shell)/alpha/page.tsx"), "utf8"), /export const dynamic = "force-dynamic";/);
+      assert.ok(existsSync(join(outDir, "src/app/(shell)/alpha/export/route.ts")));
 
       // upgrade
       writeModule("alpha", { version: "1.1.0", migrations: { "0001_create.sql": "create table items (name text); insert into items values ('kept');", "0002_more.sql": "alter table items add column note text;" } });
@@ -206,7 +206,7 @@ describe("cli: the module journey", () => {
       // regenerating after the modules are gone removes their routes
       const afterwards = await cli("registry:generate", "--out", outDir);
       assert.equal(afterwards.code, 0, afterwards.stderr);
-      assert.equal(existsSync(join(outDir, "src/app/alpha")), false);
+      assert.equal(existsSync(join(outDir, "src/app/(shell)/alpha")), false);
     });
   });
 

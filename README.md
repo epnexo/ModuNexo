@@ -221,8 +221,8 @@ into the files the web app needs, under `apps/web` unless `--out` says otherwise
 | File | Content |
 | --- | --- |
 | `src/generated/modules.ts` | static imports of each enabled module's manifest; `modules` in dependency order, the flattened `navigation` (ungrouped entries first, then groups by name, each by `order`, then label; carries `permission`) and `packageNames` for the bundler (`transpilePackages`). With no modules the three are empty arrays. |
-| `src/app/<path>/page.tsx` | for `kind: "page"`: `export { default, metadata } from "<package>/<entry>"`, plus a literal `export const dynamic` when declared |
-| `src/app/<path>/route.ts` | for `kind: "route"`: `export { GET, ... } from "<package>/<entry>"` for the declared methods |
+| `src/app/(shell)/<path>/page.tsx` | for `kind: "page"`: `export { default, metadata } from "<package>/<entry>"`, plus a literal `export const dynamic` when declared |
+| `src/app/(shell)/<path>/route.ts` | for `kind: "route"`: `export { GET, ... } from "<package>/<entry>"` for the declared methods |
 | `src/generated/.manifest.json` | the files this generator owns and the package names |
 
 A module is imported as `<package name>/<entry without "./" and extension>`, its manifest as
@@ -291,6 +291,21 @@ serve the local network. `WEB_PUBLIC_URL` is optional and describes the proxy or
 `https://epnexo.example.com`: left unset the app serves plain HTTP on the local network and its session cookie works
 there; set to an `https` origin the cookie becomes `Secure`. It must be a bare origin, with no path. `web:start` and `web:dev` refuse to start without `EPNEXO_MASTER_KEY` and say so in one
 line. Installing, disabling or uninstalling a module changes the registry: run `web:build` and restart.
+
+### The shell
+
+Every page sits in the `(shell)` route group, whose layout draws the sidebar and the top bar. Generated module
+routes are written into that same group (`src/app/(shell)/<path>`), so a module's pages get the shell without
+knowing about it; only `/login` stands outside. The sidebar is the shell's own entries (Home, Apps, Settings) and
+then the enabled modules' `nav` entries, grouped and ordered as their manifests declare. An entry that names a
+`permission` is shown to the local operator and to an administrator only. That hides the link; it is not an
+access rule, so a module must still check the permission in its own pages and routes.
+
+A manifest `nav.icon` names one of: `app`, `home`, `apps`, `settings`, `dashboard`, `documents`, `chart`,
+`megaphone`, `users`, `database`, `mail`, `calendar`, `folder`, `shield`, `bolt`. Anything else gets the generic
+icon. The theme (light or dark) follows the system preference until it is switched from the top bar; the choice is
+kept in the browser. Colors, radius, fonts and motion durations are the variables in
+`apps/web/src/styles/tokens.css`, and nothing else in the app hard-codes one.
 
 ### Who gets in
 

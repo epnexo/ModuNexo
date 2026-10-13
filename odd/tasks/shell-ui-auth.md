@@ -86,7 +86,7 @@ and is marked as an assumption where the owner did not state it.
   client sent (the rate limiter keys only on it, see L9); how a Next.js route handler can read the
   connection address must be proven by a request against the built app, and a custom server wrapper
   is the fallback. Route: inline. Risk: item 2, independent verifier after T3 covering T6 and T3.
-- [ ] **T4** (S5, S6) Shell layout: sidebar from the registry, top bar, home screen, Apps
+- [x] **T4** (S5, S6) Shell layout: sidebar from the registry, top bar, home screen, Apps
   and Settings placeholders. Route: inline.
 - [ ] **T5** (S7, S8) End-to-end smoke of the built app (sign-in, guard, sign-out), build
   time on the Pi, README. Route: inline.
@@ -258,3 +258,19 @@ feature is a chain with one slice per task.
     entry calls `process.exit(0)` afterwards, and `platform()` throws once closed (3 tests; the end to
     end shutdown test still stops in under 9 s).
   `npm test` 465 pass, 0 fail, 0 skipped; typecheck clean.
+- **L18** (2026-10-13) T4 done. The generator now writes module routes into the route group
+  `src/app/(shell)` (one constant, `ROUTES_DIR`; 59 codegen tests re-pinned, RED first) so a module's pages
+  get the shell layout without the module knowing; the alternative of a client wrapper choosing the chrome
+  by pathname was rejected because the root layout does not re-run on navigation and `/_not-found` is
+  prerendered at build. Built: `(shell)/layout.tsx` (sidebar from the generated registry, top bar with the
+  user or the local-operator badge, sign-out, theme toggle, mobile drawer with `motion` that honours
+  `prefers-reduced-motion`), Home, Apps (lists the build's modules, points at the CLI) and Settings
+  placeholders, theme chosen before first paint from the saved choice or the system. Pure parts tested
+  first (10 nav tests); the end-to-end test now also asserts the sidebar entries, the zero-modules text,
+  `/apps` and `/settings`, the operator badge, and that `/login` has no chrome. Checked visually with
+  headless Chromium against the production build, light and dark at 1280 px and at 500 px: no overflow,
+  active item and badge legible in both themes. Caveats recorded: `permission` hides a link, it does not
+  protect a route (README says so); with a real module installed the sidebar and generated routes are
+  proven by the codegen tests and by Stage B, not by an end-to-end fixture here; the `impeccable`
+  PRODUCT.md and DESIGN.md still do not exist. Two scripts of mine killed their own shell with
+  `pkill -f` and left a scratch database once; both were cleaned (0 scratch databases, no listener).
