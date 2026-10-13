@@ -36,3 +36,15 @@ export async function readPassword(): Promise<string> {
   if (password !== repeated) throw new AdminRefusedError("the two passwords do not match");
   return password;
 }
+
+/**
+ * A secret value for a setting, from standard input: the first line of a pipe or file, or on a terminal a hidden
+ * prompt asked twice. Unlike a password, spaces are kept and only the line ending is dropped.
+ */
+export async function readSecretValue(label: string): Promise<string> {
+  if (!process.stdin.isTTY) return readFirstLine(process.stdin);
+  const first = await promptHidden(`${label}: `);
+  const second = await promptHidden(`Repeat ${label.toLowerCase()}: `);
+  if (first !== second) throw new AdminRefusedError("the two values do not match");
+  return first;
+}

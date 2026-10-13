@@ -44,11 +44,11 @@ Quoted fragments are the owner's words; the rest is the plan agreed in the sessi
 - [x] **T1** (S2, S9) Encryption of secrets and the settings tables (migration `0005_settings.sql`:
   `core.module_settings`, `core.settings_events`); purge removes a module's settings. Route: inline. Risk: item 1
   (data) and item 2 (secrets).
-- [ ] **T2** (S1, S3, S8) Value validation by declared type and the settings service in `@epnexo/core`: describe,
+- [x] **T2** (S1, S3, S8) Value validation by declared type and the settings service in `@epnexo/core`: describe,
   get, set, unset, status, audit. Route: inline. Risk: item 2.
-- [ ] **T3** (S4, S5) Appearance model: platform settings and per-module overrides, and the pure functions that
+- [x] **T3** (S4, S5) Appearance model: platform settings and per-module overrides, and the pure functions that
   turn them into token values. Route: inline.
-- [ ] **T4** (S7) CLI `settings` commands. Route: inline.
+- [x] **T4** (S7) CLI `settings` commands. Route: inline.
 - [ ] **T5** (S4, S5, S6) Web: apply appearance, the settings screen and its server actions. Route: inline. Risk:
   item 2 (a write path behind the gate).
 - [ ] **T6** (S10) End-to-end test, README, independent verifier over the whole feature, native reviews. Route:
@@ -76,3 +76,21 @@ Forecast: about 1,800 authored changed lines, above the 400-line review budget, 
   module's settings when the table exists. RED first (module missing, tables missing), then GREEN: 6 crypto
   tests, 5 table tests. Three existing tests that pinned exact lists were updated on purpose: the purge
   statement sequence and the core's tables and migrations. `npm test` 494 pass, 0 fail, 0 skipped.
+- **L5** (2026-10-13) T2, T3 and T4 done, tests first (RED observed for each file: module missing, then
+  GREEN).
+  - T2: `settings/validate.ts` (a refusal names the key and the rule and never echoes the input: for a secret
+    the input is the secret; numbers accept decimal text only, so `1e3`, `0x10` and `Infinity` are refused; a
+    path must be absolute without `..` segments) and `SettingsService` (`describe`, `get`, `set`, `unset`,
+    `incomplete`). A stored value the declaration no longer accepts falls back to the default and is flagged
+    `invalid`; a secret under another master key is flagged `unreadable` in the listing and throws only from
+    `get`, so one stale secret cannot take down the screen. A refused change leaves no audit row.
+  - T3: `settings/appearance.ts` (pure: validation, `resolveAppearance`, `appearanceCss`, `themeInitScript`)
+    and `AppearanceService` over `core.platform_settings`. Only a number from 0 to 360 and one of three radius
+    names ever reach a stylesheet, and the test pins the output to a fixed alphabet. A module's override keys
+    are `appearance.module.<id>.accentHue|radius`; purge deletes them with `starts_with`, not `LIKE`, because a
+    module id may contain `_`. The theme is the visitor's and cannot be overridden per module.
+  - T4: `epnexo settings list|get|set|unset [--module <id>]`. Platform appearance needs no master key;
+    anything that touches module settings does. A secret is read from standard input, refused as an argument
+    (exit 2) and as an empty value (exit 3), and is never printed. `get` of an unreadable secret exits 1.
+  Existing tests that pin exact statement lists were updated for the two new purge statements. `npm test`
+  551 pass, 0 fail, 0 skipped; typecheck clean.
