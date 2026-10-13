@@ -287,7 +287,9 @@ npm run web:dev       # development server
 ```
 
 `WEB_HOST` (default `127.0.0.1`) and `WEB_PORT` (default `3000`) choose where it listens; use `WEB_HOST=0.0.0.0` to
-serve the local network. `web:start` and `web:dev` refuse to start without `EPNEXO_MASTER_KEY` and say so in one
+serve the local network. `WEB_PUBLIC_URL` is optional and describes the proxy or tunnel in front of the app, such as
+`https://epnexo.example.com`: left unset the app serves plain HTTP on the local network and its session cookie works
+there; set to an `https` origin the cookie becomes `Secure`. It must be a bare origin, with no path. `web:start` and `web:dev` refuse to start without `EPNEXO_MASTER_KEY` and say so in one
 line. Installing, disabling or uninstalling a module changes the registry: run `web:build` and restart.
 
 ### Who gets in
@@ -301,9 +303,17 @@ session, the path, and whether the request is local) and asks `decideAccess` in 
 | required | session | served; `/login` redirects to `/` |
 | disabled | local request | served; `/login` redirects to `/` |
 | disabled | any non-local address | `403 Forbidden`, whatever the path |
+| disabled | `Host` is not a local name | `403 Forbidden`, whatever the path |
 
-A failure while gathering those facts is a `503`, never an allow. Failed sign-ins are limited to 5 per minute per
+A failure while gathering those facts is a `503`, never an allow. A session whose user is banned stops working at
+once, even when the ban was written straight to the database. Failed sign-ins are limited to 5 per minute per
 connection address.
+
+While sign-in is disabled the `Host` header must be a local IP literal, `localhost`, a single-label name
+(`raspberrypi`) or a name under `.local`, `.lan`, `.home.arpa`, `.internal` or `.localdomain`. That is what stops
+DNS rebinding (a page on a public domain made to resolve to a local address) and a public reverse proxy that
+forwards no client address. The refusal body is always the bare `Forbidden`; the server log says why, once a minute
+per reason, and how to ask for a sign-in again.
 
 The web server is the platform's own thin Node server (`apps/web/scripts/serve.ts`) in front of Next.js. Next.js
 fills `x-forwarded-for` from the socket only when the client did not send one, so a route could not tell a real
@@ -313,9 +323,14 @@ proxy reports (`x-forwarded-for`, `forwarded`, `x-real-ip`, `cf-connecting-ip`, 
 one public address anywhere is enough to refuse it. A request that was not stamped has no trusted address and is
 never local.
 
-Behind a reverse proxy on the same machine, the connection address is the proxy's (loopback), so the addresses the
-proxy forwards are what keeps a public client out while sign-in is disabled. Leave sign-in required for anything
-exposed to the internet.
+Behind a reverse proxy on the same machine the connection address is the proxy's (loopback). Two things keep a public
+client out while sign-in is disabled: the addresses the proxy forwards, and the public name it serves under, which
+the `Host` rule refuses. Two limits remain, so leave sign-in required for anything exposed to the internet:
+
+- The sign-in limit is keyed on the connection address, so behind such a proxy all visitors share one bucket and
+  someone can lock the administrator out for a minute at a time. Telling the app which proxies to trust is part of
+  the settings feature.
+- A proxy that rewrites `Host` to a local name and forwards no client address looks local.
 
 A browser request is trusted when its `Origin` names the `Host` it was sent to, so the app works under whatever
 address or name it is reached by; forwarding headers are never consulted for that check.

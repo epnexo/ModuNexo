@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { isLocalAddress, requestIsLocal, splitForwarded } from "../src/auth/local-address.ts";
+import { isLocalAddress, isLocalHostName, requestIsLocal, splitForwarded } from "../src/auth/local-address.ts";
 
 describe("isLocalAddress", () => {
   it("accepts loopback, private and link-local IPv4", () => {
@@ -74,5 +74,31 @@ describe("splitForwarded", () => {
     assert.deepEqual(splitForwarded(undefined), []);
     assert.deepEqual(splitForwarded(""), []);
     assert.deepEqual(splitForwarded("10.0.0.1,, "), ["10.0.0.1"]);
+  });
+});
+
+describe("isLocalHostName", () => {
+  it("accepts local IP literals, with or without a port", () => {
+    for (const host of ["127.0.0.1", "127.0.0.1:3000", "192.168.1.20:4000", "10.0.0.5", "[::1]:3000", "[fe80::1]", "[fd12:3456::1]:8080"]) {
+      assert.equal(isLocalHostName(host), true, host);
+    }
+  });
+
+  it("accepts localhost, single-label names and the private-use suffixes", () => {
+    for (const host of ["localhost", "localhost:3000", "app.localhost", "raspberrypi", "raspberrypi:3000", "epnexo.local", "pi.lan:3000", "box.home.arpa", "svc.internal", "nas.localdomain", "EPNEXO.LOCAL"]) {
+      assert.equal(isLocalHostName(host), true, host);
+    }
+  });
+
+  it("refuses a public name: a DNS rebinding page or a public proxy sends one", () => {
+    for (const host of ["evil.example", "evil.example:3000", "epnexo.dev", "epnexo.example.com", "a.b.c.com", "local.evil.example", "lan.com", "notlocalhost.com", "localhost.evil.example"]) {
+      assert.equal(isLocalHostName(host), false, host);
+    }
+  });
+
+  it("refuses a public IP literal, and anything that is not a host name", () => {
+    for (const host of ["8.8.8.8", "8.8.8.8:3000", "[2001:db8::1]:443", "", "  ", "not a host", "evil.example/path", "user@evil.example", "10.0.0.1.5", "http://localhost"]) {
+      assert.equal(isLocalHostName(host), false, JSON.stringify(host));
+    }
   });
 });

@@ -49,6 +49,12 @@ export interface AuthConfig {
   /** Extra origins allowed to call the auth endpoints, besides `baseURL`. */
   trustedOrigins?: string[];
   /**
+   * Whether session cookies carry the Secure attribute. A browser refuses to keep a Secure cookie that came over
+   * plain HTTP from anything but localhost, so the default is false: the shell must sign in on a local network
+   * address. Set it true when the app is served over HTTPS.
+   */
+  secureCookies?: boolean;
+  /**
    * The library checks the database schema in the background when it is created, and a long-running server wants
    * that: authentication requests fail loudly on a mismatch. A short command that exits right after creating a
    * user does not, because the check would race the pool being closed. Default: the library's own (on).
@@ -87,6 +93,7 @@ export function createAuth(config: AuthConfig) {
     },
     advanced: {
       ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] },
+      useSecureCookies: config.secureCookies ?? false,
       ...(config.validateSchema === undefined ? {} : { database: { validateSchema: config.validateSchema } }),
     },
     telemetry: { enabled: false },

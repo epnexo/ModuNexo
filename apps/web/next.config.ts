@@ -15,6 +15,8 @@ const config: NextConfig = {
   outputFileTracingRoot: repositoryRoot,
   turbopack: { root: repositoryRoot },
   poweredByHeader: false,
+  // The shell serves no images through the optimizer, and its endpoint sits outside the access gate.
+  images: { unoptimized: true },
 };
 
 export default config;

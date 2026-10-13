@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { type AccessInput, decideAccess, isPublicPath } from "../src/server/access.ts";
 
-const input = (overrides: Partial<AccessInput>): AccessInput => ({ pathname: "/", mode: "required", hasSession: false, local: true, ...overrides });
+const input = (overrides: Partial<AccessInput>): AccessInput => ({ pathname: "/", mode: "required", hasSession: false, local: true, hostOk: true, ...overrides });
 
 describe("isPublicPath", () => {
   it("is true for the sign-in page and the auth endpoints only", () => {
@@ -61,6 +61,16 @@ describe("decideAccess: sign-in disabled", () => {
 
   it("refuses a non-local request even when it carries a session", () => {
     assert.deepEqual(decideAccess(input({ mode: "disabled", local: false, hasSession: true })), { action: "deny", status: 403, message: "Forbidden" });
+  });
+
+  it("refuses a local connection that names a public host: DNS rebinding, or a public proxy without forwarding headers", () => {
+    for (const pathname of ["/", "/login", "/api/auth/get-session"]) {
+      assert.deepEqual(decideAccess(input({ pathname, mode: "disabled", hostOk: false })), { action: "deny", status: 403, message: "Forbidden" }, pathname);
+    }
+  });
+
+  it("does not look at the host while sign-in is required: the session cookie belongs to the host that set it", () => {
+    assert.deepEqual(decideAccess(input({ pathname: "/", mode: "required", hasSession: true, hostOk: false })), { action: "allow" });
   });
 
   it("does not reveal the configuration in the refusal", () => {

@@ -63,6 +63,12 @@ describe("planLaunch", () => {
     }
   });
 
+  it("start and dev refuse a malformed WEB_PUBLIC_URL before anything listens", () => {
+    for (const command of ["start", "dev"]) {
+      assert.throws(() => planLaunch(command, { EPNEXO_MASTER_KEY: KEY, WEB_PUBLIC_URL: "not a url" }), (error: unknown) => error instanceof LaunchError && error.message.includes("WEB_PUBLIC_URL"), command);
+    }
+  });
+
   it("refuses an unknown or missing command", () => {
     assert.throws(() => planLaunch("deploy", { EPNEXO_MASTER_KEY: KEY }), /unknown command "deploy"/);
     assert.throws(() => planLaunch(undefined, { EPNEXO_MASTER_KEY: KEY }), /dev, build or start/);
