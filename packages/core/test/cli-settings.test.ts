@@ -234,6 +234,14 @@ describe("cli: settings, module appearance", () => {
     });
   });
 
+  it("refuses to read a module's appearance for a module that is not registered", async (t) => {
+    await inScratchDatabase(t, async (_db, cli) => {
+      const result = await cli(["settings", "get", "appearance.accentHue", "--module", "nope"], { masterKey: false });
+      assert.equal(result.code, 3);
+      assert.match(result.stderr, /module "nope" is not registered/);
+    });
+  });
+
   it("does not let a module override the theme", async (t) => {
     await inScratchDatabase(t, async (_db, cli) => {
       const result = await cli(["settings", "set", "appearance.theme", "dark", "--module", "alpha"]);
