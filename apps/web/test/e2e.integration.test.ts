@@ -531,6 +531,11 @@ describe("web app: with a module installed", () => {
     assert.match(html(page), /\[data-module="e2e-fixture"\]\{[^}]*--accent:oklch\(0\.49 0\.15 20\)/);
     assert.match(html(page), /\[data-module="e2e-fixture"\]\{--radius:0\.25rem/);
 
+    // Text that is not a number is refused and must not clear the override that is stored.
+    const garbage = await put(`/api/settings/modules/${FIXTURE_ID}/appearance`, { accentHue: "abc" }, { cookie });
+    assert.equal(garbage.status, 422);
+    assert.match(html(await call("GET", "/e2e-fixture", { cookie })), /\[data-module="e2e-fixture"\]\{[^}]*--accent:oklch\(0\.49 0\.15 20\)/);
+
     const cleared = await put(`/api/settings/modules/${FIXTURE_ID}/appearance`, { accentHue: null, radius: null }, { cookie });
     assert.equal(cleared.status, 200);
     assert.doesNotMatch(html(await call("GET", "/e2e-fixture", { cookie })), /\[data-module=/);
