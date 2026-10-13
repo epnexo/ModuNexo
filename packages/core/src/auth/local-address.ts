@@ -105,3 +105,28 @@ export function splitForwarded(value: string | null | undefined): string[] {
     .map((entry) => entry.trim())
     .filter((entry) => entry !== "");
 }
+
+/** Suffixes that only a private network resolves: they cannot be registered in public DNS. */
+const PRIVATE_SUFFIXES = [".localhost", ".local", ".lan", ".home.arpa", ".internal", ".localdomain"];
+
+/**
+ * Whether the `Host` header names a place on the local network: a local IP literal, `localhost`, a single-label
+ * name ("raspberrypi") or a name under a private-use suffix. While sign-in is disabled the shell insists on this,
+ * because a DNS rebinding page reaches a local address under its own public domain name, and a public reverse
+ * proxy that forwards no client address reaches the shell from loopback under the public name it serves.
+ */
+export function isLocalHostName(hostHeader: string): boolean {
+  const text = hostHeader.trim().toLowerCase();
+  if (text === "" || /[\s/@?#\\]/.test(text)) return false;
+
+  const bracketed = /^\[([^\]]+)\](?::\d{1,5})?$/.exec(text);
+  if (bracketed !== null) return isLocalAddress(bracketed[1]!);
+
+  const named = /^([^:]+)(?::\d{1,5})?$/.exec(text);
+  if (named === null) return false;
+  const name = named[1]!;
+  if (/^[0-9.]+$/.test(name)) return isLocalAddress(name);
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/.test(name)) return false;
+  if (!name.includes(".")) return true;
+  return PRIVATE_SUFFIXES.some((suffix) => name.endsWith(suffix));
+}

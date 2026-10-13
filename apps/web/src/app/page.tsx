@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { SignOutButton } from "../components/sign-out-button";
 import { platform } from "../server/platform";
+import { sessionIsUsable } from "../server/session";
 
 // Placeholder until the shell layout lands (task T4 of shell-ui-auth). It already shows who is signed in and
 // ends the session, because a sign-in page without a sign-out is not shippable.
@@ -11,7 +12,8 @@ export const dynamic = "force-dynamic";
 export default async function HomePage() {
   const { pool, auth } = platform();
   const mode = await readSignInMode(pool);
-  const session = mode === "required" ? await auth.api.getSession({ headers: await headers() }) : null;
+  const found = mode === "required" ? await auth.api.getSession({ headers: await headers() }) : null;
+  const session = found !== null && sessionIsUsable(found.user) ? found : null;
   // The proxy has already refused a visitor without a session; this is the same rule at the point of use.
   if (mode === "required" && session === null) redirect("/login");
 

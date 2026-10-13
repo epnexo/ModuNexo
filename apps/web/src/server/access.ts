@@ -7,6 +7,8 @@ export interface AccessInput {
   hasSession: boolean;
   /** Every address the request carries is local (see `requestIsLocal`). */
   local: boolean;
+  /** The `Host` header names a place on the local network (see `isLocalHostName`). */
+  hostOk: boolean;
 }
 
 export type AccessDecision =
@@ -28,12 +30,14 @@ const isApi = (pathname: string) => pathname === "/api" || pathname.startsWith("
  * The one place that decides who gets in. It is a pure function of four facts so that every case can be tested
  * without a server, and the proxy that calls it only gathers those facts.
  *
- * With sign-in disabled the shell is a local tool: a request that carries any non-local address is refused
- * outright, before anything else is considered, and the refusal says nothing about why.
+ * With sign-in disabled the shell is a local tool: a request that carries any non-local address, or that names a
+ * public host, is refused outright, before anything else is considered, and the refusal says nothing about why
+ * (the server log does). While sign-in is required the host does not matter: the session cookie belongs to the
+ * host that set it, so a page on another site has no session to ride.
  */
-export function decideAccess({ pathname, mode, hasSession, local }: AccessInput): AccessDecision {
+export function decideAccess({ pathname, mode, hasSession, local, hostOk }: AccessInput): AccessDecision {
   if (mode === "disabled") {
-    if (!local) return { action: "deny", status: 403, message: "Forbidden" };
+    if (!local || !hostOk) return { action: "deny", status: 403, message: "Forbidden" };
     // There is no sign-in page to show, and nobody to sign out.
     if (pathname === LOGIN_PATH || pathname === `${LOGIN_PATH}/`) return { action: "redirect", to: "/" };
     return { action: "allow" };

@@ -189,6 +189,43 @@ describe("same-origin check without a configured base URL", () => {
   });
 });
 
+describe("session cookie", () => {
+  const cookieFor = async (secureCookies: boolean | undefined) => {
+    const configured = createAuth({
+      pool: pool!,
+      masterKey: "k".repeat(32),
+      baseURL: "http://localhost:3000",
+      ...(secureCookies === undefined ? {} : { secureCookies }),
+    });
+    const email = `c-${randomBytes(4).toString("hex")}@example.test`;
+    emails.push(email);
+    await createAdministrator(configured, { email, name: "Ada", password: PASSWORD });
+    const response = await configured.handler(
+      new Request("http://localhost:3000/api/auth/sign-in/email", {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: "http://localhost:3000", "x-epnexo-client-ip": `198.51.100.${Math.floor(Math.random() * 200) + 1}` },
+        body: JSON.stringify({ email, password: PASSWORD }),
+      }),
+    );
+    return response.headers.getSetCookie().join("\n");
+  };
+
+  test("is usable over plain HTTP by default", async () => {
+    const cookie = await cookieFor(undefined);
+    assert.match(cookie, /better-auth\.session_token=/);
+    assert.doesNotMatch(cookie, /Secure/i);
+    assert.doesNotMatch(cookie, /__Secure-/);
+    assert.match(cookie, /HttpOnly/i);
+    assert.match(cookie, /SameSite=Lax/i);
+  });
+
+  test("is Secure and prefixed when the app is served over HTTPS", async () => {
+    const cookie = await cookieFor(true);
+    assert.match(cookie, /__Secure-better-auth\.session_token=/);
+    assert.match(cookie, /Secure/);
+  });
+});
+
 describe("sign-in", () => {
   test("accepts the right password and opens a session", async (email) => {
     await createAdministrator(auth, { email, name: "Ada", password: PASSWORD });

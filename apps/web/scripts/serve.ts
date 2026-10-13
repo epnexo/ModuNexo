@@ -6,9 +6,11 @@
 // request before Next.js sees it. Next.js fills x-forwarded-for from the socket only when the client did not send
 // one, so without this step a route could not tell a real address from a forged one.
 import { createServer } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import next from "next";
 import { stampClientAddress } from "../src/server/client-address.ts";
+import { closePlatform } from "../src/server/platform.ts";
 
 export interface ServeOptions {
   dev: boolean;
@@ -18,20 +20,37 @@ export interface ServeOptions {
   dir: string;
 }
 
-/** Starts the server and resolves when it has been closed by SIGINT or SIGTERM. */
+/** After a stop signal: idle connections are closed at once, the rest get this long to finish, then they are cut. */
+export const GRACE_MS = 5_000;
+/** The hard limit: the process ends even if something refuses to close. */
+export const DEADLINE_MS = 8_000;
+
+/** Starts the server and resolves when it has been stopped by SIGINT or SIGTERM. */
 export async function serve({ dev, host, port, dir }: ServeOptions): Promise<void> {
   const app = next({ dev, dir, hostname: host, port });
   await app.prepare();
   const handle = app.getRequestHandler();
   const upgrade = app.getUpgradeHandler();
 
-  const server = createServer((request, response) => {
+  const fail = (error: unknown, response?: ServerResponse) => {
+    console.error("request failed:", error instanceof Error ? error.message : error);
+    if (response === undefined || response.headersSent) response?.destroy();
+    else {
+      response.statusCode = 500;
+      response.end("Internal Server Error");
+    }
+  };
+
+  const server = createServer((request: IncomingMessage, response: ServerResponse) => {
     stampClientAddress(request.headers, request.socket.remoteAddress);
-    void handle(request, response);
+    handle(request, response).catch((error: unknown) => fail(error, response));
   });
   server.on("upgrade", (request, socket, head) => {
     stampClientAddress(request.headers, request.socket.remoteAddress);
-    void upgrade(request, socket, head);
+    upgrade(request, socket, head).catch((error: unknown) => {
+      fail(error);
+      socket.destroy();
+    });
   });
 
   await new Promise<void>((resolve, reject) => {
@@ -44,15 +63,23 @@ export async function serve({ dev, host, port, dir }: ServeOptions): Promise<voi
   });
 
   await new Promise<void>((resolve) => {
+    let stopping = false;
     const stop = () => {
+      if (stopping) {
+        // A second signal means "now".
+        server.closeAllConnections();
+        return;
+      }
+      stopping = true;
       server.close(() => resolve());
-      // Keep-alive connections would hold the close open; end the idle ones now.
       server.closeIdleConnections();
+      setTimeout(() => server.closeAllConnections(), GRACE_MS).unref();
+      setTimeout(resolve, DEADLINE_MS).unref();
     };
-    process.once("SIGINT", stop);
-    process.once("SIGTERM", stop);
+    process.on("SIGINT", stop);
+    process.on("SIGTERM", stop);
   });
-  await app.close();
+  await Promise.allSettled([app.close(), closePlatform()]);
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -62,5 +89,11 @@ if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.a
     console.error("usage: serve.ts <dev|start> <host> <port>");
     process.exit(2);
   }
-  await serve({ dev: mode === "dev", host, port, dir: fileURLToPath(new URL("../", import.meta.url)) });
+  try {
+    await serve({ dev: mode === "dev", host, port, dir: fileURLToPath(new URL("../", import.meta.url)) });
+  } catch (error) {
+    const code = (error as { code?: string }).code;
+    console.error(code === "EADDRINUSE" ? `error: ${host}:${port} is already in use; change WEB_PORT or stop the other process` : `error: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  }
 }

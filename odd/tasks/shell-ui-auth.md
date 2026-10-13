@@ -60,9 +60,12 @@ and is marked as an assumption where the owner did not state it.
   - Sign-in is required by default. `epnexo auth disable` switches it off, `epnexo auth require`
     switches it back on, `epnexo auth status` prints the mode. The mode is stored in the database, so
     the settings screen of the next feature can expose the same switch.
-  - With sign-in off the shell serves local requests only: a request is refused (HTTP 403, with a
-    message that says how to require sign-in) when any address it carries is not loopback or
-    private, so an instance later exposed through a proxy or tunnel is closed, not open.
+  - With sign-in off the shell serves local requests only: a request is refused (HTTP 403) when any
+    address it carries is not loopback or private, or when its `Host` is not a local name, so an
+    instance later exposed through a proxy or tunnel is closed, not open. The response body is the
+    bare `Forbidden` (a remote visitor learns nothing about the configuration); the server log says
+    why and how to require sign-in. (Changed from "a message that says how to require sign-in" by
+    the verifier's finding, L16.)
   - With sign-in off there is no session: the shell acts as a local operator who holds every
     permission, says so in the top bar, and `/login` redirects to `/`.
   - `auth require` is refused with exit code 3 while no administrator exists, so switching sign-in on
@@ -214,3 +217,32 @@ feature is a chain with one slice per task.
   produced 503s that looked like a code defect; the smoke now kills the process group and refuses to
   start when the port is taken. Not covered yet: the smoke is a script outside the repository; T5 turns
   it into an automated test. Remaining T3 work: the independent verifier covering T6 and T3.
+- **L16** (2026-10-13) Review `58594bd..f9a8f59` (T3 and the two fixes; lenses `risk`, `resilience`,
+  `reliability`) approved with 7 warnings, and the independent verifier found 2 blockers and 7
+  advisories. All of it was fixed or decided, tests first:
+  - Blocker, cookie: with no base URL and `NODE_ENV=production` the library marks the session cookie
+    `Secure` and `__Secure-`, which a browser drops over plain HTTP on a LAN address, so sign-in did
+    not persist for the owner's stated deployment. My smoke used `127.0.0.1`, which browsers and curl
+    treat as secure, so it did not see it. Now `useSecureCookies` is explicit and false unless the
+    new `WEB_PUBLIC_URL` is an https origin. The end-to-end test asserts the cookie of the production
+    build has no `Secure`; it fails without the fix (observed).
+  - Blocker, ban: a user banned by a direct database write kept a working session. The gate now asks
+    `sessionIsUsable` (ban with no expiry, future expiry or unreadable expiry is in force).
+  - Review R1 and verifier A4, DNS rebinding and a public proxy that forwards no address: while
+    sign-in is disabled the `Host` must be a local name (`isLocalHostName`).
+  - Review R3/R4, `serve.ts`: handler rejections answer 500 instead of becoming unhandled, startup
+    failures print one line and exit 1, shutdown has a grace period (5 s) and a hard deadline (8 s),
+    a second signal cuts connections, and the pool is closed.
+  - Review R3, `platform()`: configuration is resolved before the pool is created.
+  - Review R3, gate untested: `apps/web/test/e2e.integration.test.ts` builds the app, serves it and
+    probes it (13 cases, including path tricks, forged headers, a banned user, the database
+    unavailable, a corrupted mode and shutdown time).
+  - Verifier A1, the 403 body: the owner was told it would say how to require sign-in; that conflicts
+    with not revealing the configuration. Decision: the body is the bare `Forbidden`, the server log
+    (throttled to one line a minute per reason) carries the explanation. S9 reworded above.
+  - Verifier A5: `/_next/image` sat outside the gate and returned 500; `images.unoptimized` removes it.
+  - Accepted as limits, documented in the README: the sign-in limit is one shared bucket behind a
+    same-machine proxy (needs a trusted-proxy setting, which belongs to the settings feature, A3);
+    a proxy that rewrites `Host` to a local name and forwards no address looks local; the library's
+    `x-retry-after` on a 429 is not a sane number (library behaviour, nothing in the app reads it).
+  `npm test` 458 pass, 0 fail, 0 skipped; typecheck clean.

@@ -16,6 +16,34 @@ export class LaunchError extends Error {
 /** The command itself is wrong, as opposed to the environment. */
 export class LaunchUsageError extends LaunchError {}
 
+export interface PublicUrl {
+  /** The origin the app is reached by, when the owner says so. Unset: the app works under any local name. */
+  baseURL: string | undefined;
+  /** Session cookies carry Secure only when the app is served over HTTPS. */
+  secureCookies: boolean;
+}
+
+/**
+ * `WEB_PUBLIC_URL`: where the app is reached from outside, such as `https://epnexo.example.com`. It is infrastructure
+ * (it describes the proxy or tunnel in front), so it lives in the environment. Left unset the app serves plain HTTP
+ * on the local network and its cookies work there; set to an https origin the cookies become Secure. The value is
+ * never echoed in an error: it may have been written with credentials in it.
+ */
+export function resolvePublicUrl(env: Env = process.env): PublicUrl {
+  const raw = env.WEB_PUBLIC_URL?.trim();
+  if (raw === undefined || raw === "") return { baseURL: undefined, secureCookies: false };
+  const refuse = () => new LaunchError("WEB_PUBLIC_URL must be a bare http or https origin such as https://epnexo.example.com");
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw refuse();
+  }
+  const bare = (url.protocol === "http:" || url.protocol === "https:") && url.hostname !== "" && url.username === "" && url.password === "" && url.pathname === "/" && url.search === "" && url.hash === "";
+  if (!bare) throw refuse();
+  return { baseURL: url.origin, secureCookies: url.protocol === "https:" };
+}
+
 export interface Listen {
   host: string;
   port: number;
@@ -61,6 +89,7 @@ export function planLaunch(command: string | undefined, env: Env = process.env):
     throw error;
   }
   const { host, port } = resolveListen(env);
+  resolvePublicUrl(env);
   return { kind: "serve", dev: command === "dev", host, port, registry: command === "dev" ? "ensure" : "none" };
 }
 
