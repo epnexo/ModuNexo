@@ -298,8 +298,8 @@ Every page sits in the `(shell)` route group, whose layout draws the sidebar and
 routes are written into that same group (`src/app/(shell)/<path>`), so a module's pages get the shell without
 knowing about it; only `/login` stands outside. The sidebar is the shell's own entries (Home, Apps, Settings) and
 then the enabled modules' `nav` entries, grouped and ordered as their manifests declare. An entry that names a
-`permission` is shown to the local operator and to an administrator only. That hides the link; it is not an
-access rule, so a module must still check the permission in its own pages and routes.
+`permission` is shown to the local operator and to an administrator only, and the gate enforces the same rule on
+the route (see "Permissions" below), so a link that is hidden cannot be reached by typing its address.
 
 A manifest `nav.icon` names one of: `app`, `home`, `apps`, `settings`, `dashboard`, `documents`, `chart`,
 `megaphone`, `users`, `database`, `mail`, `calendar`, `folder`, `shield`, `bolt`. Anything else gets the generic
@@ -425,3 +425,51 @@ among them. A secret given as an argument is refused (exit code `2`): it would s
 the shell history. Changes are recorded in `core.settings_events` (who, which key, set or unset, when) and never
 hold a value. Uninstalling a module with `--purge` deletes its settings and its appearance override; `--keep`
 leaves them, and the audit trail outlives both.
+
+## Permissions and trusted proxies
+
+### Permissions
+
+A module declares the permissions it has under `permissions` (`key`, `label`) and ties them to what they protect:
+
+```ts
+permissions: [{ key: "reports.read", label: "Read reports" }],
+nav: [{ label: "Reports", href: "/reports", permission: "reports.read" }],
+pages: [
+  { path: "/reports/export", entry: "./web/export.ts", kind: "route", permission: "reports.read" },
+],
+```
+
+- A page's own `permission` covers that route, dynamic segments included (`/reports/[id]`, `/files/[...path]`).
+- A navigation entry's `permission` covers its `href` **and everything below it**.
+- Both apply to pages and to HTTP route handlers, and when several cover a path the visitor must hold all of them.
+- The key must be one the same manifest declares; anything else is a manifest error naming the page.
+
+The gate (`src/proxy.ts`) enforces this on every request, after the sign-in and local-only checks: a visitor who
+does not hold a permission gets `403 Forbidden`, and one without a session is sent to sign in first (a module route
+is not under `/api`, so it redirects instead of answering `401`). Today the local operator and an administrator hold
+every permission and nobody else holds any, so a protected path is theirs alone. Granting a permission to another
+user is a users-and-roles feature that does not exist yet; until then this fails closed. A module should still not
+trust the URL alone for anything sensitive it computes.
+
+### Trusted proxies
+
+Behind a reverse proxy the shell sees the proxy's address on the connection, so by default every visitor shares one
+sign-in limit and one person mistyping a password can lock the others out. List the proxies you control on the
+Settings screen (Security) or with the CLI:
+
+```bash
+npm run epnexo -- settings set security.trustedProxies "10.0.0.2, 192.168.1.0/24"
+npm run epnexo -- settings get security.trustedProxies
+npm run epnexo -- settings unset security.trustedProxies
+```
+
+Entries are addresses or CIDR ranges, up to 50. The whole address space (`0.0.0.0/0`, `::/0`) is refused, since it
+would trust every client. When a request's connection comes from one of them, the sign-in limiter counts the nearest
+address in `x-forwarded-for`, reading from the right, that is not itself a trusted proxy; each proxy appends the
+address it received the request from, so a client that writes the start of the header is not believed. An entry
+that cannot be read ends the walk at the proxy's own address, so made-up strings never become new identities. A
+request from a connection that is not trusted never has its forwarded headers believed.
+
+This changes only which client the limiter counts. What counts as local while sign-in is off still looks at
+every address a request carries, so a setting cannot loosen it.

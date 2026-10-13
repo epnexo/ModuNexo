@@ -32,6 +32,13 @@ export function validateTrustedProxies(input: unknown): TrustedProxiesValidation
   return { ok: true, value };
 }
 
+/** The stored list as the owner wrote it, for the screen. Empty when nothing is stored or what is stored is not valid. */
+export async function readTrustedProxyList(pool: pg.Pool): Promise<string[]> {
+  const { rows } = await pool.query("select value from core.platform_settings where key = $1", [TRUSTED_PROXIES_KEY]);
+  const checked = validateTrustedProxies(rows[0]?.value);
+  return checked.ok ? checked.value : [];
+}
+
 /**
  * The ranges the shell trusts. A stored value that does not validate as a whole trusts nobody: the limiter then
  * counts the connection address, which can lock a proxy's clients together but never lets a forged header through.

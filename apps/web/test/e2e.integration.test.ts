@@ -538,6 +538,32 @@ describe("web app: with a module installed", () => {
     await db!.query("delete from core.auth_rate_limit");
   });
 
+  test("the security settings: shown to an administrator, written through the API, validated, audited", async () => {
+    assert.equal((await put("/api/settings/security", { trustedProxies: "10.0.0.2" })).status, 401);
+    assert.equal((await put("/api/settings/security", { trustedProxies: "10.0.0.2" }, { cookie, origin: "https://evil.example" })).status, 403);
+    assert.equal((await put("/api/settings/security", { trustedProxies: "10.0.0.2" }, { cookie: userCookie })).status, 403);
+    assert.equal((await put("/api/settings/security", { trustedProxies: "10.0.0.2, nope" }, { cookie })).status, 422);
+    assert.equal((await put("/api/settings/security", { trustedProxies: "0.0.0.0/0" }, { cookie })).status, 422);
+    assert.equal((await put("/api/settings/security", { other: 1 }, { cookie })).status, 400);
+    assert.equal((await db!.query("select 1 from core.platform_settings where key = 'security.trustedProxies'")).rowCount, 0, "nothing was stored by any refusal");
+
+    const saved = await put("/api/settings/security", { trustedProxies: "10.0.0.2\n192.168.1.0/24" }, { cookie });
+    assert.equal(saved.status, 200, saved.body);
+    assert.deepEqual((JSON.parse(saved.body) as { trustedProxies: string[] }).trustedProxies, ["10.0.0.2", "192.168.1.0/24"]);
+
+    const page = html(await call("GET", "/settings", { cookie }));
+    assert.match(page, />Security</);
+    assert.match(page, /10\.0\.0\.2/);
+    assert.match(page, /192\.168\.1\.0\/24/);
+    assert.ok(!html(await call("GET", "/settings", { cookie: userCookie })).includes("192.168.1.0/24"), "a non-administrator is shown none of it");
+
+    const events = (await db!.query("select actor, action from core.settings_events where key = 'security.trustedProxies' and actor = $1 order by id", [EMAIL])).rows;
+    assert.deepEqual(events, [{ actor: EMAIL, action: "set" }]);
+
+    assert.equal((await put("/api/settings/security", { trustedProxies: [] }, { cookie })).status, 200);
+    assert.equal((await db!.query("select 1 from core.platform_settings where key = 'security.trustedProxies'")).rowCount, 0);
+  });
+
   test("refuses a write without a session, from another origin, without an origin, and from a non-administrator", async () => {
     const body = { values: { "site.title": "X" } };
     assert.equal((await put(`/api/settings/modules/${FIXTURE_ID}`, body)).status, 401);

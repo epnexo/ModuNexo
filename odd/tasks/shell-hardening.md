@@ -35,14 +35,14 @@ Quoted fragments are the owner's words; the rest is the plan agreed in the sessi
 
 ## Tasks
 
-- [ ] **T1** (S1) SDK: `pages[].permission` and its validation. Route: inline.
-- [ ] **T2** (S3, S4) Core: IP and CIDR parsing and matching, and the pure rule that picks the effective client
+- [x] **T1** (S1) SDK: `pages[].permission` and its validation. Route: inline.
+- [x] **T2** (S3, S4) Core: IP and CIDR parsing and matching, and the pure rule that picks the effective client
   address. Route: inline. Risk: item 2 (it decides who is rate limited and as whom).
-- [ ] **T3** (S3) Core: the `security.trustedProxies` setting (validation, storage, audit) and its CLI key.
+- [x] **T3** (S3) Core: the `security.trustedProxies` setting (validation, storage, audit) and its CLI key.
   Route: inline.
-- [ ] **T4** (S2, S4, S5) Web: the permission rules, `decideAccess` and the gate; the effective client address
+- [x] **T4** (S2, S4, S5) Web: the permission rules, `decideAccess` and the gate; the effective client address
   handed to the sign-in limiter. Route: inline. Risk: item 2 (guards).
-- [ ] **T5** (S3) Web: the Security section of Settings and its API route. Route: inline.
+- [x] **T5** (S3) Web: the Security section of Settings and its API route. Route: inline.
 - [ ] **T6** (S6) End-to-end test, README, independent verifier, native reviews. Route: inline plus verifier.
 
 Forecast: about 1,200 authored changed lines; one slice per task.
@@ -62,3 +62,28 @@ Forecast: about 1,200 authored changed lines; one slice per task.
   `x-epnexo-client-ip` (`CLIENT_IP_HEADER`), which `serve.ts` stamps from the socket and which has no database
   access, so the effective client address has to be computed in the gate and written over that header before the
   auth route runs.
+- **L4** (2026-10-13) T1 to T5 done, tests first (RED observed for each unit: missing module or missing field).
+  - T1: `pages[].permission` in the SDK validator; it must be a key the manifest declares, and a manifest that
+    declares none refuses it.
+  - T2: `auth/ip.ts` (BigInt based): `parseIp` (an IPv4-mapped IPv6 address is the IPv4 address it wraps,
+    leading zeros refused), `formatIp` (one canonical text per client), `parseCidr`, `cidrContains` and
+    `effectiveClientAddress`, which believes the header only from a trusted connection, reads it from the right,
+    and falls back to the connection on an entry it cannot read, so junk cannot mint identities.
+  - T3: `security.trustedProxies` (`validateTrustedProxies`, `readTrustedProxies`, `setTrustedProxies`): at
+    most 50 entries; `0.0.0.0/0` and `::/0` refused ("would trust every address"); a stored value that does not
+    validate as a whole trusts nobody; audited without its value; CLI key with `list`, `get`, `set`, `unset`.
+  - T4: `route-permissions.ts` (page rules by route pattern including `[id]`, `[...x]`, `[[...x]]`; nav rules by
+    prefix, query and fragment dropped, non-path links ignored; every covering permission is required),
+    `decideAccess` gets `permitted` (authentication is checked first, so a visitor without a session is sent to
+    sign in and told nothing about permissions), the gate computes it from the session's role and rewrites
+    `x-epnexo-client-ip` for the limiter when the connection is trusted. The locality rule still reads the
+    original request.
+  - T5: `PUT /api/settings/security`, the Security section of the screen and `readTrustedProxyList`.
+  - Found by running it, again: the server entry runs under Node's strip-only TypeScript and my new
+    `auth -> settings` import pulled in classes with parameter properties, so the server did not start. The
+    two error classes moved to `settings/errors.ts`, and `launch.test.ts` now loads `serve.ts` exactly as the
+    production server is started, so this class of break is caught by a test and not by a user.
+  - Expectations I had wrong, corrected in the test and not in the code: a trailing slash is Next.js's to
+    normalise (308), and a module route without a session redirects to sign in because only `/api` answers 401.
+  `npm test` 661 pass, 0 fail, 0 skipped; typecheck clean. Remaining: the independent verifier and the native
+  reviews (T6).
