@@ -76,7 +76,7 @@ const shapeOf = (segment: string): string => (isDynamicRouteSegment(segment) ? s
 
 const normalise = (path: string): string => (path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path);
 
-const isReserved = (path: string, reserved: readonly string[]): string | undefined =>
+export const isReserved = (path: string, reserved: readonly string[]): string | undefined =>
   reserved.find((entry) => path === entry || (entry !== "/" && path.startsWith(`${entry}/`)));
 
 /** The specifier the web app imports an entry through: the package name plus the entry without `./` and its extension. */
