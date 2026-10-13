@@ -13,5 +13,8 @@ apps/web/src/generated/
 modules/*
 !modules/.gitkeep
 
+# What the platform receives and unpacks: module archives and their staging trees.
+var/
+
 # Agent tooling state generated on this machine
 .atl/
