@@ -33,6 +33,8 @@ export interface Cidr {
   version: 4 | 6;
   network: bigint;
   mask: bigint;
+  /** How many leading bits are fixed: 32 or 128 for a single host, 0 for the whole address space. */
+  prefix: number;
 }
 
 /** `10.0.0.0/8`, `fd00::/8`, or a bare address, which is a range of one. */
@@ -52,7 +54,7 @@ export function parseCidr(text: string): Cidr | null {
   const bits = BigInt(BITS[ip.version]);
   const host = (1n << (bits - BigInt(prefix))) - 1n;
   const mask = ((1n << bits) - 1n) ^ host;
-  return { version: ip.version, network: ip.value & mask, mask };
+  return { version: ip.version, network: ip.value & mask, mask, prefix };
 }
 
 export function cidrContains(cidr: Cidr, ip: ParsedIp): boolean {

@@ -51,14 +51,43 @@ function matchesRoute(pattern: readonly string[], path: readonly string[]): bool
   return path.length === pattern.length;
 }
 
+const decodeOnce = (text: string): string => {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    // A malformed escape: what cannot be decoded is kept as it is.
+    return text;
+  }
+};
+
+/**
+ * Every way the router could read this path: as written, with each segment decoded once and with each decoded as
+ * far as it goes (a double encoding), splitting again where a decoded segment holds a slash. The gate sees the path
+ * as it arrived while the router decodes before it resolves a route, so a rule is applied to all of them and the
+ * permissions are added up: the strictest reading wins, and no reading is left to chance.
+ */
+function pathReadings(pathname: string): string[][] {
+  const raw = segmentsOf(pathname);
+  const readings: string[][] = [raw];
+  let current = raw;
+  for (let round = 0; round < 4; round++) {
+    const next = current.flatMap((segment) => segmentsOf(decodeOnce(segment)));
+    if (next.length === current.length && next.every((segment, i) => segment === current[i])) break;
+    readings.push(next);
+    current = next;
+  }
+  return readings;
+}
+
 /** Every permission the path needs, without repeats. Empty means the path asks for none. */
 export function requiredPermissions(pathname: string, rules: readonly PermissionRule[]): string[] {
-  const path = segmentsOf(pathname);
   const needed = new Set<string>();
-  for (const rule of rules) {
-    const covered =
-      rule.kind === "route" ? matchesRoute(rule.segments, path) : path.length >= rule.segments.length && rule.segments.every((segment, i) => segment === path[i]);
-    if (covered) needed.add(rule.permission);
+  for (const path of pathReadings(pathname)) {
+    for (const rule of rules) {
+      const covered =
+        rule.kind === "route" ? matchesRoute(rule.segments, path) : path.length >= rule.segments.length && rule.segments.every((segment, i) => segment === path[i]);
+      if (covered) needed.add(rule.permission);
+    }
   }
   return [...needed];
 }

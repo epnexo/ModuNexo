@@ -21,7 +21,7 @@ Quoted fragments are the owner's words; the rest is the plan agreed in the sessi
   address. When several rules cover a path all must be held. It applies to pages and to HTTP routes alike, after
   the sign-in and local-only checks, and fails closed like the rest of the gate.
 - **S3 Trusted proxies are a setting.** `security.trustedProxies`: a list of IP addresses and CIDR ranges (at
-  most 50) of reverse proxies whose `x-forwarded-for` the shell may believe. Validated, stored in
+  most 50, none shorter than /8) of reverse proxies whose `x-forwarded-for` the shell may believe. Validated, stored in
   `core.platform_settings`, audited like any setting, editable on the Settings screen (Security section) and with
   `epnexo settings`. Empty by default: nobody is trusted.
 - **S4 The sign-in limit keys on the real client behind a trusted proxy.** When the connection comes from a
@@ -87,3 +87,27 @@ Forecast: about 1,200 authored changed lines; one slice per task.
     normalise (308), and a module route without a session redirects to sign in because only `/api` answers 401.
   `npm test` 661 pass, 0 fail, 0 skipped; typecheck clean. Remaining: the independent verifier and the native
   reviews (T6).
+- **L5** (2026-10-13) Native review of `a5f2b60..4e9c620` (25 files, 1,201 lines; lenses `risk`, `resilience`,
+  `reliability`): approved, acknowledged, burned, with three warnings. Independent verifier at the same
+  commit: no blockers, S1 to S6 pass, 356 bypass attempts per visitor kind with zero protected bodies,
+  trusted-proxy buckets read straight from `core.auth_rate_limit`. What was done with each:
+  - Percent-decoding (reported twice by the review). I checked it before deciding: `NextURL.pathname` keeps
+    `%72estricted` encoded, and the verifier confirmed on Next 16.4 that such spellings answer 404, so it is not
+    exploitable today. It was still fixed, because a rule that compares only the raw spelling fails open the day
+    a version decodes before resolving. `requiredPermissions` now applies every rule to the path as written, to
+    each segment decoded once, and to each decoded as far as it goes (up to four rounds, splitting again on a
+    decoded slash), and adds the permissions up: the strictest reading wins. The end-to-end test sends nine
+    encoded spellings as a user and as nobody and asserts none returns 200 or protected content.
+  - One extra read per request behind a proxy: left as is on purpose. The gate already reads the sign-in mode on
+    every request; the verifier measured 26 against 28 ms medians with and without the header. A cache would add
+    staleness after a change for no measurable gain.
+  - Verifier advisories fixed, tests first: the page-permission error now also names the page's path; a
+    navigation entry with `href: "/"` and a `permission` is refused by the manifest validator (it produced no rule
+    and would otherwise have to cover the whole shell); the Security form listed a stored string as if it were
+    active while nobody was trusted (`readTrustedProxyList` is now as strict as `readTrustedProxies`); ranges
+    shorter than /8 are refused, which also removes `0.0.0.0/1` and `::/1`; the connection address is written in
+    one canonical form when it is stamped, so an IPv4 client of a dual-stack listener cannot be counted under two
+    identities (`::ffff:10.0.0.2` and `10.0.0.2`).
+  - Verifier advisory, spec reworded (S2 above): a visitor without a session is redirected, not given `403`.
+    The echo of a refused entry in the 422 body is the operator's own input and stays.
+  `npm test` result is recorded in L6.

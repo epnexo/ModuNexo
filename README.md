@@ -464,8 +464,8 @@ npm run epnexo -- settings get security.trustedProxies
 npm run epnexo -- settings unset security.trustedProxies
 ```
 
-Entries are addresses or CIDR ranges, up to 50. The whole address space (`0.0.0.0/0`, `::/0`) is refused, since it
-would trust every client. When a request's connection comes from one of them, the sign-in limiter counts the nearest
+Entries are addresses or CIDR ranges, up to 50, with a prefix of /8 or longer: a list of proxies is not a place for
+half the internet, so `0.0.0.0/0`, `0.0.0.0/1` and `::/1` are refused. When a request's connection comes from one of them, the sign-in limiter counts the nearest
 address in `x-forwarded-for`, reading from the right, that is not itself a trusted proxy; each proxy appends the
 address it received the request from, so a client that writes the start of the header is not believed. An entry
 that cannot be read ends the walk at the proxy's own address, so made-up strings never become new identities. A

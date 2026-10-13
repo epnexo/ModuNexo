@@ -481,6 +481,31 @@ describe("web app: with a module installed", () => {
     assert.ok(!(await call("GET", "/e2e-fixture/data", { cookie: userCookie })).body.includes("restricted-data"));
   });
 
+  test("an encoded spelling of a protected path never reaches the protected content, signed in or not", async () => {
+    const spellings = [
+      "/e2e-fixture/%72estricted",
+      "/e2e-fixture/restrict%65d",
+      "/e2e-fixture%2Frestricted",
+      "/e2e-fixture/%2572estricted",
+      "/e2e-fixture/area/%35",
+      "/e2e-fixture/%61rea/5",
+      "/e2e-fixture/da%74a",
+      "/e2e-fixture/data%2f",
+      "/%65%32e-fixture/restricted",
+    ];
+    for (const path of spellings) {
+      const visitors: [string, Record<string, string>][] = [
+        ["a user", { cookie: userCookie }],
+        ["nobody", {}],
+      ];
+      for (const [label, who] of visitors) {
+        const reply = await call("GET", path, who);
+        assert.notEqual(reply.status, 200, `${path} as ${label}`);
+        assert.ok(!reply.body.includes("Restricted page") && !reply.body.includes("restricted-data") && !/Area \d/.test(reply.body), path);
+      }
+    }
+  });
+
   test("a path that asks for nothing stays open to a signed-in user, and the link that is hidden is hidden", async () => {
     assert.equal((await call("GET", "/e2e-fixture", { cookie: userCookie })).status, 200);
     assert.equal((await call("GET", "/e2e-fixture/open-data", { cookie: userCookie })).status, 200);

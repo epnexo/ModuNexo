@@ -34,6 +34,16 @@ describe("validateTrustedProxies", () => {
     for (const input of [5, null, undefined, {}, [1], [["10.0.0.2"]]]) assert.equal(validateTrustedProxies(input).ok, false, JSON.stringify(input));
   });
 
+  it("refuses a range far too broad to be a list of proxies, with the smallest allowed prefix in the message", () => {
+    for (const input of ["0.0.0.0/1", "128.0.0.0/2", "8.0.0.0/7", "::/1", "2000::/3", "fe00::/7"]) {
+      const result = validateTrustedProxies(input);
+      assert.equal(result.ok, false, input);
+      if (!result.ok) assert.match(result.message, /too broad/);
+    }
+    assert.equal(validateTrustedProxies("8.0.0.0/8").ok, true);
+    assert.equal(validateTrustedProxies("fd00::/16").ok, true);
+  });
+
   it("refuses a list longer than the limit", () => {
     const many = Array.from({ length: MAX_TRUSTED_PROXIES + 1 }, (_, i) => `10.0.${Math.floor(i / 200)}.${(i % 200) + 1}`);
     const result = validateTrustedProxies(many);
@@ -47,7 +57,8 @@ describe("validateTrustedProxies", () => {
       assert.equal(result.ok, false, input);
       if (!result.ok) assert.match(result.message, /every address/);
     }
-    assert.equal(validateTrustedProxies("0.0.0.0/1").ok, true, "a half is a choice the owner can make");
+    assert.equal(validateTrustedProxies("10.0.0.0/8").ok, true, "a private block is a choice the owner can make");
+    assert.equal(validateTrustedProxies("fd00::/8").ok, true);
   });
 });
 
@@ -116,6 +127,12 @@ describe("trusted proxies in the database", () => {
     await setTrustedProxies(pool!, ["10.0.0.2", "192.168.1.0/24"], "tester");
     assert.deepEqual(await readTrustedProxyList(pool!), ["10.0.0.2", "192.168.1.0/24"]);
     await pool!.query("update core.platform_settings set value = '[\"10.0.0.2\", \"nope\"]'::jsonb where key = 'security.trustedProxies'");
+    assert.deepEqual(await readTrustedProxyList(pool!), []);
+  });
+
+  test("the list shown on the screen is the same one that is trusted: a stored string is neither", async () => {
+    await pool!.query("insert into core.platform_settings (key, value, updated_by) values ('security.trustedProxies', '\"10.0.0.2\"'::jsonb, 'test')");
+    assert.deepEqual(await readTrustedProxies(pool!), []);
     assert.deepEqual(await readTrustedProxyList(pool!), []);
   });
 
