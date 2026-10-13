@@ -53,7 +53,7 @@ Quoted fragments are the owner's words; the rest is the plan agreed in the sessi
 - [x] **T4** (S7) CLI `settings` commands. Route: inline.
 - [x] **T5** (S4, S5, S6) Web: apply appearance, the settings screen and its server actions. Route: inline. Risk:
   item 2 (a write path behind the gate).
-- [ ] **T6** (S10) End-to-end test, README, independent verifier over the whole feature, native reviews. Route:
+- [x] **T6** (S10) End-to-end test, README, independent verifier over the whole feature, native reviews. Route:
   inline plus verifier.
 
 Forecast: about 1,800 authored changed lines, above the 400-line review budget, so one slice per task.
@@ -177,3 +177,23 @@ Forecast: about 1,800 authored changed lines, above the 400-line review budget, 
     never a bypass); a negative number on the CLI needs `--` (the error says so); module appearance through the
     CLI needs no master key because it holds no secret.
   `npm test` 604 pass, 0 fail, 0 skipped; typecheck clean.
+- **L10** (2026-10-13) Native review of `1fe9188..ae341c0` (the L9 fixes; escalated; lenses `risk`, `resilience`,
+  `reliability`; 13 files, 315 lines): approved with no findings, acknowledged, burned. Every commit of the
+  feature is now inside a reviewed range: `8c796f3..2ad1978` (T1 to T4), `2ad1978..1fe9188` (T5 and the
+  correction after refutation) and `1fe9188..ae341c0`. T6 closed: end-to-end test, README, one independent
+  verifier over the whole feature (second run; the first died on the API session limit), native reviews.
+  Final state: `npm test` 604 pass, 0 fail, 0 skipped; `npm run typecheck` clean; build 7 to 22 s on the Pi.
+- **L11** (2026-10-13) Open follow-ups, none blocking:
+  - Permission enforcement on module routes (carried from A2): a manifest `permission` still only hides a link.
+  - A trusted-proxy setting (carried from A2) so the sign-in limit keys on the real client behind a same-machine
+    proxy. The settings infrastructure to hold it now exists (`core.platform_settings`); it needs a design for
+    which hops to trust, and the gate and the server entry (which has no database) to consume it.
+  - A required setting that is not set is reported but does not stop a module from being enabled or used; the
+    module decides. Whether the platform should block enabling is a product question.
+  - Module appearance is the accent hue and the corner radius only; density, font scale and per-module logos
+    were not asked for and were not added.
+  - The review driver script (`review_drive.py`, outside the repository) does not handle the refuter and
+    correction steps; they were run by hand with the tokens each step returned.
+  - Carried from A1 and A2: no git remote (so no pull requests; chain strategy unchosen), `db:migrate` warns
+    instead of failing on an unreadable module history, orphaned module rows have no cleanup path, and the
+    `impeccable` PRODUCT.md and DESIGN.md do not exist.
