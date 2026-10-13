@@ -59,8 +59,8 @@ Quoted fragments are the owner's words; the rest is the plan agreed in the sessi
 - [x] **T4** (S3, S5, S8, S9) The intake service: hash, stage, validate, record, review; idempotent. Route:
   inline. Commit `683b510`.
 - [x] **T5** (S2, S3) The commands `modules pack` and `modules add`. Route: inline. Commit `6c7d64b`.
-- [ ] **T6** (S4, S10) The "nothing runs" test over the whole path, README, independent verifier, native
-  reviews. Route: inline plus verifier.
+- [x] **T6** (S4, S10) The "nothing runs" test over the whole path, README, independent verifier, native
+  reviews. Route: inline plus verifier. Commits `fbe9a03`, `bca25ce` and the review corrections below.
 
 Forecast: about 1,300 authored changed lines; one slice per task.
 
@@ -79,3 +79,10 @@ Forecast: about 1,300 authored changed lines; one slice per task.
   `.next` that tests rebuild). Sign-in was left switched off in the project database; the server is bound to
   loopback whenever started, so it only serves the machine itself until an administrator is created and
   `auth require` is run.
+- **L4** (2026-10-13) T6 evidence. Independent verifier (sonnet, scratch DB, 15 hostile archives, 28 rule probes,
+  746 tests): S1-S9 met, S10 partly; one blocker, `.envrc`/`.env-prod`/`.env_local` were packed although the README
+  said `.env*` is left out; fixed (`bca25ce`, test first). Native review of `0889cfb..bca25ce` (risk, resilience,
+  reliability), approved and acknowledged, three warnings, all fixed test first: concurrent intakes of one archive
+  now take a Postgres advisory lock; `pack` inspects its own archive with the intake inspector (case duplicates,
+  255-character paths, sizes) and `noPax` was dropped because it silently truncated long names; a package that was
+  staged and no longer passes is refused and its files removed. Suite 749 pass, 0 fail; typecheck clean.

@@ -114,6 +114,23 @@ describe("cli: modules pack", () => {
     assert.equal(existsSync(out), false);
   });
 
+  it("applies the archive rules intake applies, so a folder is not packed that would be refused on arrival", async () => {
+    const folder = moduleFolder("parity-src");
+    put(folder, "web/Widget.tsx", "export {};\n");
+    put(folder, "web/widget.tsx", "export {};\n");
+    const out = join(work, "parity.tgz");
+    const result = await spawn(["modules", "pack", folder, "--out", out], {});
+    assert.equal(result.code, 3);
+    assert.match(result.stderr, /duplicate/);
+    assert.equal(existsSync(out), false);
+
+    const long = moduleFolder("long-src");
+    put(long, `web/${"d".repeat(120)}/${"e".repeat(120)}/file.ts`, "export {};\n");
+    const refused = await spawn(["modules", "pack", long, "--out", join(work, "long.tgz")], {});
+    assert.equal(refused.code, 3);
+    assert.match(refused.stderr, /255|long/i);
+  });
+
   it("refuses a package that would not pass intake, with the problems, and writes no archive", async () => {
     const folder = moduleFolder("bad-src", { dependencies: { "left-pad": "^1.0.0" } });
     rmSync(join(folder, "web/page.tsx"));

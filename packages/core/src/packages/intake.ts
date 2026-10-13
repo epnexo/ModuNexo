@@ -86,65 +86,84 @@ export async function intakePackage(options: IntakeOptions): Promise<IntakeResul
   }
   const sha256 = hash.digest("hex");
 
-  const stored = archivePath(dataDir, sha256);
-  const staging = stagingPath(dataDir, sha256);
-  let createdArchive = false;
-  let createdStaging = false;
-  const discard = () => {
-    if (createdStaging) rmSync(staging, { recursive: true, force: true });
-    if (createdArchive) rmSync(stored, { force: true });
-    rmSync(incoming, { force: true });
-  };
-  const refuse = async (problems: string[], identity: { moduleId: string | null; version: string | null } = { moduleId: null, version: null }): Promise<IntakeResult> => {
-    await recordIntake(options.pool, { sha256, moduleId: identity.moduleId, version: identity.version, sizeBytes, status: "refused", problems, actor: options.actor });
-    return { ok: false, sha256, sizeBytes, problems };
-  };
+  // Two intakes of the same archive share one stored copy and one staging folder, so they take turns: without
+  // this, the second one's cleanup could delete what the first is still reading.
+  const lock = await options.pool.connect();
+  const settle = async (): Promise<IntakeResult> => {
+    const stored = archivePath(dataDir, sha256);
+    const staging = stagingPath(dataDir, sha256);
+    let createdArchive = false;
+    let createdStaging = false;
+    const discard = () => {
+      if (createdStaging) rmSync(staging, { recursive: true, force: true });
+      if (createdArchive) rmSync(stored, { force: true });
+      rmSync(incoming, { force: true });
+    };
+    const refuse = async (problems: string[], identity: { moduleId: string | null; version: string | null } = { moduleId: null, version: null }): Promise<IntakeResult> => {
+      await recordIntake(options.pool, { sha256, moduleId: identity.moduleId, version: identity.version, sizeBytes, status: "refused", problems, actor: options.actor });
+      return { ok: false, sha256, sizeBytes, problems };
+    };
 
-  if (expected !== undefined && expected !== sha256) {
-    discard();
-    return refuse([`the archive's SHA-256 is ${sha256}, not the expected ${expected}`]);
-  }
-
-  let alreadyStaged = false;
-  if (existsSync(staging) && existsSync(stored)) {
-    alreadyStaged = true;
-    rmSync(incoming, { force: true });
-  } else {
-    if (existsSync(stored)) rmSync(incoming, { force: true });
-    else {
-      renameSync(incoming, stored);
-      createdArchive = true;
-    }
-    rmSync(staging, { recursive: true, force: true });
-    try {
-      const staged = await stageArchive(stored, staging, limits);
-      if (!staged.ok) {
-        discard();
-        return refuse(staged.problems);
-      }
-      createdStaging = true;
-    } catch (error) {
+    if (expected !== undefined && expected !== sha256) {
       discard();
-      throw error;
+      return refuse([`the archive's SHA-256 is ${sha256}, not the expected ${expected}`]);
+    }
+
+    let alreadyStaged = false;
+    if (existsSync(staging) && existsSync(stored)) {
+      alreadyStaged = true;
+      rmSync(incoming, { force: true });
+    } else {
+      if (existsSync(stored)) rmSync(incoming, { force: true });
+      else {
+        renameSync(incoming, stored);
+        createdArchive = true;
+      }
+      rmSync(staging, { recursive: true, force: true });
+      try {
+        const staged = await stageArchive(stored, staging, limits);
+        if (!staged.ok) {
+          discard();
+          return refuse(staged.problems);
+        }
+        createdStaging = true;
+      } catch (error) {
+        discard();
+        throw error;
+      }
+    }
+
+    const validation = validatePackageTree(staging, options.context);
+    if (!validation.ok) {
+      const identity = peekIdentity(staging);
+      // A refusal keeps nothing, including a package that was staged earlier and no longer passes (a library was
+      // removed, the platform moved on): it is not installable any more, so it is not left looking staged.
+      createdStaging = true;
+      createdArchive = true;
+      discard();
+      return refuse(validation.problems, identity);
+    }
+
+    await recordIntake(options.pool, {
+      sha256,
+      moduleId: validation.review.id,
+      version: validation.review.version,
+      sizeBytes,
+      status: "staged",
+      problems: null,
+      actor: options.actor,
+    });
+    return { ok: true, sha256, sizeBytes, manifest: validation.manifest, review: validation.review, stagingDir: staging, archiveFile: stored, alreadyStaged };
+  };
+  try {
+    await lock.query("select pg_advisory_lock(hashtextextended($1, 0))", [`epnexo.package.${sha256}`]);
+    return await settle();
+  } finally {
+    try {
+      await lock.query("select pg_advisory_unlock_all()");
+      lock.release();
+    } catch (error) {
+      lock.release(error instanceof Error ? error : new Error(String(error)));
     }
   }
-
-  const validation = validatePackageTree(staging, options.context);
-  if (!validation.ok) {
-    const identity = peekIdentity(staging);
-    // A package that was already staged and passed before is left where it is; a new one is removed.
-    discard();
-    return refuse(validation.problems, identity);
-  }
-
-  await recordIntake(options.pool, {
-    sha256,
-    moduleId: validation.review.id,
-    version: validation.review.version,
-    sizeBytes,
-    status: "staged",
-    problems: null,
-    actor: options.actor,
-  });
-  return { ok: true, sha256, sizeBytes, manifest: validation.manifest, review: validation.review, stagingDir: staging, archiveFile: stored, alreadyStaged };
 }

@@ -5,7 +5,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { ManifestError, type ModuleManifest, validateManifest } from "@epnexo/sdk";
 import * as tar from "tar";
-import { ARCHIVE_LIMITS } from "./archive.ts";
+import { ARCHIVE_LIMITS, inspectArchive } from "./archive.ts";
 import { type PackageContext, type PackageReview, validatePackageTree } from "./validate.ts";
 
 /** The folder every archive holds, like `npm pack`. */
@@ -111,9 +111,12 @@ export async function packFolder(folder: string, context: PackageContext, out?: 
     const partial = join(dirname(target), `.${basename(target)}.${randomBytes(6).toString("hex")}.part`);
     try {
       await tar.create(
-        { file: partial, cwd: work, gzip: { level: 9 }, portable: true, mtime: new Date(0), noPax: true },
+        { file: partial, cwd: work, gzip: { level: 9 }, portable: true, mtime: new Date(0) },
         files.sort().map((path) => `${TOP_LEVEL}/${path}`),
       );
+      // The archive is held to the rules the receiving platform applies to it (names, case, lengths, sizes).
+      const inspected = await inspectArchive(partial);
+      if (!inspected.ok) throw new PackRefusedError(inspected.problems);
       renameSync(partial, target);
     } finally {
       rmSync(partial, { force: true });
