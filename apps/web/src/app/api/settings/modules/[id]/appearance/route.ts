@@ -1,6 +1,6 @@
 import { AppearanceService, SettingValueError, validateAppearanceValue } from "@epnexo/core/settings";
 import { platform } from "../../../../../../server/platform.ts";
-import { webRegistry } from "../../../../../../server/registry.ts";
+import { enabledModuleIds, webRegistry } from "../../../../../../server/registry.ts";
 import { authorizeWrite, json, readJsonBody } from "../../../../../../server/settings-api.ts";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +10,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const authorized = await authorizeWrite(request);
   if (authorized instanceof Response) return authorized;
   const { id } = await context.params;
-  if (webRegistry().get(id) === undefined || id === "core") return json({ error: `module "${id}" is not enabled in this build` }, 404);
+  if (webRegistry().get(id) === undefined || id === "core" || !(await enabledModuleIds(platform().pool)).has(id)) return json({ error: `module "${id}" is not enabled` }, 404);
 
   const parsed = await readJsonBody(request);
   if (!parsed.ok) return json({ error: parsed.message }, 400);

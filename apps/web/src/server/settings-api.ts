@@ -45,6 +45,38 @@ export async function authorizeWrite(request: Request): Promise<{ actor: string 
   return { actor: viewer.actor };
 }
 
+export type BodyText = { ok: true; text: string } | { ok: false; message: string };
+
+/**
+ * The request body as text, read at most up to the limit: a declared length over it is refused before anything is
+ * read, and a stream that goes past it is cancelled as soon as it does, so a client cannot make the server buffer
+ * more than the limit.
+ */
+export async function readBodyText(request: Request): Promise<BodyText> {
+  const tooLarge: BodyText = { ok: false, message: `the request body is larger than ${MAX_BODY_BYTES} bytes` };
+  const declared = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+    await request.body?.cancel().catch(() => undefined);
+    return tooLarge;
+  }
+  if (request.body === null) return { ok: true, text: "" };
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_BODY_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      return tooLarge;
+    }
+    chunks.push(value);
+  }
+  return { ok: true, text: Buffer.concat(chunks).toString("utf8") };
+}
+
 export async function readJsonBody(request: Request): Promise<ParsedBody> {
-  return parseJsonBody(await request.text());
+  const body = await readBodyText(request);
+  return body.ok ? parseJsonBody(body.text) : body;
 }

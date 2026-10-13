@@ -7,7 +7,7 @@ import { AppearanceForm } from "../../../components/settings/appearance-form";
 import { ModuleSettings } from "../../../components/settings/module-settings";
 import { modules } from "../../../generated/modules";
 import { platform } from "../../../server/platform";
-import { webRegistry } from "../../../server/registry";
+import { enabledModuleIds, webRegistry } from "../../../server/registry";
 import { resolveViewer } from "../../../server/viewer";
 
 export const metadata: Metadata = { title: "Settings" };
@@ -17,11 +17,21 @@ export default async function SettingsPage() {
   const viewer = await resolveViewer(await headers());
   if (viewer === null) redirect("/login");
 
+  if (!viewer.canWrite) {
+    return (
+      <div className="flex max-w-xl flex-col gap-2">
+        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
+        <p className="text-muted">Only an administrator can view or change settings.</p>
+      </div>
+    );
+  }
+
   const { pool } = platform();
   const registry = webRegistry();
+  const enabled = await enabledModuleIds(pool);
   const appearance = await new AppearanceService(pool, registry).get();
   const settings = new SettingsService(pool, registry, { masterKey: resolveMasterKey() });
-  const sections = await Promise.all(modules.map(async (manifest) => ({ id: manifest.id, name: manifest.name, entries: await settings.describe(manifest.id) })));
+  const sections = await Promise.all(modules.filter((manifest) => enabled.has(manifest.id)).map(async (manifest) => ({ id: manifest.id, name: manifest.name, entries: await settings.describe(manifest.id) })));
 
   return (
     <div className="flex max-w-3xl flex-col gap-10">

@@ -28,9 +28,11 @@ Quoted fragments are the owner's words; the rest is the plan agreed in the sessi
   tokens only (assumption agreed earlier: no free CSS from the UI).
 - **S5 Appearance per module.** "incluso por modulo". A module may have its own accent hue and radius; its pages
   use them, and the rest of the shell keeps the platform's.
-- **S6 Settings screen.** `/settings` shows Appearance and one section per enabled module that declares
-  settings. Saving shows the validation message beside the field; a secret field shows "set" and can be replaced
-  or cleared, never read. Only an administrator or the local operator may change settings.
+- **S6 Settings screen.** `/settings` shows Appearance and one section per enabled module: its declared
+  settings, if it has any, and its appearance override (S5 needs a place for it, so a module with no settings
+  still has a section; reworded after the verifier, L9). Saving shows the validation message beside the field; a
+  secret field shows "set" and can be replaced or cleared, never read. Only an administrator or the local
+  operator may see or change settings.
 - **S7 CLI parity.** `epnexo settings list|get|set|unset`, with `--module <id>` for module settings. A secret's
   value is read from standard input, never from an argument, and never printed.
 - **S8 No new environment variable.** Everything above lives in the database.
@@ -153,3 +155,25 @@ Forecast: about 1,800 authored changed lines, above the 400-line review budget, 
   - The independent verifier's first run died on the API session limit before reporting anything (an
     infrastructure failure, not a result); it left nothing in the tree. It was run again on `1fe9188`.
   `npm test` 596 pass, 0 fail, 0 skipped; typecheck clean. Reviewed boundary is now `1fe9188`.
+- **L9** (2026-10-13) Independent verifier over the whole feature at `1fe9188` (S1 to S10, a real module
+  installed, 101 focused tests, hostile values written straight into the database, 20 concurrent saves, the
+  secret searched for in every response, page, log, row and CLI output): no blockers; S1 to S10 pass, S6
+  partial. Nothing disclosed a secret, no unauthorized request changed a setting, no stored value reached a
+  stylesheet or script. Its advisories, and what was done:
+  - A4, fixed (tests first): after `uninstall --purge` and before a rebuild the old build still had the module in
+    its registry, so a write for it succeeded and its rows came back. The two module routes and the screen now
+    also require the database to say the module is enabled (`enabledModuleIds`); the end-to-end test performs
+    the write after the purge and expects 404 and no rows.
+  - A5, fixed: a signed-in non-administrator could open `/settings` and read non-secret values with a disabled
+    form. Only someone who may change settings sees the screen now; others get one sentence.
+  - A7, fixed (tests first): a form with several fields was applied key by key. `SettingsService.applyMany`
+    validates and encrypts everything first and writes in one transaction; `set` and `unset` are wrappers over
+    it. A test makes the database refuse the second write and checks nothing changed and nothing was audited.
+  - A6, fixed (tests first): the 64 KB limit was checked after `request.text()` had read the whole body. A
+    declared length over the limit is refused unread, and a stream is cancelled as soon as it passes it.
+  - A2, spec reworded (S6 above). A1: `settings list|get --module core` exited 0 with platform values; it is now
+    refused (exit 3) like any unknown module.
+  - Accepted and documented: behind a proxy that rewrites `Host` a legitimate save is refused (a false refusal,
+    never a bypass); a negative number on the CLI needs `--` (the error says so); module appearance through the
+    CLI needs no master key because it holds no secret.
+  `npm test` 604 pass, 0 fail, 0 skipped; typecheck clean.

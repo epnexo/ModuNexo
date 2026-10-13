@@ -121,6 +121,52 @@ describe("SettingsService: writing", () => {
   });
 });
 
+describe("SettingsService: applyMany", () => {
+  test("applies sets and unsets together and audits each", async () => {
+    await service.set(moduleId, "note", "old note", "tester");
+    await service.applyMany(
+      moduleId,
+      [
+        { op: "set", key: "site.title", value: "Batch title" },
+        { op: "set", key: "page.size", value: "60" },
+        { op: "unset", key: "note" },
+        { op: "set", key: "api.token", value: "batch-secret-value-1" },
+      ],
+      "ada@example.test",
+    );
+    assert.equal(await service.get(moduleId, "site.title"), "Batch title");
+    assert.equal(await service.get(moduleId, "page.size"), 60);
+    assert.equal(await service.get(moduleId, "note"), null);
+    assert.equal(await service.get(moduleId, "api.token"), "batch-secret-value-1");
+    const batch = (await events()).filter((e) => e.actor === "ada@example.test");
+    assert.deepEqual(batch.map((e) => `${e.action}:${e.key}`).sort(), ["set:api.token", "set:page.size", "set:site.title", "unset:note"]);
+  });
+
+  test("applies none of them when one is refused", async () => {
+    await service.set(moduleId, "site.title", "Before", "tester");
+    await assert.rejects(
+      service.applyMany(moduleId, [{ op: "set", key: "site.title", value: "After" }, { op: "set", key: "page.size", value: "lots" }], "tester"),
+      (e: unknown) => e instanceof SettingValueError && /page\.size/.test(e.message),
+    );
+    await assert.rejects(service.applyMany(moduleId, [{ op: "set", key: "site.title", value: "After" }, { op: "unset", key: "not.declared" }], "tester"), SettingsError);
+    assert.equal(await service.get(moduleId, "site.title"), "Before");
+    assert.equal((await events()).length, 1, "only the first, separate write was audited");
+  });
+
+  test("rolls everything back when the database refuses part of it", async () => {
+    await service.set(moduleId, "site.title", "Before", "tester");
+    // A trigger-free way to make the second statement fail: the module settings row is locked out by a check.
+    await pool!.query(`alter table core.module_settings add constraint e2e_block check (module_id <> '${moduleId}' or key <> 'page.size') not valid`);
+    try {
+      await assert.rejects(service.applyMany(moduleId, [{ op: "set", key: "site.title", value: "After" }, { op: "set", key: "page.size", value: "40" }], "tester"));
+    } finally {
+      await pool!.query("alter table core.module_settings drop constraint e2e_block");
+    }
+    assert.equal(await service.get(moduleId, "site.title"), "Before");
+    assert.equal((await events()).length, 1);
+  });
+});
+
 describe("SettingsService: secrets", () => {
   const PLAIN = "tok_live_9f8e7d6c5b4a";
 
