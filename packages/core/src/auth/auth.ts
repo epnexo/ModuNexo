@@ -22,6 +22,23 @@ export const SIGN_IN_WINDOW_SECONDS = 60;
  */
 export const CLIENT_IP_HEADER = "x-epnexo-client-ip";
 
+/**
+ * Trusts a browser request whose `Origin` names the host the request was sent to (the `Host` header). The web app
+ * is reached under whatever name the owner uses, so no base URL can be fixed in advance. A page on another site
+ * cannot send a matching pair: the browser sets both headers and the attacker controls neither. Forwarding headers
+ * are deliberately not consulted, since a client can write them.
+ */
+function sameOrigin(request?: Request): string[] {
+  const origin = request?.headers.get("origin");
+  const host = request?.headers.get("host");
+  if (!origin || !host) return [];
+  try {
+    return new URL(origin).host === host ? [origin] : [];
+  } catch {
+    return [];
+  }
+}
+
 export interface AuthConfig {
   /** The platform pool. It is shared, never closed by the auth layer. */
   pool: pg.Pool;
@@ -50,7 +67,7 @@ export function createAuth(config: AuthConfig) {
     appName: "epnexo",
     secret: deriveSecret(config.masterKey, "auth"),
     ...(config.baseURL === undefined ? {} : { baseURL: config.baseURL }),
-    ...(config.trustedOrigins === undefined ? {} : { trustedOrigins: config.trustedOrigins }),
+    trustedOrigins: async (request) => [...(config.trustedOrigins ?? []), ...sameOrigin(request)],
     database: { dialect: new PostgresDialect({ pool: config.pool }), type: "postgres", schemaName: "core" },
     user: { modelName: "auth_user" },
     session: { modelName: "auth_session" },

@@ -78,7 +78,7 @@ and is marked as an assumption where the owner did not state it.
 - [x] **T6** (S9) Sign-in mode in `@epnexo/core`, done before T3: core settings table, mode read and
   write, `auth status | require | disable` commands, the local-request rule as a pure function.
   Route: inline. Risk: item 2.
-- [ ] **T3** (S4, S9) Sign-in page, auth route handler, server-side guard that honours the sign-in
+- [x] **T3** (S4, S9) Sign-in page, auth route handler, server-side guard that honours the sign-in
   mode, sign-out. The server must set `x-epnexo-client-ip` from the connection and strip any copy a
   client sent (the rate limiter keys only on it, see L9); how a Next.js route handler can read the
   connection address must be proven by a request against the built app, and a custom server wrapper
@@ -191,3 +191,26 @@ feature is a chain with one slice per task.
   handler cannot learn the real connection address. T3 therefore needs a thin Node server in front of
   Next that deletes any incoming `x-epnexo-client-ip` and sets it from `req.socket.remoteAddress`.
   The same address feeds the local-only rule of S9, together with the forwarding headers a proxy adds.
+- **L15** (2026-10-13) T3 done. Built: `proxy.ts` (gathers facts, `decideAccess` decides, any failure is
+  503), `/api/auth/[...all]`, sign-in page and form, sign-out button on the home placeholder, the
+  platform's own server that stamps `x-epnexo-client-ip`, and a launcher that serves through it.
+  Pure parts have tests written first: access rule 12, client address 9, launcher plan and exit codes;
+  `npm test` 423 pass, 0 fail, 0 skipped; typecheck clean.
+  Verified with real requests against the production build and a scratch database
+  (`scratchpad/smoke.sh`, 28 probes, all pass): redirect and 401 without a session, wrong password and
+  unknown email both 401, sign-up refused 400, sign-in 200, session page shows the email, `/login`
+  redirects when signed in, sign-out 200 and the old cookie no longer opens `/`; with sign-in disabled
+  local requests are served and `/login` redirects, and a public address in `x-forwarded-for`,
+  `forwarded for=`, `cf-connecting-ip` or behind a private one gets 403 with the generic body, a forged
+  `x-epnexo-client-ip` changes nothing, and `/api/auth/*` is refused too; rotating `x-forwarded-for`
+  still reaches 429; a missing master key stops `web:start` with one line.
+  Problems found by that verification, all fixed: (1) Better Auth answered 403 `INVALID_ORIGIN`
+  because no base URL is configured and Next builds the request URL under another host; the trusted
+  origin is now the request's own `Origin` when it names the `Host` header (3 tests RED then GREEN,
+  forwarded headers not consulted). (2) Next 16 cannot load `next.config.ts` under a second TypeScript
+  loader (`MODULE_NOT_FOUND` for `./src/server/module-packages.ts`) and `conf` does not bypass the file,
+  so `serve.ts` runs as a plain Node child with native TypeScript support, like `next build` does.
+  (3) My smoke killed only `npm`, leaving servers on port 3917 bound to dropped databases, which
+  produced 503s that looked like a code defect; the smoke now kills the process group and refuses to
+  start when the port is taken. Not covered yet: the smoke is a script outside the repository; T5 turns
+  it into an automated test. Remaining T3 work: the independent verifier covering T6 and T3.

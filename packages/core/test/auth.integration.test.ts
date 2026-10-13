@@ -154,6 +154,41 @@ describe("sign-in rate limit", () => {
   });
 });
 
+describe("same-origin check without a configured base URL", () => {
+  // The web app is reached under whatever name the owner uses (an address, a host name), so no base URL is fixed:
+  // a browser request is trusted when its Origin names the very host it was sent to.
+  let open: Auth;
+  before(() => {
+    open = createAuth({ pool: pool!, masterKey: "k".repeat(32) });
+  });
+  const signIn = async (headers: Record<string, string>) => {
+    await pool!.query("delete from core.auth_rate_limit");
+    const response = await open.handler(
+      new Request("http://localhost:3000/api/auth/sign-in/email", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-epnexo-client-ip": "192.0.2.77", ...headers },
+        body: JSON.stringify({ email: "nobody@example.test", password: "wrong password here" }),
+      }),
+    );
+    const body = (await response.json().catch(() => ({}))) as { code?: string };
+    return `${response.status} ${body.code ?? ""}`.trim();
+  };
+
+  test("trusts an Origin that names the Host the request was sent to", async () => {
+    assert.equal(await signIn({ host: "192.168.1.20:4000", origin: "http://192.168.1.20:4000" }), "401 INVALID_EMAIL_OR_PASSWORD");
+    assert.equal(await signIn({ host: "epnexo.lan", origin: "https://epnexo.lan" }), "401 INVALID_EMAIL_OR_PASSWORD");
+  });
+
+  test("refuses an Origin that names another host", async () => {
+    assert.equal(await signIn({ host: "192.168.1.20:4000", origin: "https://evil.example" }), "403 INVALID_ORIGIN");
+    assert.equal(await signIn({ host: "192.168.1.20:4000", origin: "http://192.168.1.20:4001" }), "403 INVALID_ORIGIN");
+  });
+
+  test("does not let x-forwarded-host stand in for the Host header", async () => {
+    assert.equal(await signIn({ host: "192.168.1.20:4000", origin: "https://evil.example", "x-forwarded-host": "evil.example" }), "403 INVALID_ORIGIN");
+  });
+});
+
 describe("sign-in", () => {
   test("accepts the right password and opens a session", async (email) => {
     await createAdministrator(auth, { email, name: "Ada", password: PASSWORD });

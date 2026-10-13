@@ -275,3 +275,47 @@ key and can be changed while locked out. Three rules keep it from becoming an op
 
 With sign-in disabled there is no session, and anyone on the local network can use the shell as an operator with
 every permission, including installing modules, which runs code with access to the database.
+
+## Web app
+
+`apps/web` is the Next.js shell. It reads the same `.env` as the CLI.
+
+```bash
+npm run web:build     # regenerates the module registry from the database, then runs next build
+npm run web:start     # production server
+npm run web:dev       # development server
+```
+
+`WEB_HOST` (default `127.0.0.1`) and `WEB_PORT` (default `3000`) choose where it listens; use `WEB_HOST=0.0.0.0` to
+serve the local network. `web:start` and `web:dev` refuse to start without `EPNEXO_MASTER_KEY` and say so in one
+line. Installing, disabling or uninstalling a module changes the registry: run `web:build` and restart.
+
+### Who gets in
+
+Every request goes through `src/proxy.ts`, which gathers four facts (the sign-in mode, whether there is a valid
+session, the path, and whether the request is local) and asks `decideAccess` in `src/server/access.ts`:
+
+| Sign-in | Visitor | Result |
+| --- | --- | --- |
+| required | no session | pages redirect to `/login`, `/api/*` answers `401` |
+| required | session | served; `/login` redirects to `/` |
+| disabled | local request | served; `/login` redirects to `/` |
+| disabled | any non-local address | `403 Forbidden`, whatever the path |
+
+A failure while gathering those facts is a `503`, never an allow. Failed sign-ins are limited to 5 per minute per
+connection address.
+
+The web server is the platform's own thin Node server (`apps/web/scripts/serve.ts`) in front of Next.js. Next.js
+fills `x-forwarded-for` from the socket only when the client did not send one, so a route could not tell a real
+address from a forged one. The server therefore sets `x-epnexo-client-ip` from the connection on every request and
+discards any copy a client sent. Whether a request is local is judged on that address and on every address a
+proxy reports (`x-forwarded-for`, `forwarded`, `x-real-ip`, `cf-connecting-ip`, `true-client-ip`, `x-client-ip`):
+one public address anywhere is enough to refuse it. A request that was not stamped has no trusted address and is
+never local.
+
+Behind a reverse proxy on the same machine, the connection address is the proxy's (loopback), so the addresses the
+proxy forwards are what keeps a public client out while sign-in is disabled. Leave sign-in required for anything
+exposed to the internet.
+
+A browser request is trusted when its `Origin` names the `Host` it was sent to, so the app works under whatever
+address or name it is reached by; forwarding headers are never consulted for that check.

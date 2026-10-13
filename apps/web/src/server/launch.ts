@@ -33,26 +33,26 @@ export function resolveListen(env: Env = process.env): Listen {
   return { host, port };
 }
 
-export type LaunchCommand = "dev" | "build" | "start";
-
-export interface LaunchPlan {
-  /** Arguments for the `next` binary. */
-  nextArgs: string[];
-  /**
-   * What happens to the generated module registry first. `generate`: rewritten from the modules enabled in the
-   * database. `ensure`: an empty one is written only if none exists. `none`: the build already contains it.
-   */
-  registry: "generate" | "ensure" | "none";
-}
+/**
+ * What to run for one launcher command. `build` runs `next build` as a child process. `dev` and `start` serve
+ * through the platform's own HTTP server (see `scripts/serve.ts`), which stamps the connection address on every
+ * request before Next.js sees it; `next start` alone cannot do that.
+ *
+ * `registry` is what happens to the generated module registry first. `generate`: rewritten from the modules
+ * enabled in the database. `ensure`: an empty one is written only if none exists. `none`: the build has it.
+ */
+export type LaunchPlan =
+  | { kind: "build"; nextArgs: string[]; registry: "generate" }
+  | { kind: "serve"; dev: boolean; host: string; port: number; registry: "ensure" | "none" };
 
 /**
- * Decides how to run Next.js for one launcher command. Serving needs the master key, and that is checked here,
- * before anything listens, so a missing key is one clear line and not a failure at the first sign-in.
+ * Decides how to run the web app for one launcher command. Serving needs the master key, and that is checked
+ * here, before anything listens, so a missing key is one clear line and not a failure at the first sign-in.
  */
 export function planLaunch(command: string | undefined, env: Env = process.env): LaunchPlan {
   if (command === undefined) throw new LaunchUsageError("no command given: use dev, build or start");
   if (command !== "dev" && command !== "build" && command !== "start") throw new LaunchUsageError(`unknown command "${command}": use dev, build or start`);
-  if (command === "build") return { nextArgs: ["build"], registry: "generate" };
+  if (command === "build") return { kind: "build", nextArgs: ["build"], registry: "generate" };
 
   try {
     resolveMasterKey(env);
@@ -61,7 +61,7 @@ export function planLaunch(command: string | undefined, env: Env = process.env):
     throw error;
   }
   const { host, port } = resolveListen(env);
-  return { nextArgs: [command, "--hostname", host, "--port", String(port)], registry: command === "dev" ? "ensure" : "none" };
+  return { kind: "serve", dev: command === "dev", host, port, registry: command === "dev" ? "ensure" : "none" };
 }
 
 /**

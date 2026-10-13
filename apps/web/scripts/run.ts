@@ -10,6 +10,28 @@ import { ensureRegistry } from "./ensure-registry.ts";
 
 const webRoot = fileURLToPath(new URL("../", import.meta.url));
 
+/** Runs a Node script as a child, forwards the stop signals to it and returns the exit code to use. */
+function runChild(args: string[]): Promise<number> {
+  const child = spawn(process.execPath, args, { cwd: webRoot, stdio: "inherit" });
+  let forwarded: NodeJS.Signals | null = null;
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    process.on(signal, () => {
+      forwarded = signal;
+      child.kill(signal);
+    });
+  }
+  return new Promise((resolve) => {
+    child.on("error", (error) => {
+      console.error(`error: could not start ${args[1] ?? "the web app"}: ${error.message}`);
+      resolve(1);
+    });
+    child.on("exit", (code, signal) => {
+      if (signal !== null && signal !== forwarded) console.error(`error: the web app process was killed by ${signal}`);
+      resolve(exitCodeFor(code, signal, forwarded));
+    });
+  });
+}
+
 async function main(): Promise<number> {
   const plan = planLaunch(process.argv[2]);
 
@@ -20,25 +42,12 @@ async function main(): Promise<number> {
     ensureRegistry(webRoot);
   }
 
-  const next = createRequire(import.meta.url).resolve("next/dist/bin/next");
-  const child = spawn(process.execPath, [next, ...plan.nextArgs], { cwd: webRoot, stdio: "inherit" });
-  let forwarded: NodeJS.Signals | null = null;
-  for (const signal of ["SIGINT", "SIGTERM"] as const) {
-    process.on(signal, () => {
-      forwarded = signal;
-      child.kill(signal);
-    });
+  if (plan.kind === "serve") {
+    // Node's own TypeScript support, not the tsx loader this process runs under: see the note in serve.ts.
+    const serveScript = fileURLToPath(new URL("./serve.ts", import.meta.url));
+    return runChild(["--disable-warning=ExperimentalWarning", serveScript, plan.dev ? "dev" : "start", plan.host, String(plan.port)]);
   }
-  return new Promise((resolve) => {
-    child.on("error", (error) => {
-      console.error(`error: could not start Next.js: ${error.message}`);
-      resolve(1);
-    });
-    child.on("exit", (code, signal) => {
-      if (signal !== null && signal !== forwarded) console.error(`error: Next.js was killed by ${signal}`);
-      resolve(exitCodeFor(code, signal, forwarded));
-    });
-  });
+  return runChild([createRequire(import.meta.url).resolve("next/dist/bin/next"), ...plan.nextArgs]);
 }
 
 try {

@@ -38,19 +38,22 @@ describe("resolveListen", () => {
 });
 
 describe("planLaunch", () => {
-  it("start listens where the environment says and needs the master key", () => {
+  it("start serves where the environment says through the platform's own server and needs the master key", () => {
     assert.deepEqual(planLaunch("start", { EPNEXO_MASTER_KEY: KEY, WEB_HOST: "0.0.0.0", WEB_PORT: "4000" }), {
-      nextArgs: ["start", "--hostname", "0.0.0.0", "--port", "4000"],
+      kind: "serve",
+      dev: false,
+      host: "0.0.0.0",
+      port: 4000,
       registry: "none",
     });
   });
 
-  it("dev listens the same way and creates the registry only when it is missing", () => {
-    assert.deepEqual(planLaunch("dev", { EPNEXO_MASTER_KEY: KEY }), { nextArgs: ["dev", "--hostname", "127.0.0.1", "--port", "3000"], registry: "ensure" });
+  it("dev serves the same way and creates the registry only when it is missing", () => {
+    assert.deepEqual(planLaunch("dev", { EPNEXO_MASTER_KEY: KEY }), { kind: "serve", dev: true, host: "127.0.0.1", port: 3000, registry: "ensure" });
   });
 
-  it("build regenerates the registry from the database and needs no master key", () => {
-    assert.deepEqual(planLaunch("build", {}), { nextArgs: ["build"], registry: "generate" });
+  it("build runs next build, regenerates the registry from the database and needs no master key", () => {
+    assert.deepEqual(planLaunch("build", {}), { kind: "build", nextArgs: ["build"], registry: "generate" });
   });
 
   it("start and dev refuse without a master key, naming the variable", () => {
