@@ -64,6 +64,11 @@ async function dropStatements(client: pg.PoolClient, target: PurgeTarget): Promi
   if (settings.rows[0].present) {
     await client.query("delete from core.module_settings where module_id = $1", [target.id]);
   }
+  // So does the module's own appearance override, which lives next to the platform's in platform_settings.
+  const platform = await client.query("select to_regclass('core.platform_settings') is not null as present");
+  if (platform.rows[0].present) {
+    await client.query("delete from core.platform_settings where starts_with(key, $1)", [`appearance.module.${target.id}.`]);
+  }
 }
 
 const purgeFailure = (target: PurgeTarget, error: unknown): Error =>
