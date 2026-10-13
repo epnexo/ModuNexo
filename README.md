@@ -349,3 +349,74 @@ the `Host` rule refuses. Two limits remain, so leave sign-in required for anythi
 
 A browser request is trusted when its `Origin` names the `Host` it was sent to, so the app works under whatever
 address or name it is reached by; forwarding headers are never consulted for that check.
+
+## Settings and appearance
+
+Everything below is stored by the platform in the database; none of it needs an environment variable.
+
+### What a module declares and how it reads it
+
+A manifest lists the settings it needs under `settings`: `key`, `label`, `type` (`string`, `number`, `boolean`,
+`select`, `secret`, `path`), and optionally `default`, `required`, `options` and `description`. The platform
+stores the values, validates every change against the declaration, and edits them on the **Settings** screen and
+with `epnexo settings`. A module's server code reads its own settings with the SDK:
+
+```ts
+import { getSetting } from "@epnexo/sdk";
+
+const title = await getSetting("my-module", "report.title"); // stored value, else the default, else null
+```
+
+`getSetting` works inside the running web app (a page, a server component, an API route). Called from a script
+or a test it throws `SettingsUnavailableError`, saying so. A `secret` comes back decrypted, for server code only:
+never render it or put it in a response.
+
+What each type accepts: `string` any non-blank text up to 2,000 characters; `number` a decimal number (`1e3` and
+`0x10` are refused); `boolean` `true` or `false`; `select` one of the declared options; `path` an absolute path
+without `..` segments; `secret` any non-empty text up to 4,096 characters. A required setting with neither a value
+nor a default shows as incomplete on the screen and in `settings list`; it does not stop the module from running,
+so the module decides what to do without it.
+
+### Secrets
+
+A `secret` is stored encrypted with AES-256-GCM under a key derived from `EPNEXO_MASTER_KEY`, bound to its module
+and key, so a stored value cannot be moved to another setting. It is write-only: the screen, the CLI, the API and
+the audit trail only ever say that one is set. Changing the master key makes the stored secrets unreadable: the
+screen flags them, and each is replaced by typing it again. Nothing else breaks.
+
+### The screen and the API
+
+`/settings` shows Appearance and one section per enabled module. Only an administrator, or the local operator
+while sign-in is off, can change anything. The screen saves through `PUT /api/settings/appearance`,
+`PUT /api/settings/modules/<id>` and `PUT /api/settings/modules/<id>/appearance`. Each insists on a same-origin
+request (`Origin` naming the `Host`) and on an administrator or the local operator, and a form with one bad field
+changes none of its fields: the response names each refused key.
+
+### Appearance
+
+The platform has three appearance settings: the default theme (`system`, `light`, `dark`), the accent hue (0 to
+360) and the corner radius (`sharp`, `default`, `round`). They change design tokens and nothing else: the only
+values that ever reach a stylesheet are a number and one of three names, so there is no free CSS to inject. A
+visitor's own theme choice, kept in their browser, wins over the default.
+
+A module may override the accent hue and the corners for its own pages. The shell marks the content area with
+`data-module="<id>"` and the overrides are written under that attribute, so they apply to that module's pages and
+to nothing else. The theme is the visitor's and cannot be overridden per module.
+
+### From the command line
+
+```bash
+npm run epnexo -- settings list                                  # the platform appearance
+npm run epnexo -- settings set appearance.accentHue 140
+npm run epnexo -- settings list --module my-module               # declared settings and the module's appearance
+npm run epnexo -- settings set report.title "Weekly" --module my-module
+npm run epnexo -- settings set api.token --module my-module      # the value is read from standard input
+npm run epnexo -- settings unset report.title --module my-module
+npm run epnexo -- settings set appearance.accentHue 20 --module my-module
+```
+
+Platform appearance needs no master key; anything that touches a module's settings does, because a secret may be
+among them. A secret given as an argument is refused (exit code `2`): it would show up in the process list and in
+the shell history. Changes are recorded in `core.settings_events` (who, which key, set or unset, when) and never
+hold a value. Uninstalling a module with `--purge` deletes its settings and its appearance override; `--keep`
+leaves them, and the audit trail outlives both.

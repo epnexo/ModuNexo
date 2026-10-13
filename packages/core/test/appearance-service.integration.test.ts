@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import type pg from "pg";
-import { AppearanceService } from "../src/settings/appearance-service.ts";
+import { AppearanceService, readAppearance } from "../src/settings/appearance-service.ts";
 import { DEFAULT_APPEARANCE } from "../src/settings/appearance.ts";
 import { SettingValueError, SettingsError } from "../src/settings/service.ts";
 import { purgeModule } from "../src/purge.ts";
@@ -62,6 +62,12 @@ describe("AppearanceService", () => {
     await assert.rejects(service.setPlatform({ theme: "dark", accentHue: 999 }, "tester"), (e: unknown) => e instanceof SettingValueError && /accentHue/.test(e.message));
     assert.deepEqual((await service.get()).platform, { ...DEFAULT_APPEARANCE, accentHue: 100 }, "nothing from the refused batch was applied");
     assert.equal((await events()).length, 1);
+  });
+
+  test("readAppearance reads the same state without a registry", async () => {
+    await service.setPlatform({ accentHue: 77 }, "tester");
+    await service.setModule(moduleId, { radius: "round" }, "tester");
+    assert.deepEqual(await readAppearance(pool!), await service.get());
   });
 
   test("stores a module's override and clears it, and only a known module can have one", async () => {

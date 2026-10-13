@@ -10,7 +10,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import next from "next";
 import { stampClientAddress } from "../src/server/client-address.ts";
-import { closePlatform } from "../src/server/platform.ts";
+import { closePlatform } from "../src/server/platform-lifecycle.ts";
 
 export interface ServeOptions {
   dev: boolean;

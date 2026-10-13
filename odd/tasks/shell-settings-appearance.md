@@ -49,7 +49,7 @@ Quoted fragments are the owner's words; the rest is the plan agreed in the sessi
 - [x] **T3** (S4, S5) Appearance model: platform settings and per-module overrides, and the pure functions that
   turn them into token values. Route: inline.
 - [x] **T4** (S7) CLI `settings` commands. Route: inline.
-- [ ] **T5** (S4, S5, S6) Web: apply appearance, the settings screen and its server actions. Route: inline. Risk:
+- [x] **T5** (S4, S5, S6) Web: apply appearance, the settings screen and its server actions. Route: inline. Risk:
   item 2 (a write path behind the gate).
 - [ ] **T6** (S10) End-to-end test, README, independent verifier over the whole feature, native reviews. Route:
   inline plus verifier.
@@ -105,3 +105,35 @@ Forecast: about 1,800 authored changed lines, above the 400-line review budget, 
     the ids it rejects. L5's sentence was corrected.
   - `settings get appearance.* --module <typo>` printed the platform value with exit 0; it now refuses an
     unregistered module like `set`, `unset` and `list`.
+- **L7** (2026-10-13) T5 done: the web side. Pure parts first (tests written before the code, RED observed):
+  module scope by URL prefix (10), the form-to-operations plan (8), same-origin and body parsing (5),
+  `readAppearance` (1). Then the server and UI: `/api/settings/appearance`, `/api/settings/modules/[id]`,
+  `/api/settings/modules/[id]/appearance` (route handlers, not server actions, so they are testable over plain
+  HTTP and share one authorization: same origin, a viewer, an administrator or the local operator, validated
+  as a whole before anything is written); the `/settings` screen; `AppearanceHead` (the token stylesheet and
+  the theme script, rendered per request on the shell and on `/login`); `ModuleScope` (`data-module`).
+  - Gap found and closed (T5b, an assumption of mine, not the owner's): modules could store settings but had no
+    way to read them from server code. `@epnexo/sdk` gains `getSetting(moduleId, key)`, which asks a reader the
+    platform registers under `Symbol.for("epnexo.settings.reader")` (so the SDK stays free of database code).
+    Its 5 tests were written together with the code, so RED was not observed separately for that unit.
+  - Found by the build, not by the tests: Turbopack cannot bundle `new URL("../", import.meta.url)` and the core
+    entered the web bundle through the settings service. The three path constants in `core-module.ts`,
+    `discovery.ts` and `generate.ts` now use `dirname(fileURLToPath(import.meta.url))`.
+  - Found by running it: `serve.ts` runs under Node's own TypeScript support (strip-only) and my new import
+    chain pulled in classes with parameter properties, so the server did not start. The pool lifecycle moved to
+    `platform-lifecycle.ts`, which `serve.ts` can load.
+  - The end-to-end test now has two phases. Phase one is as before (no modules). Phase two writes a real module
+    into `modules/`, links it from `node_modules` the way `npm install` does, installs it with the CLI,
+    rebuilds, restarts, and covers: sidebar entry under its group with its icon, its page inside the shell and
+    scoped with `data-module`, the module's server code reading its setting (default, then the saved value),
+    the Apps and Settings screens, writes refused without a session, from another origin, without an origin and
+    from a non-administrator, a bad field changing nothing, the secret encrypted at rest and absent from every
+    response and page, a blank secret keeping the stored one and `clear` removing it, platform and module
+    appearance reaching every page and the sign-in page, the operator able to write and a public address not,
+    purge removing settings and overrides while the audit trail stays, and shutdown in under 9 s. It removes the
+    fixture and regenerates the empty registry when it ends (it did not at first and left stale generated files
+    that broke the next typecheck).
+  - Looked at in a browser (headless Chromium against the production build, light and with accent 160): the
+    settings screen, secret placeholder, required markers and the incomplete badge read correctly; the
+    per-module corners select was clipping its label and was widened.
+  `npm test` 593 pass, 0 fail, 0 skipped; typecheck clean.
