@@ -51,14 +51,14 @@ Quoted fragments are the owner's words; the rest is the plan agreed in the sessi
 
 ## Tasks
 
-- [ ] **T1** (S8) Migration `0006_module_packages.sql`, the store, and the `var/` locations. Route: inline.
-- [ ] **T2** (S1, S4) Archive inspection and safe extraction with limits, tested with hand-made hostile
-  tarballs. Route: inline. Risk: item 2 (it reads untrusted input).
-- [ ] **T3** (S6, S7) Package validation: `package.json`, `manifest.json`, files, migrations, dependency
-  policy, platform and `dependsOn` report. Route: inline. Risk: item 2.
-- [ ] **T4** (S3, S5, S8, S9) The intake service: hash, stage, validate, record, review; idempotent. Route:
-  inline.
-- [ ] **T5** (S2, S3) The commands `modules pack` and `modules add`. Route: inline.
+- [x] **T1** (S8) Migration `0006_module_packages.sql`, the store, and the `var/` locations. Route: inline. Commit `6cf0413`.
+- [x] **T2** (S1, S4) Archive inspection and safe extraction with limits, tested with hand-made hostile
+  tarballs. Route: inline. Risk: item 2 (it reads untrusted input). Commit `e3c2752`.
+- [x] **T3** (S6, S7) Package validation: `package.json`, `manifest.json`, files, migrations, dependency
+  policy, platform and `dependsOn` report. Route: inline. Risk: item 2. Commit `f7aa1d5`.
+- [x] **T4** (S3, S5, S8, S9) The intake service: hash, stage, validate, record, review; idempotent. Route:
+  inline. Commit `683b510`.
+- [x] **T5** (S2, S3) The commands `modules pack` and `modules add`. Route: inline. Commit `6c7d64b`.
 - [ ] **T6** (S4, S10) The "nothing runs" test over the whole path, README, independent verifier, native
   reviews. Route: inline plus verifier.
 
