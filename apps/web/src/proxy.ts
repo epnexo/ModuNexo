@@ -1,7 +1,18 @@
-import { isLocalHostName, readSignInMode, requestIsLocal } from "@epnexo/core/auth";
+import {
+  CLIENT_IP_HEADER,
+  effectiveClientAddress,
+  isLocalHostName,
+  readSignInMode,
+  readTrustedProxies,
+  requestIsLocal,
+  splitForwarded,
+} from "@epnexo/core/auth";
 import { type NextRequest, NextResponse } from "next/server";
+import { modules } from "./generated/modules.ts";
 import { decideAccess } from "./server/access.ts";
 import { requestAddresses } from "./server/client-address.ts";
+import { type Subject, subjectCan } from "./server/nav.ts";
+import { permissionRules, requiredPermissions } from "./server/route-permissions.ts";
 import { resolvePublicUrl } from "./server/launch.ts";
 import { servedOverHttpsWithoutPublicUrl } from "./server/public-url-warning.ts";
 import { platform } from "./server/platform.ts";
@@ -9,6 +20,9 @@ import { createRefusalLog } from "./server/refusal-log.ts";
 import { sessionIsUsable } from "./server/session.ts";
 
 const refusalLog = createRefusalLog((line) => console.warn(line));
+
+/** What the manifests of this build say about who may reach which path. Fixed at build time, like the registry. */
+const PERMISSION_RULES = permissionRules(modules);
 
 const text = (message: string, status: number) =>
   new NextResponse(message, { status, headers: { "cache-control": "no-store", "content-type": "text/plain; charset=utf-8" } });
@@ -34,8 +48,30 @@ export async function proxy(request: NextRequest) {
     if (servedOverHttpsWithoutPublicUrl(request.headers, resolvePublicUrl())) {
       refusalLog("https-without-public-url", 'requests arrive over HTTPS but WEB_PUBLIC_URL is not an https origin, so session cookies are not marked Secure; set WEB_PUBLIC_URL to the public https address.');
     }
-    const decision = decideAccess({ pathname, mode, hasSession, local, hostOk });
-    if (decision.action === "allow") return NextResponse.next();
+    // The local operator and an administrator hold every permission; nobody else holds any (there is no way yet to
+    // grant one), so a path that asks for a permission is theirs alone.
+    const subject: Subject = mode === "disabled" ? { kind: "operator" } : { kind: "user", role: session?.user.role };
+    const permitted = requiredPermissions(pathname, PERMISSION_RULES).every((permission) => subjectCan(subject, permission));
+
+    const decision = decideAccess({ pathname, mode, hasSession, local, hostOk, permitted });
+    if (decision.action === "allow") {
+      // Behind a proxy the owner trusts, the sign-in limiter should count the client the proxy saw, not the proxy.
+      // Only the header the limiter reads is rewritten; the locality rule above used the original request.
+      const forwarded = request.headers.get("x-forwarded-for");
+      const connection = request.headers.get(CLIENT_IP_HEADER);
+      if (forwarded !== null && connection !== null) {
+        const trusted = await readTrustedProxies(pool);
+        if (trusted.length > 0) {
+          const effective = effectiveClientAddress(connection, splitForwarded(forwarded), trusted);
+          if (effective !== connection) {
+            const headers = new Headers(request.headers);
+            headers.set(CLIENT_IP_HEADER, effective);
+            return NextResponse.next({ request: { headers } });
+          }
+        }
+      }
+      return NextResponse.next();
+    }
     if (decision.action === "redirect") {
       const url = request.nextUrl.clone();
       url.pathname = decision.to;

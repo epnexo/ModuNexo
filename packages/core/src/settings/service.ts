@@ -2,23 +2,10 @@ import type { SettingDeclaration } from "@epnexo/sdk";
 import type pg from "pg";
 import type { Registry } from "../registry.ts";
 import { decryptSecret, encryptSecret } from "./crypto.ts";
+import { SettingValueError, SettingsError } from "./errors.ts";
 import { type ParsedValue, validateSetting } from "./validate.ts";
 
-/** The module or the setting is not one the platform knows. */
-export class SettingsError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "SettingsError";
-  }
-}
-
-/** The value was refused by the declaration. The message names the key and the rule, never the value. */
-export class SettingValueError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "SettingValueError";
-  }
-}
+export { SettingValueError, SettingsError };
 
 export interface SettingEntry {
   key: string;
