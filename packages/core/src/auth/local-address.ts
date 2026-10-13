@@ -8,7 +8,7 @@
  */
 
 /** Four decimal octets. Leading zeros are refused because some parsers read them as octal. */
-function parseIPv4(text: string): [number, number, number, number] | null {
+export function parseIPv4(text: string): [number, number, number, number] | null {
   const parts = text.split(".");
   if (parts.length !== 4) return null;
   const octets: number[] = [];
@@ -22,7 +22,7 @@ function parseIPv4(text: string): [number, number, number, number] | null {
 }
 
 /** Eight 16-bit groups, or null when the text is not a well-formed IPv6 address. */
-function parseIPv6(text: string): number[] | null {
+export function parseIPv6(text: string): number[] | null {
   let rest = text;
   const zone = rest.indexOf("%");
   if (zone !== -1) rest = rest.slice(0, zone);
@@ -57,7 +57,7 @@ function parseIPv6(text: string): number[] | null {
 }
 
 /** Removes the brackets and the port a proxy or a socket may add: "[::1]:3000", "192.168.1.5:51234". */
-function stripDecoration(raw: string): string {
+export function stripDecoration(raw: string): string {
   const text = raw.trim();
   const bracketed = /^\[([^\]]+)\](?::\d{1,5})?$/.exec(text);
   if (bracketed !== null) return bracketed[1]!;
