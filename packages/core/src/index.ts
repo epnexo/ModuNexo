@@ -6,6 +6,7 @@ export * from "./lifecycle/index.ts";
 export * from "./migrations.ts";
 export * from "./packages/index.ts";
 export * from "./operations/index.ts";
+export * from "./install/index.ts";
 export * from "./pool.ts";
 export * from "./purge.ts";
 export * from "./registry.ts";
