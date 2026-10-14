@@ -20,8 +20,9 @@ before(async () => {
 
 after(async () => {
   if (pool) {
-    await pool.query("delete from core.module_settings where module_id like 't-%'");
-    await pool.query("delete from core.settings_events where scope like 't-%'");
+    // Only this file's own ids: another file shares this database and its rows must not be swept away.
+    await pool.query("delete from core.module_settings where module_id in ('t-x', 't-y')");
+    await pool.query("delete from core.settings_events where scope in ('t-x', 't-y', 't-z')");
     await box.cleanup();
     await pool.end();
   }
