@@ -31,15 +31,15 @@ Quoted fragments are the owner's words; the rest is the plan agreed in the sessi
 
 ## Tasks
 
-- [ ] **T1** (S2, S5) `launchApply`: detached start of `modules apply`, log file, busy refusal; `--actor` option on
+- [x] **T1** (S2, S5) `launchApply`: detached start of `modules apply`, log file, busy refusal; `--actor` option on
   the CLI command. Route: inline. Risk: item 5 (starts a process).
-- [ ] **T2** (S1, S5) `receiveUpload`: stream to `var/`, size cap, intake. Route: inline. Risk: item 2 (untrusted input).
-- [ ] **T3** (S1-S4) API: `POST /api/apps/packages`, `POST /api/apps/operations`, `GET /api/apps`; admin-only
+- [x] **T2** (S1, S5) `receiveUpload`: stream to `var/`, size cap, intake. Route: inline. Risk: item 2 (untrusted input).
+- [x] **T3** (S1-S4) API: `POST /api/apps/packages`, `POST /api/apps/operations`, `GET /api/apps`; admin-only
   logic in a testable module. Route: inline. Risk: item 2.
-- [ ] **T4** (S3, S4, S6) The Apps screen: modules, add-a-package flow, review, confirm, progress, history.
+- [x] **T4** (S3, S4, S6) The Apps screen: modules, add-a-package flow, review, confirm, progress, history.
   Route: inline.
-- [ ] **T5** (S1-S3) End to end over HTTP with a real build. Route: inline.
-- [ ] **T6** (S7) README, independent verifier, native review. Route: inline plus verifier.
+- [x] **T5** (S1-S3) End to end over HTTP with a real build. Route: inline.
+- [x] **T6** (S7) README, independent verifier, native review. Route: inline plus verifier.
 
 Forecast: about 1,200 authored changed lines; one slice per task.
 
@@ -52,3 +52,18 @@ Forecast: about 1,200 authored changed lines; one slice per task.
   does not have. The upload is a raw `application/gzip` body, not multipart, to keep the size cap simple and
   streaming; the launch is a detached CLI process because `apply` restarts the very server that handled the
   request.
+- **L3** (2026-10-14) Found while wiring T5: importing `@epnexo/core/install` into the web bundle pulled
+  `install/build.ts` (it resolves `next` at run time), and the web build failed in Turbopack's tracing. The web
+  app now imports the core through a narrow entry, `@epnexo/core/apps`, that holds only what the screen uses.
+  Also found: two settings test files swept each other's rows with `like 't-%'` in the shared test database
+  (pre-existing, surfaced as flakes); each now deletes only its own ids.
+- **L4** (2026-10-14) Independent verifier (sonnet, scratch DB, real e2e run once): S1-S6 met, S3 and S7 partly,
+  two blockers. B1: after Confirm the screen did not poll (the run row appears about a second later) and an
+  apply refused before it records a run was invisible; fixed: the page watches for a minute after Confirm, and
+  `launchApply` waits up to 4 s to see whether the process ends at once and the API answers 422 with what it
+  printed. B2: a 300 KB gzip of zeros pinned the server CPU for minutes because the tar parser is not linear in
+  trailing zeros; fixed in `inspectArchive`: after the end-of-archive marker what follows is counted and dropped
+  (a 64 MB zero bomb now takes milliseconds; a file whose body is zeros is still counted). Advisories fixed: SHA-256
+  in upper case is accepted like on the command line, stale `running` rows are closed when the screen lists runs,
+  README. Left: a failed first start (bad entry path) is visible only in the log. Suite 833 pass, 0 fail.
+  Commit `15801db`.
