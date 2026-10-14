@@ -103,6 +103,24 @@ describe("handleStart", () => {
     assert.deepEqual([calls.launch, missing.calls.launch], [[], []]);
   });
 
+  it("answers 422 with what the process printed when it ended at once", async () => {
+    const { LaunchFailedError } = await import("@epnexo/core/apps");
+    const failed = deps({
+      launch: async () => {
+        throw new LaunchFailedError(3, "refused: reports 1.0.0 is not newer than the installed 1.0.0");
+      },
+    });
+    const response = await handleStart(json({ sha256: SHA }), failed.deps);
+    assert.equal(response.status, 422);
+    assert.match(String((await read(response)).error), /not newer than the installed/);
+  });
+
+  it("accepts the SHA-256 in upper case, as the command line does", async () => {
+    const { deps: d, calls } = deps();
+    assert.equal((await handleStart(json({ sha256: SHA.toUpperCase() }), d)).status, 202);
+    assert.deepEqual(calls.launch, [{ sha256: SHA, actor: ADMIN.actor }]);
+  });
+
   it("is refused for a visitor who may not write, and with 409 while a run is alive", async () => {
     const plain = deps({ viewer: async () => USER });
     assert.equal((await handleStart(json({ sha256: SHA }), plain.deps)).status, 403);

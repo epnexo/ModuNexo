@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { ARCHIVE_LIMITS, inspectArchive, stageArchive } from "../src/packages/archive.ts";
-import { type TarEntry, tgz } from "./helpers/tarball.ts";
+import { type TarEntry, tarBytes, tgz } from "./helpers/tarball.ts";
 
 let dir: string;
 beforeEach(() => {
@@ -173,3 +173,25 @@ describe("stageArchive", () => {
     await assert.rejects(stageArchive(archive(GOOD), target), /already exists/);
   });
 });
+
+describe("inspectArchive: trailing zeros", () => {
+  it("a small gzip that inflates to hundreds of megabytes of zeros after the archive ends is read in bounded time", async () => {
+    const zeros = gzipSync(Buffer.alloc(64 * 1024 * 1024));
+    const file = join(dir, "zeros.tgz");
+    writeFileSync(file, zeros);
+    const started = Date.now();
+    const result = await inspectArchive(file);
+    assert.equal(result.ok, false);
+    assert.ok(Date.now() - started < 5000, `took ${Date.now() - started} ms`);
+  });
+
+  it("a good archive followed by a long run of zeros is still accepted, and file bodies of zeros are still counted", async () => {
+    const good = tarBytes([{ name: "package/", type: "5" }, { name: "package/zeros.bin", data: Buffer.alloc(1024 * 1024) }]);
+    const file = join(dir, "padded.tgz");
+    writeFileSync(file, gzipSync(Buffer.concat([good, Buffer.alloc(32 * 1024 * 1024)])));
+    const result = await inspectArchive(file);
+    assert.equal(result.ok, true, JSON.stringify(result));
+    if (result.ok) assert.equal(result.unpackedBytes, 1024 * 1024);
+  });
+});
+

@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { closeSync, mkdirSync, openSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type pg from "pg";
 import { OperationBusyError, liveOperation } from "../operations/index.ts";
@@ -10,6 +10,18 @@ export class LaunchBusyError extends OperationBusyError {}
 
 /** Who a run is recorded as: a short plain name, never something that could be read as an option. */
 export const ACTOR = /^[A-Za-z0-9][A-Za-z0-9:._@-]{0,99}$/;
+
+/** The process ended, with a failure, before the settle time was over; `output` is the end of what it printed. */
+export class LaunchFailedError extends Error {
+  readonly exitCode: number | null;
+  readonly output: string;
+  constructor(exitCode: number | null, output: string) {
+    super(output === "" ? `the apply process ended with exit code ${exitCode}` : output);
+    this.name = "LaunchFailedError";
+    this.exitCode = exitCode;
+    this.output = output;
+  }
+}
 
 export interface LaunchOptions {
   pool: pg.Pool;
@@ -23,6 +35,12 @@ export interface LaunchOptions {
   entry: string[];
   env?: NodeJS.ProcessEnv;
   cwd?: string;
+  /**
+   * How long to wait, at most, to see whether the process ends right away. Refusals (the package is not newer, it
+   * no longer passes) end it within a second or two and never create a run row, so without this the caller would
+   * answer "started" for something that never ran. 0 (default) does not wait.
+   */
+  settleMs?: number;
 }
 
 export interface Launched {
@@ -52,8 +70,26 @@ export async function launchApply(options: LaunchOptions): Promise<Launched> {
       [...options.entry, "modules", "apply", options.sha256, "--actor", options.actor, "--data-dir", options.dataDir],
       { detached: true, stdio: ["ignore", fd, fd], env: options.env ?? process.env, ...(options.cwd === undefined ? {} : { cwd: options.cwd }) },
     );
+    const ended = new Promise<{ code: number | null }>((resolve) => {
+      child.once("exit", (code) => resolve({ code }));
+      child.once("error", () => resolve({ code: null }));
+    });
     child.unref();
     if (child.pid === undefined) throw new Error("the apply process could not be started");
+    if ((options.settleMs ?? 0) > 0) {
+      let timer: NodeJS.Timeout | undefined;
+      const outcome = await Promise.race([ended, new Promise<"running">((resolve) => (timer = setTimeout(() => resolve("running"), options.settleMs)))]);
+      if (timer !== undefined) clearTimeout(timer);
+      if (outcome !== "running" && outcome.code !== 0) {
+        let output = "";
+        try {
+          output = readFileSync(logFile, "utf8").trim().split("\n").slice(-8).join("\n").slice(-1200);
+        } catch {
+          output = "";
+        }
+        throw new LaunchFailedError(outcome.code, output);
+      }
+    }
     return { pid: child.pid, logFile };
   } finally {
     closeSync(fd);

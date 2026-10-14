@@ -1,4 +1,4 @@
-import { type IntakeResult, LaunchBusyError, UploadTooLargeError } from "@epnexo/core/apps";
+import { type IntakeResult, LaunchBusyError, LaunchFailedError, UploadTooLargeError } from "@epnexo/core/apps";
 import { json, parseJsonBody, readBodyText, sameOriginRequest } from "./settings-api.ts";
 
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -36,7 +36,7 @@ export async function handleUpload(request: Request, deps: AppsDeps): Promise<Re
     await request.body?.cancel().catch(() => undefined);
     return json({ error: `the archive is larger than ${deps.maxUploadBytes} bytes` }, 413);
   }
-  const expected = request.headers.get("x-expected-sha256");
+  const expected = request.headers.get("x-expected-sha256")?.trim().toLowerCase() ?? null;
   if (expected !== null && !SHA256.test(expected)) return json({ error: "x-expected-sha256 must be 64 lowercase hexadecimal characters" }, 400);
   if (request.body === null) return json({ error: "the request has no body: send the archive" }, 400);
 
@@ -62,7 +62,8 @@ export async function handleStart(request: Request, deps: AppsDeps): Promise<Res
   const body = parsed.body;
   if (typeof body !== "object" || body === null || Array.isArray(body)) return json({ error: "the request body must be an object" }, 400);
   const keys = Object.keys(body);
-  const sha256 = (body as { sha256?: unknown }).sha256;
+  const rawSha = (body as { sha256?: unknown }).sha256;
+  const sha256 = typeof rawSha === "string" ? rawSha.toLowerCase() : rawSha;
   if (keys.length !== 1 || typeof sha256 !== "string" || !SHA256.test(sha256)) return json({ error: "send { sha256 }: the 64 lowercase hexadecimal characters of a staged package" }, 400);
   if (!(await deps.isStaged(sha256))) return json({ error: "no staged package has that SHA-256; upload it first" }, 404);
 
@@ -70,6 +71,8 @@ export async function handleStart(request: Request, deps: AppsDeps): Promise<Res
     await deps.launch(sha256, authorized.actor);
   } catch (error) {
     if (error instanceof LaunchBusyError) return json({ error: error.message }, 409);
+    // The process ended at once: a refusal (not newer, no longer valid) or a failure to start. Say what it said.
+    if (error instanceof LaunchFailedError) return json({ error: error.output === "" ? "the install could not be started; see the apply log in var/logs" : error.output }, 422);
     throw error;
   }
   return json({ status: "started", sha256 }, 202);

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, afterEach, before, beforeEach, describe, it } from "node:test";
 import type pg from "pg";
-import { LaunchBusyError, launchApply } from "../src/install/launch.ts";
+import { LaunchBusyError, LaunchFailedError, launchApply } from "../src/install/launch.ts";
 import { finishOperation, startOperation } from "../src/operations/index.ts";
 import { Registry } from "../src/registry.ts";
 import { migrate } from "../src/runner.ts";
@@ -81,4 +81,25 @@ describe("launchApply", () => {
     await new Promise((resolve) => setTimeout(resolve, 300));
     assert.equal(existsSync(join(work, "args.json")), false);
   });
+
+  test("when the process dies within the settle time, the caller gets what it printed", async () => {
+    const script = join(work, "refuses.mjs");
+    writeFileSync(script, 'console.error("refused: the package is not newer than the installed one");\nprocess.exit(3);\n');
+    await assert.rejects(launchApply({ pool: pool!, sha256: SHA, actor: ACTOR, dataDir: join(work, "var"), entry: [script], settleMs: 5000 }), (error) => {
+      assert.ok(error instanceof LaunchFailedError);
+      assert.equal(error.exitCode, 3);
+      assert.match(error.output, /not newer than the installed one/);
+      return true;
+    });
+  });
+
+  test("a process that is still running when the settle time passes is a started run", async () => {
+    const script = join(work, "sleeps.mjs");
+    writeFileSync(script, "setTimeout(() => {}, 4000);\n");
+    const started = Date.now();
+    const launched = await launchApply({ pool: pool!, sha256: SHA, actor: ACTOR, dataDir: join(work, "var"), entry: [script], settleMs: 300 });
+    assert.ok(Date.now() - started < 2500);
+    assert.ok(launched.pid > 1);
+  });
 });
+
