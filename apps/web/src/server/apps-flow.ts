@@ -5,7 +5,7 @@ export interface RunRow {
   id: number;
   moduleId: string;
   version: string;
-  kind: "install" | "upgrade";
+  kind: "install" | "upgrade" | "enable" | "disable" | "uninstall";
   status: "running" | "succeeded" | "failed" | "rolled_back";
   step: string;
   detail: string | null;
@@ -45,18 +45,29 @@ export const stepLabel = (step: string): string => STEPS[step] ?? step;
 
 export const isFinished = (run: Pick<RunRow, "status">): boolean => run.status !== "running";
 
+const PRESENT: Record<RunRow["kind"], string> = { install: "Installing", upgrade: "Upgrading", enable: "Enabling", disable: "Disabling", uninstall: "Uninstalling" };
+const PAST: Record<RunRow["kind"], string> = { install: "Installed", upgrade: "Upgraded", enable: "Enabled", disable: "Disabled", uninstall: "Uninstalled" };
+
+/** What a button for a change of state does, in words. */
+export function changeLabel(action: "enable" | "disable" | "uninstall", mode: "keep" | "purge" | undefined): string {
+  if (action === "enable") return "Enable";
+  if (action === "disable") return "Disable";
+  return mode === "purge" ? "Uninstall and delete its data" : "Uninstall and keep its data";
+}
+
 /** One sentence for a run, running or finished. */
 export function runSummary(run: RunRow): string {
-  const subject = `${run.moduleId} ${run.kind === "upgrade" ? "to " : ""}${run.version}`;
+  const isChange = run.kind === "enable" || run.kind === "disable" || run.kind === "uninstall";
+  const subject = isChange ? run.moduleId : `${run.moduleId} ${run.kind === "upgrade" ? "to " : ""}${run.version}`;
   const detail = run.detail === null || run.detail === "" ? "" : run.detail;
   switch (run.status) {
     case "running": {
       const doing = stepLabel(run.step);
       const extra = detail !== "" && run.step === "build" ? ` (${detail})` : "";
-      return `${run.kind === "upgrade" ? "Upgrading" : "Installing"} ${subject}: ${doing}${extra}`;
+      return `${PRESENT[run.kind]} ${subject}: ${doing}${extra}`;
     }
     case "succeeded":
-      return `${run.kind === "upgrade" ? "Upgraded" : "Installed"} ${subject}.${detail === "" ? "" : ` ${detail}`}`;
+      return `${PAST[run.kind]} ${subject}.${detail === "" ? "" : ` ${detail}`}`;
     case "rolled_back":
       return `Rolled back ${run.kind} of ${subject}.${detail === "" ? "" : ` ${detail}`}`;
     case "failed":

@@ -12,6 +12,8 @@ export interface AppsDeps {
   isStaged: (sha256: string) => Promise<boolean>;
   /** Starts `modules apply` detached. */
   launch: (sha256: string, actor: string) => Promise<{ pid: number; logFile: string }>;
+  /** Starts `modules <action> <id> --rebuild` detached. */
+  launchChange: (moduleId: string, action: "enable" | "disable" | "uninstall", mode: "keep" | "purge" | undefined, actor: string) => Promise<{ pid: number; logFile: string }>;
   /** What the screen shows: recent runs, received packages, the run in progress. */
   state: () => Promise<{ operations: unknown[]; packages: unknown[]; running: unknown }>;
   maxUploadBytes: number;
@@ -76,6 +78,41 @@ export async function handleStart(request: Request, deps: AppsDeps): Promise<Res
     throw error;
   }
   return json({ status: "started", sha256 }, 202);
+}
+
+const MODULE_ID = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
+
+/**
+ * `POST /api/apps/modules/<id>` `{ action: "enable" | "disable" | "uninstall", mode? }`: starts a change of state
+ * with a rebuild. An uninstall must say `keep` or `purge`: there is no default for deleting data.
+ */
+export async function handleChange(request: Request, deps: AppsDeps, moduleId: string): Promise<Response> {
+  const authorized = await authorize(request, deps, { write: true });
+  if (authorized instanceof Response) return authorized;
+  if (!MODULE_ID.test(moduleId) || moduleId.length > 64) return json({ error: "that is not a module id" }, 400);
+
+  const text = await readBodyText(request);
+  if (!text.ok) return json({ error: text.message }, 413);
+  const parsed = parseJsonBody(text.text);
+  if (!parsed.ok) return json({ error: parsed.message }, 400);
+  const body = parsed.body;
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return json({ error: "the request body must be an object" }, 400);
+  const { action, mode } = body as { action?: unknown; mode?: unknown };
+  const keys = Object.keys(body);
+  if (action !== "enable" && action !== "disable" && action !== "uninstall") return json({ error: 'action must be "enable", "disable" or "uninstall"' }, 400);
+  if (action === "uninstall") {
+    if (mode !== "keep" && mode !== "purge") return json({ error: 'uninstall needs mode "keep" (leave the data) or "purge" (delete it)' }, 400);
+    if (keys.length !== 2) return json({ error: "send { action, mode }" }, 400);
+  } else if (keys.length !== 1) return json({ error: "send { action }" }, 400);
+
+  try {
+    await deps.launchChange(moduleId, action, action === "uninstall" ? (mode as "keep" | "purge") : undefined, authorized.actor);
+  } catch (error) {
+    if (error instanceof LaunchBusyError) return json({ error: error.message }, 409);
+    if (error instanceof LaunchFailedError) return json({ error: error.output === "" ? "the change could not be started; see the log in var/logs" : error.output }, 422);
+    throw error;
+  }
+  return json({ status: "started", moduleId, action }, 202);
 }
 
 /** `GET /api/apps`: for the screen's polling. */

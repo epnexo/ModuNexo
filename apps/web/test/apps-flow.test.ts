@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { type RunRow, isFinished, planAction, runSummary, stepLabel } from "../src/server/apps-flow.ts";
+import { type RunRow, changeLabel, isFinished, planAction, runSummary, stepLabel } from "../src/server/apps-flow.ts";
 
 const run = (extra: Partial<RunRow> = {}): RunRow => ({
   id: 1,
@@ -45,5 +45,23 @@ describe("run display", () => {
     for (const status of ["succeeded", "failed", "rolled_back"] as const) assert.equal(isFinished(run({ status })), true);
     assert.equal(stepLabel("place"), "placing the package");
     assert.equal(stepLabel("something-new"), "something-new");
+  });
+});
+
+describe("changes of state", () => {
+  it("summarises a change in progress and how it ended", () => {
+    const change = (extra: Partial<RunRow>) => run({ kind: "disable", version: "1.0.0", step: "build", detail: null, ...extra });
+    assert.equal(runSummary(change({})), "Disabling reports: building the web app");
+    assert.equal(runSummary(change({ kind: "uninstall", step: "lifecycle" })), "Uninstalling reports: running migrations and hooks");
+    assert.equal(runSummary(change({ kind: "enable", status: "succeeded", detail: "restart requested from the web launcher (pid 1)" })), "Enabled reports. restart requested from the web launcher (pid 1)");
+    assert.equal(runSummary(change({ kind: "uninstall", status: "succeeded", detail: null })), "Uninstalled reports.");
+    assert.match(runSummary(change({ status: "rolled_back", detail: "build: the web build failed" })), /Rolled back disable of reports/);
+  });
+
+  it("labels what a button would do, and warns about purge", () => {
+    assert.equal(changeLabel("enable", undefined), "Enable");
+    assert.equal(changeLabel("disable", undefined), "Disable");
+    assert.equal(changeLabel("uninstall", "keep"), "Uninstall and keep its data");
+    assert.equal(changeLabel("uninstall", "purge"), "Uninstall and delete its data");
   });
 });

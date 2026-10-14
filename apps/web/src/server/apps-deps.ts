@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { ARCHIVE_LIMITS, buildPackageContext, closeStaleOperations, launchApply, listIntakes, listOperations, liveOperation, receiveUpload, stagingPath } from "@epnexo/core/apps";
+import { ARCHIVE_LIMITS, buildPackageContext, closeStaleOperations, launchApply, launchChange, listIntakes, listOperations, liveOperation, receiveUpload, stagingPath } from "@epnexo/core/apps";
 import { type AppsDeps, plainActor } from "./apps-api.ts";
 import { platform } from "./platform.ts";
 import { resolveViewer } from "./viewer.ts";
@@ -42,6 +42,20 @@ export function appsDeps(): AppsDeps {
       return launchApply({
         pool: platform().pool,
         sha256,
+        actor: plainActor(actor),
+        dataDir: dataDir(root),
+        entry: ["--import", "tsx", join(root, "packages", "core", "src", "cli", "index.ts")],
+        cwd: root,
+        settleMs: 4000,
+      });
+    },
+    launchChange: async (moduleId, action, mode, actor) => {
+      const root = repoRoot();
+      return launchChange({
+        pool: platform().pool,
+        moduleId,
+        action,
+        ...(mode === undefined ? {} : { mode }),
         actor: plainActor(actor),
         dataDir: dataDir(root),
         entry: ["--import", "tsx", join(root, "packages", "core", "src", "cli", "index.ts")],

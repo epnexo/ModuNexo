@@ -2,7 +2,7 @@
 
 import { LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type RunRow, isFinished, planAction, runSummary } from "../../server/apps-flow";
+import { type RunRow, changeLabel, isFinished, planAction, runSummary } from "../../server/apps-flow";
 
 interface Review {
   id: string;
@@ -43,7 +43,16 @@ type Staged = { sha256: string; sizeBytes: number; alreadyStaged: boolean; revie
 const when = (iso: string) => new Date(iso).toLocaleString();
 const list = (values: string[]) => (values.length === 0 ? "none" : values.join(", "));
 
-export function AppsManager({ initial, installed }: { initial: AppsState; installed: Record<string, string> }) {
+export interface InstalledModule {
+  id: string;
+  name: string;
+  version: string;
+  state: "enabled" | "disabled";
+}
+
+type Pending = { id: string; action: "enable" | "disable" | "uninstall"; mode?: "keep" | "purge" };
+
+export function AppsManager({ initial, installed, modules }: { initial: AppsState; installed: Record<string, string>; modules: InstalledModule[] }) {
   const [state, setState] = useState<AppsState>(initial);
   const [file, setFile] = useState<File | null>(null);
   const [expected, setExpected] = useState("");
@@ -52,6 +61,8 @@ export function AppsManager({ initial, installed }: { initial: AppsState; instal
   const [problems, setProblems] = useState<string[] | null>(null);
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [starting, setStarting] = useState(false);
+  const [pending, setPending] = useState<Pending | null>(null);
+  const [typedId, setTypedId] = useState("");
   const wasRunning = useRef(initial.running !== null);
   // The apply process takes a moment to record its run, so after confirming the page watches for a while even
   // though nothing is "running" yet.
@@ -116,6 +127,29 @@ export function AppsManager({ initial, installed }: { initial: AppsState; instal
         setMessage({ kind: "ok", text: "Started. The web app is rebuilt and the server restarts at the end; this page keeps following the run." });
         await refresh();
       } else setMessage({ kind: "error", text: data.error ?? "Could not start the run." });
+    } catch {
+      setMessage({ kind: "error", text: "Could not reach the server." });
+    }
+    setStarting(false);
+  }
+
+  async function change(request: Pending) {
+    setStarting(true);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/apps/modules/${encodeURIComponent(request.id)}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(request.action === "uninstall" ? { action: request.action, mode: request.mode } : { action: request.action }),
+      });
+      const data = (await response.json().catch(() => ({}))) as { error?: string };
+      if (response.ok) {
+        setPending(null);
+        setTypedId("");
+        setWatchUntil(Date.now() + 60_000);
+        setMessage({ kind: "ok", text: "Started. The web app is rebuilt for the new state and the server restarts at the end." });
+        await refresh();
+      } else setMessage({ kind: "error", text: data.error ?? "Could not start the change." });
     } catch {
       setMessage({ kind: "error", text: "Could not reach the server." });
     }
@@ -245,6 +279,102 @@ export function AppsManager({ initial, installed }: { initial: AppsState; instal
         <p role="status" className={`text-sm ${message?.kind === "error" ? "text-danger" : "text-muted"}`}>
           {message?.text ?? ""}
         </p>
+      </section>
+
+      <section aria-labelledby="installed-heading" className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-5">
+        <h2 id="installed-heading" className="text-lg font-semibold tracking-tight">
+          Installed modules
+        </h2>
+        {modules.length === 0 ? <p className="text-sm text-muted">No module is installed.</p> : null}
+        <ul className="divide-y divide-border">
+          {modules.map((module) => {
+            const open = pending !== null && pending.id === module.id;
+            return (
+              <li key={module.id} className="flex flex-col gap-3 py-3">
+                <div className="flex flex-wrap items-baseline justify-between gap-3">
+                  <span className="font-medium">
+                    {module.name} <span className="font-normal text-muted" data-numeric>{module.id} · {module.version}</span>
+                  </span>
+                  <span className="text-sm text-muted">{module.state === "enabled" ? "Enabled" : "Disabled"}</span>
+                </div>
+                {!open ? (
+                  <div className="flex flex-wrap gap-2">
+                    {module.state === "enabled" ? (
+                      <button type="button" disabled={busy || starting} onClick={() => setPending({ id: module.id, action: "disable" })} className="h-9 rounded-md border border-border-strong px-3 text-sm transition-colors duration-150 hover:bg-panel-hover disabled:cursor-not-allowed disabled:opacity-60">
+                        Disable
+                      </button>
+                    ) : (
+                      <button type="button" disabled={busy || starting} onClick={() => setPending({ id: module.id, action: "enable" })} className="h-9 rounded-md border border-border-strong px-3 text-sm transition-colors duration-150 hover:bg-panel-hover disabled:cursor-not-allowed disabled:opacity-60">
+                        Enable
+                      </button>
+                    )}
+                    <button type="button" disabled={busy || starting} onClick={() => setPending({ id: module.id, action: "uninstall" })} className="h-9 rounded-md border border-border-strong px-3 text-sm text-danger transition-colors duration-150 hover:bg-panel-hover disabled:cursor-not-allowed disabled:opacity-60">
+                      Uninstall…
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-3 rounded-md border border-border p-3">
+                    {pending.action === "uninstall" ? (
+                      <fieldset className="flex flex-col gap-2">
+                        <legend className="text-sm font-medium">What happens to {module.name}&apos;s data?</legend>
+                        <label className="flex items-start gap-2 text-sm">
+                          <input type="radio" name={`mode-${module.id}`} checked={pending.mode === "keep"} onChange={() => setPending({ ...pending, mode: "keep" })} />
+                          <span>Keep it. The schema and its migration history stay, so installing the module again finds its data.</span>
+                        </label>
+                        <label className="flex items-start gap-2 text-sm">
+                          <input type="radio" name={`mode-${module.id}`} checked={pending.mode === "purge"} onChange={() => setPending({ ...pending, mode: "purge" })} />
+                          <span>Delete it. The module&apos;s schema and migration history are dropped. This cannot be undone.</span>
+                        </label>
+                        {pending.mode === "purge" ? (
+                          <div className="flex flex-col gap-1.5">
+                            <label htmlFor={`confirm-${module.id}`} className="text-sm">
+                              Type <code className="font-mono">{module.id}</code> to confirm
+                            </label>
+                            <input
+                              id={`confirm-${module.id}`}
+                              value={typedId}
+                              onChange={(event) => setTypedId(event.target.value)}
+                              autoComplete="off"
+                              className="max-w-xs rounded-md border border-border-strong bg-surface px-3 py-2 font-mono text-sm outline-none focus-visible:border-accent"
+                            />
+                          </div>
+                        ) : null}
+                      </fieldset>
+                    ) : (
+                      <p className="text-sm">
+                        {pending.action === "disable"
+                          ? `Disable ${module.name}? Its pages leave the app; its data is kept.`
+                          : `Enable ${module.name}? Its pages come back after the web app is rebuilt.`}
+                      </p>
+                    )}
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={starting || busy || (pending.action === "uninstall" && (pending.mode === undefined || (pending.mode === "purge" && typedId !== module.id)))}
+                        onClick={() => void change(pending)}
+                        className="inline-flex h-9 items-center gap-2 rounded-md bg-accent px-3 text-sm font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {starting ? <LoaderCircle aria-hidden className="size-4 animate-spin motion-reduce:animate-none" /> : null}
+                        {changeLabel(pending.action, pending.mode)}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={starting}
+                        onClick={() => {
+                          setPending(null);
+                          setTypedId("");
+                        }}
+                        className="h-9 rounded-md border border-border-strong px-3 text-sm transition-colors duration-150 hover:bg-panel-hover"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
       </section>
 
       <section aria-labelledby="history-heading" className="flex flex-col gap-3">
