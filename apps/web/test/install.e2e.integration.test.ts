@@ -317,8 +317,15 @@ describe("Apps screen API: enable, disable, uninstall", () => {
   async function finishedRun(kind: string): Promise<{ status: string; kind: string }> {
     const deadline = Date.now() + 420_000;
     while (Date.now() < deadline) {
-      const { rows } = await db!.query("select kind, status from core.module_operations order by id desc limit 1");
-      if (rows[0]?.kind === kind && rows[0].status !== "running") return rows[0];
+      const { rows } = await db!.query("select kind, status, step, detail from core.module_operations order by id desc limit 1");
+      if (rows[0]?.kind === kind && rows[0].status !== "running") {
+        if (rows[0].status !== "succeeded") {
+          const logs = join(dataDir, "logs");
+          const tail = existsSync(logs) ? readdirSync(logs).sort().slice(-1).map((name) => readFileSync(join(logs, name), "utf8").slice(-2500)).join("") : "(no log)";
+          assert.fail(`the ${kind} run ended ${rows[0].status} at step ${rows[0].step}: ${rows[0].detail}\n${tail}`);
+        }
+        return { kind: rows[0].kind, status: rows[0].status };
+      }
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
     assert.fail(`no finished ${kind} run`);
