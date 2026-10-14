@@ -44,8 +44,8 @@ Quoted fragments are the owner's words; the rest is the plan agreed in the sessi
   injectable. Route: inline. Risk: item 5. Commit `dd5cfac`.
 - [x] **T4** (S1, S3, S4, S6, S7) `applyPackage`: the pipeline end to end with undo, against a scratch DB and a
   fake build. Route: inline. Risk: items 1 and 5. Commit `72ab8c3`.
-- [ ] **T5** (S1, S5) CLI `modules apply`, the restart contract (server exit code + pid file + `web:start`
-  supervision). Route: inline. Risk: item 5.
+- [x] **T5** (S1, S5) CLI `modules apply`, the restart contract (server exit code + pid file + `web:start`
+  supervision). Route: inline. Risk: item 5. Commit `09d1512`.
 - [ ] **T6** (S8) Real end-to-end with a fixture module and a real build, README, independent verifier, native
   reviews. Route: inline plus verifier.
 
@@ -70,3 +70,8 @@ Forecast: about 1,500 authored changed lines; one slice per task.
   install is `manifest.ts`, which is code, so a package could show one thing and run another. `apply` now loads
   the placed `manifest.ts` and refuses (and undoes) unless it equals the reviewed `manifest.json`. Also,
   `discoverModules` takes `freshImport` so a replaced package is not served from the module cache in an upgrade.
+- **L5** (2026-10-14) T5 simplified the restart contract of S5: instead of a server exit code, the launcher
+  (`apps/web/scripts/run.ts`, now a small supervisor in `apps/web/src/server/supervisor.ts`) records its pid in
+  `var/run/web.pid` and restarts its child on SIGUSR2 only. The pipeline signals that pid after checking its
+  command line is the launcher's, so a stale pid file can never make it signal another process. Dev mode is not
+  supervised.
