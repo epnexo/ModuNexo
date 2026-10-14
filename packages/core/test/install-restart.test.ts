@@ -41,6 +41,16 @@ describe("requestRestart", () => {
     assert.match(message, /not the web launcher|stale/i);
   });
 
+  it("does not signal the launcher's build or dev commands, which also run apps/web/scripts/run.ts", async () => {
+    writePid("4242\n");
+    for (const command of ["build", "dev"]) {
+      const signals: unknown[] = [];
+      const message = await requestRestart({ dataDir, kill: (...args) => void signals.push(args), readCmdline: () => `node\0--import\0tsx\0/repo/${LAUNCHER_MARKER}\0${command}\0` });
+      assert.deepEqual(signals, [], command);
+      assert.match(message, /not the web launcher|stale/i);
+    }
+  });
+
   it("does not signal when the process is gone or the file is not a pid", async () => {
     writePid("4242\n");
     const none: unknown[] = [];

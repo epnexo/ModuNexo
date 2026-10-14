@@ -17,6 +17,8 @@ export interface SuperviseOptions {
   pidFile: string;
   /** Where the control signals come from; `process` in production. */
   signals: SignalSource;
+  /** How long a child that was asked to stop may take before it is killed. Default 15 seconds. */
+  killAfterMs?: number;
 }
 
 /**
@@ -33,6 +35,12 @@ export function superviseChild(options: SuperviseOptions): Promise<number> {
     const cleanup = () => {
       for (const [signal, handler] of handlers) options.signals.off(signal, handler);
       rmSync(options.pidFile, { force: true });
+    };
+
+    const stop = (target: ChildProcess, signal: NodeJS.Signals) => {
+      target.kill(signal);
+      const timer = setTimeout(() => target.kill("SIGKILL"), options.killAfterMs ?? 15_000);
+      target.once("exit", () => clearTimeout(timer));
     };
 
     const start = () => {
@@ -58,12 +66,12 @@ export function superviseChild(options: SuperviseOptions): Promise<number> {
 
     const onStop = (signal: NodeJS.Signals) => () => {
       stopping = signal;
-      child?.kill(signal);
+      if (child !== undefined) stop(child, signal);
     };
     const onRestart = () => {
       if (restarting || stopping !== null || child === undefined) return;
       restarting = true;
-      child.kill("SIGTERM");
+      stop(child, "SIGTERM");
     };
     const handlers: [NodeJS.Signals, () => void][] = [
       ["SIGINT", onStop("SIGINT")],

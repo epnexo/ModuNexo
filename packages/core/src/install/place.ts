@@ -27,6 +27,28 @@ export interface PlaceOptions {
   /** The repository's `node_modules`, where a workspace link would be. */
   nodeModulesDir: string;
   dataDir: string;
+  /**
+   * Called with what is about to change, before anything does. The pipeline writes it to its journal, so a process
+   * that dies half way can be undone by the next run from `undoPlacement`.
+   */
+  beforeChange?: (state: PlacementState) => void;
+}
+
+/** What a placement changes, as plain data: enough to undo it later without the process that made it. */
+export interface PlacementState {
+  kind: "install" | "upgrade";
+  moduleId: string;
+  modulesDir: string;
+  moduleDir: string;
+  /** The `node_modules` link and what it points to. */
+  linkPath: string;
+  linkTarget: string;
+  /** Only an install that finds no link makes one; an upgrade never touches it. */
+  createLink: boolean;
+  /** The scope folder (`node_modules/@scope`) that did not exist and will be created, if any. */
+  scopeDir: string | null;
+  /** Where the replaced version goes; null for an install. */
+  previousDir: string | null;
 }
 
 export interface Placement {
@@ -34,8 +56,44 @@ export interface Placement {
   linkPath: string;
   /** Where the replaced version was moved to; null for an install. */
   previousDir: string | null;
+  state: PlacementState;
   /** Puts everything back as it was before `placePackage`. Safe to call once. */
   undo: () => void;
+}
+
+/**
+ * Puts back what `placePackage` changed (or was about to). It is safe at any point of a placement and safe to
+ * repeat: it removes only what the state says the placement made, and an upgrade's current folder is replaced by
+ * the kept previous one only when that one exists, so a run that died before moving anything destroys nothing.
+ */
+export function undoPlacement(state: PlacementState): void {
+  if (existsSync(state.modulesDir)) {
+    for (const name of readdirSync(state.modulesDir)) {
+      if (name.startsWith(`.${state.moduleId}.incoming-`)) rmSync(join(state.modulesDir, name), { recursive: true, force: true });
+    }
+  }
+  if (state.kind === "upgrade") {
+    if (state.previousDir !== null && existsSync(state.previousDir)) {
+      rmSync(state.moduleDir, { recursive: true, force: true });
+      renameSync(state.previousDir, state.moduleDir);
+    }
+    return;
+  }
+  rmSync(state.moduleDir, { recursive: true, force: true });
+  if (state.createLink) {
+    try {
+      if (lstatSync(state.linkPath).isSymbolicLink() && readlinkSync(state.linkPath) === state.linkTarget) rmSync(state.linkPath, { force: true });
+    } catch {
+      // No link: nothing to remove.
+    }
+  }
+  if (state.scopeDir !== null) {
+    try {
+      if (readdirSync(state.scopeDir).length === 0) rmdirSync(state.scopeDir);
+    } catch {
+      // Already gone or not empty: nothing of ours to remove.
+    }
+  }
 }
 
 function packageNameOf(dir: string): string | null {
@@ -46,6 +104,14 @@ function packageNameOf(dir: string): string | null {
   } catch {
     return null;
   }
+}
+
+/** `<id>-<version>`, or with a numeric suffix when a folder of that name is already kept. */
+function freshPreviousDir(dataDir: string, moduleId: string, version: string): string {
+  const base = join(dataDir, "previous", `${moduleId}-${version}`);
+  if (!existsSync(base)) return base;
+  for (let n = 2; n < 1000; n += 1) if (!existsSync(`${base}.${n}`)) return `${base}.${n}`;
+  throw new PlacementRefusedError(`too many kept copies of ${moduleId} ${version}`);
 }
 
 /**
@@ -64,8 +130,15 @@ export function placePackage(options: PlaceOptions): Placement {
 
   const moduleDir = join(options.modulesDir, moduleId);
   const linkPath = join(options.nodeModulesDir, ...packageName.split("/"));
-  const target = relative(dirname(linkPath), moduleDir);
-  const exists = existsSync(moduleDir) || (() => { try { lstatSync(moduleDir); return true; } catch { return false; } })();
+  const linkTarget = relative(dirname(linkPath), moduleDir);
+  const exists = (() => {
+    try {
+      lstatSync(moduleDir);
+      return true;
+    } catch {
+      return false;
+    }
+  })();
 
   let previousDir: string | null = null;
   if (kind === "install") {
@@ -75,12 +148,10 @@ export function placePackage(options: PlaceOptions): Placement {
     if (options.previousVersion === undefined) throw new PlacementRefusedError("an upgrade needs the version it replaces");
     const current = packageNameOf(moduleDir);
     if (current !== packageName) throw new PlacementRefusedError(`the package name changed from ${JSON.stringify(current)} to "${packageName}"; an upgrade keeps its name`);
-    previousDir = join(options.dataDir, "previous", `${moduleId}-${options.previousVersion}`);
-    if (existsSync(previousDir)) throw new PlacementRefusedError(`${previousDir} already exists`);
+    previousDir = freshPreviousDir(options.dataDir, moduleId, options.previousVersion);
   }
 
-  let linkCreated = false;
-  let scopeCreated: string | null = null;
+  let createLink = false;
   if (kind === "install") {
     let present = false;
     try {
@@ -90,55 +161,32 @@ export function placePackage(options: PlaceOptions): Placement {
       present = false;
     }
     if (present) {
-      const sameLink = lstatSync(linkPath).isSymbolicLink() && readlinkSync(linkPath) === target;
+      const sameLink = lstatSync(linkPath).isSymbolicLink() && readlinkSync(linkPath) === linkTarget;
       if (!sameLink) throw new PlacementRefusedError(`node_modules/${packageName} is already taken by something else`);
-    }
+    } else createLink = true;
   }
+  const scopeDir = createLink && packageName.startsWith("@") && !existsSync(dirname(linkPath)) ? dirname(linkPath) : null;
+  const state: PlacementState = { kind, moduleId, modulesDir: options.modulesDir, moduleDir, linkPath, linkTarget, createLink, scopeDir, previousDir };
 
   const incoming = join(options.modulesDir, `.${moduleId}.incoming-${randomBytes(6).toString("hex")}`);
-  let movedPrevious = false;
-  let placed = false;
-  const undo = () => {
-    if (placed) rmSync(moduleDir, { recursive: true, force: true });
-    if (movedPrevious && previousDir !== null) {
-      renameSync(previousDir, moduleDir);
-    }
-    if (linkCreated) rmSync(linkPath, { force: true });
-    if (scopeCreated !== null) {
-      try {
-        if (readdirSync(scopeCreated).length === 0) rmdirSync(scopeCreated);
-      } catch {
-        // Already gone or not empty: nothing of ours to remove.
-      }
-    }
-    rmSync(incoming, { recursive: true, force: true });
-  };
+  const undo = () => undoPlacement(state);
 
   try {
+    options.beforeChange?.(state);
     mkdirSync(options.modulesDir, { recursive: true });
     cpSync(options.stagingDir, incoming, { recursive: true, errorOnExist: true, force: false, dereference: false, verbatimSymlinks: true });
     if (previousDir !== null) {
       mkdirSync(dirname(previousDir), { recursive: true });
       renameSync(moduleDir, previousDir);
-      movedPrevious = true;
     }
     renameSync(incoming, moduleDir);
-    placed = true;
-    if (kind === "install") {
-      const scope = packageName.startsWith("@") ? dirname(linkPath) : null;
-      if (scope !== null && !existsSync(scope)) {
-        mkdirSync(scope, { recursive: true });
-        scopeCreated = scope;
-      }
+    if (createLink) {
       mkdirSync(dirname(linkPath), { recursive: true });
-      if (!existsSync(linkPath)) {
-        symlinkSync(target, linkPath);
-        linkCreated = true;
-      }
+      symlinkSync(linkTarget, linkPath);
     }
   } catch (error) {
     undo();
     throw error;
   }
-  return { moduleDir, linkPath, previousDir, undo };
+  return { moduleDir, linkPath, previousDir, state, undo };
 }

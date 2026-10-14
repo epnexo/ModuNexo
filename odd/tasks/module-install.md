@@ -75,3 +75,14 @@ Forecast: about 1,500 authored changed lines; one slice per task.
   `var/run/web.pid` and restarts its child on SIGUSR2 only. The pipeline signals that pid after checking its
   command line is the launcher's, so a stale pid file can never make it signal another process. Dev mode is not
   supervised.
+- **L6** (2026-10-14) Independent verifier (sonnet, scratch DB, real e2e run once): S1-S8 met except S4/S6 partly,
+  one blocker: SIGINT during the build left `.next` partial, the good build in `.next.rollback`, the new
+  folder in place and the run `running`, and a retry was refused. Fixed test first: the pipeline handles
+  SIGINT/SIGTERM (aborts the build, rolls back), writes `var/run/apply.journal.json` before it changes anything,
+  and the next apply recovers from it (undo, or keep when the database step had completed). Advisories also
+  fixed: a disabled module is not forced into the build on upgrade, the restart check requires the command to be
+  `run.ts start` (not build/dev), a server that ignores SIGTERM is killed after 15 s, and a kept
+  `var/previous/<id>-<v>` no longer blocks a later upgrade. Left as is, noted: dependsOn/lifecycle rules refuse at
+  the build step (cleanly undone, exit 1) rather than at preflight; `--json` refusals print plain text; empty
+  directories can remain after a rollback. One full-suite run showed a single unreproducible failure in
+  `cli-db-migrate` under load (passes alone and in two further full runs). Suite 798 pass, 0 fail.

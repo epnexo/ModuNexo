@@ -7,14 +7,14 @@ import semver from "semver";
 import { type RegistrationModule } from "../codegen/render.ts";
 import { DEFAULT_WEB_ROOT } from "../codegen/generate.ts";
 import { readPackageName, registrationModulesFor } from "../codegen/enabled.ts";
-import { discoverModules } from "../discovery.ts";
 import { LifecycleService, fileHookLoader } from "../lifecycle/index.ts";
 import { OperationBusyError, finishOperation, setStep, startOperation } from "../operations/index.ts";
 import { DATA_DIR, buildPackageContext, listIntakes, stagingPath, validatePackageTree } from "../packages/index.ts";
 import { REPO_ROOT } from "../packages/context.ts";
-import { Registry } from "../registry.ts";
 import { type BuildHandle, type BuildRunner, buildWithRollback } from "./build.ts";
+import { clearJournal, writeJournal } from "./journal.ts";
 import { type Placement, placePackage } from "./place.ts";
+import { recoverInterrupted, registryFromDisk } from "./recover.ts";
 
 /** The package cannot be applied, and nothing was changed (or everything that was changed has been undone). */
 export class ApplyRefusedError extends Error {
@@ -61,14 +61,6 @@ export interface ApplyResult {
   warnings: string[];
 }
 
-async function registryFrom(modulesDir: string, fresh: boolean): Promise<Registry> {
-  const registry = new Registry({ allowUnsupportedPlatform: true });
-  registry.registerCore();
-  const { modules } = await discoverModules(modulesDir, { freshImport: fresh });
-  for (const manifest of modules) registry.register(manifest);
-  return registry;
-}
-
 const message = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 /**
@@ -84,6 +76,9 @@ export async function applyPackage(options: ApplyOptions): Promise<ApplyResult> 
   const { pool, sha256 } = options;
   const warnings: string[] = [];
 
+  // A run that was killed leaves a journal; put its changes back before looking at anything else.
+  warnings.push(...(await recoverInterrupted({ pool, dataDir, modulesDir, webRoot })));
+
   // Preflight: everything that can be refused without changing a thing.
   const intakes = await listIntakes(pool, { sha256, limit: 20 });
   if (intakes.length === 0) throw new ApplyRefusedError(`no package with SHA-256 ${sha256} was brought in; run "modules add" first`);
@@ -97,7 +92,7 @@ export async function applyPackage(options: ApplyOptions): Promise<ApplyResult> 
   const { review, manifest: reviewed } = validation;
   const packageName = review.packageName;
 
-  const before = await registryFrom(modulesDir, false);
+  const before = await registryFromDisk(modulesDir, false);
   const statusesBefore = await new LifecycleService(pool, before).list();
   const current = statusesBefore.find((status) => status.id === review.id);
   const installed = current?.installedVersion;
@@ -117,12 +112,25 @@ export async function applyPackage(options: ApplyOptions): Promise<ApplyResult> 
 
   let step = "place";
   const progress = async (name: string, detail: string) => {
+    if (controller.signal.aborted && name !== "lifecycle") throw new Error("interrupted by a signal");
     step = name;
     await setStep(pool, operationId, name, detail);
     options.onStep?.(name, detail);
   };
   let placement: Placement | undefined;
   let build: BuildHandle | undefined;
+
+  // A stop signal during the build aborts it and rolls back; during the database step it waits for that step.
+  const controller = new AbortController();
+  const stopHandlers = (["SIGINT", "SIGTERM"] as const).map((signal) => {
+    const handler = () => controller.abort();
+    process.on(signal, handler);
+    return [signal, handler] as const;
+  });
+  const journalBase = { version: review.version, webRoot };
+  const setPhase = (phase: "building" | "lifecycle") => {
+    if (placement !== undefined) writeJournal(dataDir, { ...placement.state, ...journalBase, phase });
+  };
   try {
     await progress("place", `${kind} ${review.id} ${review.version}`);
     placement = placePackage({
@@ -135,10 +143,11 @@ export async function applyPackage(options: ApplyOptions): Promise<ApplyResult> 
       modulesDir,
       nodeModulesDir: join(repoRoot, "node_modules"),
       dataDir,
+      beforeChange: (state) => writeJournal(dataDir, { ...state, ...journalBase, phase: "placing" }),
     });
 
     await progress("verify", "the manifest.ts that will run is the manifest.json that was reviewed");
-    const after = await registryFrom(modulesDir, true);
+    const after = await registryFromDisk(modulesDir, true);
     const loaded = after.get(review.id);
     if (loaded === undefined) throw new ApplyRefusedError(`manifest.ts of the package does not declare module "${review.id}"`);
     const normalize = (manifest: ModuleManifest): unknown => JSON.parse(JSON.stringify(manifest));
@@ -152,10 +161,20 @@ export async function applyPackage(options: ApplyOptions): Promise<ApplyResult> 
     const registration = registrationModulesFor(await lifecycle.list(), after, modulesDir);
     warnings.push(...registration.warnings);
     const modules: RegistrationModule[] = registration.modules.filter((module) => module.manifest.id !== review.id);
-    modules.push({ manifest: loaded, packageName: readPackageName(modulesDir, review.id) });
-    build = await buildWithRollback({ webRoot, modules, previousModules, ...(options.run === undefined ? {} : { run: options.run }) });
+    // An install is enabled by the lifecycle, so it is built in; an upgrade keeps the state the module had, so a
+    // disabled module stays out of the build as codegen's "enabled only" rule has it.
+    if (kind === "install" || current?.status === "enabled") modules.push({ manifest: loaded, packageName: readPackageName(modulesDir, review.id) });
+    setPhase("building");
+    build = await buildWithRollback({
+      webRoot,
+      modules,
+      previousModules,
+      signal: controller.signal,
+      ...(options.run === undefined ? {} : { run: options.run }),
+    });
 
     await progress("lifecycle", kind === "install" ? "migrations and hooks" : "migrations and hooks of the upgrade");
+    setPhase("lifecycle");
     if (kind === "install") await lifecycle.install(review.id);
     else await lifecycle.upgrade(review.id);
   } catch (error) {
@@ -167,13 +186,19 @@ export async function applyPackage(options: ApplyOptions): Promise<ApplyResult> 
       notes.push(`undo failed: ${message(undoError)}`);
     }
     if (step === "lifecycle") notes.push("database changes the lifecycle had already applied are not undone; the previous build keeps serving and a retry continues from there");
-    const reason = `${step}: ${message(error)}`;
-    await finishOperation(pool, operationId, notes.some((note) => note.startsWith("undo failed")) ? "failed" : "rolled_back", [reason, ...notes].join("; "));
+    const reason = `${step}: ${controller.signal.aborted ? "interrupted by a signal" : message(error)}`;
+    const undone = !notes.some((note) => note.startsWith("undo failed"));
+    if (undone) clearJournal(dataDir);
+    for (const [signal, handler] of stopHandlers) process.off(signal, handler);
+    await finishOperation(pool, operationId, undone ? "rolled_back" : "failed", [reason, ...notes].join("; "));
     if (error instanceof ApplyRefusedError) throw error;
-    throw new ApplyFailedError(step, operationId, `${kind} of ${review.id} ${review.version} failed at "${step}": ${message(error)}`, error);
+    const why = controller.signal.aborted ? `interrupted by a signal at "${step}"` : `failed at "${step}": ${message(error)}`;
+    throw new ApplyFailedError(step, operationId, `${kind} of ${review.id} ${review.version} ${why}`, error);
   }
 
+  for (const [signal, handler] of stopHandlers) process.off(signal, handler);
   build.commit();
+  clearJournal(dataDir);
   let restart = "no restart was requested";
   try {
     options.onStep?.("restart", "asking the running server to restart");

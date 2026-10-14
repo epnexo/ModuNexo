@@ -40,7 +40,10 @@ export async function requestRestart(options: RestartOptions): Promise<string> {
   const pid = Number(raw);
   const cmdline = readCmdline(pid);
   if (cmdline === null) return `the recorded web server (pid ${pid}) is not running (stale pid file); start it with \`npm run web:start\``;
-  if (!cmdline.includes(LAUNCHER_MARKER)) return `pid ${pid} is not the web launcher (stale pid file); nothing was signalled`;
+  // The launcher is `... apps/web/scripts/run.ts start`; `build` and `dev` run the same script and must not be signalled.
+  const words = cmdline.split("\0").filter((word) => word !== "");
+  const at = words.findIndex((word) => word.endsWith(LAUNCHER_MARKER));
+  if (at === -1 || words[at + 1] !== "start") return `pid ${pid} is not the web launcher (stale pid file); nothing was signalled`;
   kill(pid, "SIGUSR2");
   return `restart requested from the web launcher (pid ${pid})`;
 }

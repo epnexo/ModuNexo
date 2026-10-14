@@ -9,6 +9,8 @@ import type pg from "pg";
 import { REGISTRY_FILE } from "../src/codegen/render.ts";
 import { generateRegistration } from "../src/codegen/generate.ts";
 import { ApplyFailedError, ApplyRefusedError, applyPackage } from "../src/install/apply.ts";
+import { writeJournal } from "../src/install/journal.ts";
+import { placePackage } from "../src/install/place.ts";
 import type { BuildRunner } from "../src/install/build.ts";
 import { BuildFailedError } from "../src/install/build.ts";
 import { listOperations, startOperation } from "../src/operations/index.ts";
@@ -221,5 +223,80 @@ describe("applyPackage: refusals", () => {
     const sha = await stage();
     rmSync(join(paths().dataDir, "staging", sha), { recursive: true });
     await assert.rejects(apply(sha), ApplyRefusedError);
+  });
+});
+
+describe("applyPackage: interruption", () => {
+  test("a stop signal during the build rolls everything back and ends the run rolled_back", async () => {
+    await apply(await stage());
+    const sha = await stage({ version: "1.1.0" });
+    const slow: BuildRunner = (_webRoot, signal) =>
+      new Promise((resolve) => {
+        signal?.addEventListener("abort", () => resolve({ code: 130, output: "interrupted" }));
+        setTimeout(() => process.emit("SIGINT"), 50);
+      });
+    await assert.rejects(apply(sha, slow), (error) => error instanceof ApplyFailedError && /interrupt/i.test(error.message));
+    assert.equal(JSON.parse(readFileSync(join(work, "modules", "reports", "package.json"), "utf8")).version, "1.0.0");
+    assert.equal(buildId(), "new", "the build of 1.0.0 is back");
+    assert.deepEqual((await modulesRows())[0]!.installed_version, "1.0.0");
+    const [run] = await listOperations(pool, { moduleId: "reports", limit: 1 });
+    assert.equal(run!.status, "rolled_back");
+    assert.equal(existsSync(join(paths().dataDir, "run", "apply.journal.json")), false);
+  });
+
+  test("a run that died mid-build is recovered by the next apply, which then goes through", async () => {
+    await apply(await stage());
+    const sha = await stage({ version: "1.1.0" });
+    // What a killed process leaves behind: the new version placed, the old one aside, a half build, a journal,
+    // the good build in .next.rollback and a run that is `running` under a pid that no longer exists.
+    const placement = placePackage({
+      stagingDir: join(paths().dataDir, "staging", sha),
+      moduleId: "reports",
+      packageName: "@acme/reports",
+      version: "1.1.0",
+      kind: "upgrade",
+      previousVersion: "1.0.0",
+      modulesDir: paths().modulesDir,
+      nodeModulesDir: join(work, "node_modules"),
+      dataDir: paths().dataDir,
+      beforeChange: (state) => writeJournal(paths().dataDir, { ...state, version: "1.1.0", phase: "building", webRoot: paths().webRoot }),
+    });
+    assert.ok(placement.previousDir);
+    const { renameSync } = await import("node:fs");
+    renameSync(join(work, "web", ".next"), join(work, "web", ".next.rollback"));
+    mkdirSync(join(work, "web", ".next"));
+    writeFileSync(join(work, "web", ".next", "partial"), "x");
+    await startOperation(pool, { moduleId: "reports", version: "1.1.0", sha256: sha, kind: "upgrade", actor: "apply-test", pid: 2 ** 22 + 4321 });
+
+    const result = await apply(sha);
+    assert.equal(result.kind, "upgrade");
+    assert.match(result.warnings.join("\n"), /recovered/i);
+    assert.deepEqual(await modulesRows(), [{ id: "reports", state: "enabled", installed_version: "1.1.0" }]);
+    assert.equal(JSON.parse(readFileSync(join(work, "modules", "reports", "package.json"), "utf8")).version, "1.1.0");
+    assert.equal(existsSync(join(work, "web", ".next", "partial")), false);
+    assert.equal(existsSync(join(work, "web", ".next.rollback")), false);
+    const statuses = (await listOperations(pool, { moduleId: "reports", limit: 5 })).map((run) => run.status);
+    assert.deepEqual(statuses, ["succeeded", "failed", "succeeded"]);
+  });
+});
+
+describe("applyPackage: other rules", () => {
+  test("an upgrade of a disabled module does not put it into the build", async () => {
+    await apply(await stage());
+    await pool.query("update core.modules set state = 'disabled' where id = 'reports'");
+    const sha = await stage({ version: "1.1.0" });
+    builds.length = 0;
+    await apply(sha);
+    assert.equal(builds.length, 1);
+    assert.doesNotMatch(builds[0]!, /reports/);
+    assert.deepEqual((await modulesRows())[0], { id: "reports", state: "disabled", installed_version: "1.1.0" });
+  });
+
+  test("a previous-version folder that already exists does not block an upgrade", async () => {
+    await apply(await stage());
+    mkdirSync(join(paths().dataDir, "previous", "reports-1.0.0"), { recursive: true });
+    const result = await apply(await stage({ version: "1.1.0" }));
+    assert.equal(result.kind, "upgrade");
+    assert.ok(readdirSync(join(paths().dataDir, "previous")).filter((name) => name.startsWith("reports-1.0.0")).length >= 2);
   });
 });
