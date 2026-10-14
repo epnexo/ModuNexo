@@ -276,7 +276,15 @@ describe("Apps screen API: upload, confirm, follow the run", () => {
     const second = await api("POST", "/api/apps/operations", { body: JSON.stringify({ sha256: packed.sha256 }), headers: { "content-type": "application/json" } });
     assert.equal(second.status, 409);
 
-    await waitForPage(`/${MODULE_ID}`, "apply-marker-v3", 240_000);
+    try {
+      await waitForPage(`/${MODULE_ID}`, "apply-marker-v3", 240_000);
+    } catch (error) {
+      // Say what the run did, not only that the page never changed.
+      const [last] = (await db!.query("select status, step, detail from core.module_operations order by id desc limit 1")).rows;
+      const logs = join(dataDir, "logs");
+      const tail = existsSync(logs) ? readdirSync(logs).sort().slice(-1).map((name) => readFileSync(join(logs, name), "utf8").slice(-1500)).join("") : "(no log)";
+      assert.fail(`${error instanceof Error ? error.message : String(error)}\nlast run: ${JSON.stringify(last)}\napply log:\n${tail}`);
+    }
     const final = await api("GET", "/api/apps");
     const body = (await final.json()) as { operations: { status: string; actor: string; version: string }[]; running: unknown };
     assert.equal(body.operations[0]!.status, "succeeded");
