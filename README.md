@@ -548,6 +548,10 @@ npm run epnexo -- modules apply <sha256>     # the SHA-256 that `modules add` pr
 If any step fails, the files, the link, the build and the registration are put back and the run ends
 `rolled_back`; the previous build keeps serving. One thing cannot be undone: if the lifecycle fails after some of
 its migrations applied, those stay (the lifecycle's own rule) and a retry continues from there; the run says so.
+A stop signal (Ctrl-C) during the build aborts it and rolls back like any failure. A run that is killed outright
+(power loss, `kill -9`) leaves a journal in `var/run/apply.journal.json`; the next `modules apply` recovers first:
+it puts the files, link, build and registration back, or keeps the result if the database step had completed, and
+says so.
 Every run is a row in `core.module_operations` (module, version, package SHA-256, kind, status, the step it is at,
 detail, actor, times); only one runs at a time, and a run whose process died is closed as interrupted by the next
 start.
@@ -556,7 +560,8 @@ start.
 `var/run/web.pid` and restarts the server on `SIGUSR2`, and only then: a server that crashes or refuses to start
 ends the launcher with its exit code, as before. `modules apply` signals that pid after checking that the process
 is the launcher (its command line), so a stale file can never make it signal something else. With no server
-running it says so and nothing is signalled; start it with `npm run web:start`. `web:dev` is not supervised.
+running it says so and nothing is signalled; start it with `npm run web:start`. `web:dev` is not supervised. A server that ignores the stop request is killed after 15 seconds so a restart
+cannot hang; and only a process whose command line is `apps/web/scripts/run.ts start` is ever signalled.
 
 Things to know. While the build runs the server's `.next` has been moved aside, so pages that were not yet loaded
 by the running server fail until the build finishes or is rolled back; do an install when that is acceptable.

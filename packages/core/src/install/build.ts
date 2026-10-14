@@ -14,7 +14,7 @@ export interface BuildRunResult {
   output: string;
 }
 /** Builds the web app in `webRoot`. Injectable so the pipeline can be exercised without a real build. */
-export type BuildRunner = (webRoot: string) => Promise<BuildRunResult>;
+export type BuildRunner = (webRoot: string, signal?: AbortSignal) => Promise<BuildRunResult>;
 
 export class BuildFailedError extends Error {
   readonly code: number;
@@ -34,6 +34,8 @@ export interface BuildOptions {
   /** What it was built with before, so the registration can be put back. */
   previousModules: RegistrationModule[];
   run?: BuildRunner;
+  /** Aborts the build; the previous build and registration are then restored like after a failure. */
+  signal?: AbortSignal;
 }
 
 export interface BuildHandle {
@@ -48,7 +50,7 @@ const OUTPUT_TAIL = 6000;
 const BUILD_TIMEOUT_MS = 30 * 60 * 1000;
 
 /** `next build` as the launcher runs it, in `webRoot`, with the environment of this process. */
-export const nextBuildRunner: BuildRunner = (webRoot) =>
+export const nextBuildRunner: BuildRunner = (webRoot, signal) =>
   new Promise((resolve) => {
     const next = createRequire(import.meta.url).resolve("next/dist/bin/next");
     const child = spawn(process.execPath, [next, "build"], { cwd: webRoot, env: process.env, stdio: ["ignore", "pipe", "pipe"] });
@@ -59,6 +61,12 @@ export const nextBuildRunner: BuildRunner = (webRoot) =>
     child.stdout.on("data", keep);
     child.stderr.on("data", keep);
     const timer = setTimeout(() => child.kill("SIGKILL"), BUILD_TIMEOUT_MS);
+    const abort = () => {
+      child.kill("SIGTERM");
+      setTimeout(() => child.kill("SIGKILL"), 5000).unref();
+    };
+    if (signal?.aborted) abort();
+    else signal?.addEventListener("abort", abort, { once: true });
     child.on("error", (error) => {
       clearTimeout(timer);
       resolve({ code: 1, output: `could not start next build: ${error.message}` });
@@ -98,7 +106,7 @@ export async function buildWithRollback(options: BuildOptions): Promise<BuildHan
   let result: BuildRunResult;
   try {
     generateRegistration(options.modules, { outDir: options.webRoot });
-    result = await runner(options.webRoot);
+    result = await runner(options.webRoot, options.signal);
   } catch (error) {
     restore();
     throw error;

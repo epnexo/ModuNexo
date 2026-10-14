@@ -65,22 +65,35 @@ export interface StartOperation {
   pid?: number;
 }
 
+/** Closes, as failed (interrupted), every `running` run whose process no longer exists; returns how many. */
+export async function closeStaleOperations(pool: pg.Pool): Promise<number> {
+  const running = (await pool.query(`select ${COLUMNS} from core.module_operations where status = 'running'`)).rows.map(toRow);
+  let closed = 0;
+  for (const run of running) {
+    if (alive(run.pid)) continue;
+    const { rowCount } = await pool.query(
+      `update core.module_operations set status = 'failed', detail = 'interrupted: its process (' || pid || ') is gone', finished_at = now()
+       where id = $1 and status = 'running'`,
+      [run.id],
+    );
+    closed += rowCount ?? 0;
+  }
+  return closed;
+}
+
+/** The run that is in progress with a live process, if any. */
+export async function liveOperation(pool: pg.Pool): Promise<OperationRow | undefined> {
+  const running = (await pool.query(`select ${COLUMNS} from core.module_operations where status = 'running'`)).rows.map(toRow);
+  return running.find((run) => alive(run.pid));
+}
+
 /**
  * Records the start of a run and returns its id. A run whose process no longer exists is first closed as failed
  * (interrupted); a run that is alive refuses this one with `OperationBusyError`.
  */
 export async function startOperation(pool: pg.Pool, input: StartOperation): Promise<number> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const stale = (await pool.query(`select ${COLUMNS} from core.module_operations where status = 'running'`)).rows.map(toRow);
-    for (const run of stale) {
-      if (!alive(run.pid)) {
-        await pool.query(
-          `update core.module_operations set status = 'failed', detail = 'interrupted: its process (' || pid || ') is gone', finished_at = now()
-           where id = $1 and status = 'running'`,
-          [run.id],
-        );
-      }
-    }
+    await closeStaleOperations(pool);
     try {
       const { rows } = await pool.query(
         `insert into core.module_operations (module_id, version, sha256, kind, actor, pid) values ($1, $2, $3, $4, $5, $6) returning id`,
@@ -89,8 +102,8 @@ export async function startOperation(pool: pg.Pool, input: StartOperation): Prom
       return Number(rows[0].id);
     } catch (error) {
       if ((error as { code?: string }).code !== "23505") throw error;
-      const running = (await pool.query(`select ${COLUMNS} from core.module_operations where status = 'running'`)).rows.map(toRow)[0];
-      if (running !== undefined && alive(running.pid)) throw new OperationBusyError(running);
+      const running = await liveOperation(pool);
+      if (running !== undefined) throw new OperationBusyError(running);
     }
   }
   throw new Error("could not start the operation: the running one keeps changing");

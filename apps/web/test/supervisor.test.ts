@@ -67,3 +67,18 @@ describe("superviseChild", () => {
     await running;
   });
 });
+
+describe("superviseChild: a child that will not stop", () => {
+  it("is killed after the grace period so a restart cannot hang", async () => {
+    const starts = join(dir, "starts");
+    const stubborn = join(dir, "stubborn.mjs");
+    writeFileSync(stubborn, `import { appendFileSync } from "node:fs";\nappendFileSync(${JSON.stringify(starts)}, "start\\n");\nprocess.on("SIGTERM", () => {});\nsetInterval(() => {}, 1000);\n`);
+    const bus = new EventEmitter();
+    const running = superviseChild({ args: [stubborn], cwd: dir, pidFile: join(dir, "web.pid"), signals: bus, killAfterMs: 300 });
+    await until(() => startsOf(starts) === 1);
+    bus.emit("SIGUSR2");
+    await until(() => startsOf(starts) === 2);
+    bus.emit("SIGTERM");
+    await running;
+  });
+});
