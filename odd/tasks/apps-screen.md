@@ -67,3 +67,11 @@ Forecast: about 1,200 authored changed lines; one slice per task.
   in upper case is accepted like on the command line, stale `running` rows are closed when the screen lists runs,
   README. Left: a failed first start (bad entry path) is visible only in the log. Suite 833 pass, 0 fail.
   Commit `15801db`.
+- **L5** (2026-10-14) Native review of `33f8155..HEAD` (risk, resilience, reliability): approved and acknowledged,
+  five warnings. Three of them were one real problem in the B2 fix: stopping at "4096 zeros outside a file body"
+  could drop entries that the extractor would write (a zero-filled file ending on a chunk boundary), so they
+  would not have been inspected. Replaced by the parser's own `eof` event (it ignores what follows the
+  end-of-archive marker, and so does `extract`; checked with a concatenated archive), with tests for zero-filled
+  files of many sizes followed by a symlink and for entries after the marker. Also fixed: a process that cannot
+  be started reports why. Not changed: the cap on a chunked upload is proved at unit level only, and an
+  immediate exit 0 inside the settle window counts as started. Suite 836 pass, 0 fail.

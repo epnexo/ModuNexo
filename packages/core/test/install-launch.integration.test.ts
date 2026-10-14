@@ -101,5 +101,12 @@ describe("launchApply", () => {
     assert.ok(Date.now() - started < 2500);
     assert.ok(launched.pid > 1);
   });
+
+  test("a process that cannot be started at all says why, not an empty message", async () => {
+    await assert.rejects(
+      launchApply({ pool: pool!, sha256: SHA, actor: ACTOR, dataDir: join(work, "var"), entry: [recorder()], cwd: join(work, "does-not-exist"), settleMs: 3000 }),
+      (error) => error instanceof LaunchFailedError && /could not start/i.test(error.message) && /ENOENT|no such/i.test(error.message),
+    );
+  });
 });
 

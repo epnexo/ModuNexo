@@ -70,16 +70,16 @@ export async function launchApply(options: LaunchOptions): Promise<Launched> {
       [...options.entry, "modules", "apply", options.sha256, "--actor", options.actor, "--data-dir", options.dataDir],
       { detached: true, stdio: ["ignore", fd, fd], env: options.env ?? process.env, ...(options.cwd === undefined ? {} : { cwd: options.cwd }) },
     );
-    const ended = new Promise<{ code: number | null }>((resolve) => {
+    const ended = new Promise<{ code: number | null; error?: Error }>((resolve) => {
       child.once("exit", (code) => resolve({ code }));
-      child.once("error", () => resolve({ code: null }));
+      child.once("error", (error) => resolve({ code: null, error }));
     });
     child.unref();
-    if (child.pid === undefined) throw new Error("the apply process could not be started");
-    if ((options.settleMs ?? 0) > 0) {
+    if ((options.settleMs ?? 0) > 0 || child.pid === undefined) {
       let timer: NodeJS.Timeout | undefined;
       const outcome = await Promise.race([ended, new Promise<"running">((resolve) => (timer = setTimeout(() => resolve("running"), options.settleMs)))]);
       if (timer !== undefined) clearTimeout(timer);
+      if (outcome !== "running" && outcome.error !== undefined) throw new LaunchFailedError(null, `could not start the apply process: ${outcome.error.message}`);
       if (outcome !== "running" && outcome.code !== 0) {
         let output = "";
         try {
@@ -90,6 +90,7 @@ export async function launchApply(options: LaunchOptions): Promise<Launched> {
         throw new LaunchFailedError(outcome.code, output);
       }
     }
+    if (child.pid === undefined) throw new Error("the apply process could not be started");
     return { pid: child.pid, logFile };
   } finally {
     closeSync(fd);

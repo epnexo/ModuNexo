@@ -63,34 +63,26 @@ function pathProblem(path: string, limits: ArchiveLimits): string | null {
 
 class TooBig extends Error {}
 
-/** What the parser tells the counter: whether it is inside a file's body right now. */
+/** What the parser tells the counter. */
 interface ParserState {
-  bodyOpen: boolean;
+  /** The parser saw the end-of-archive marker: it ignores everything after it, and so does the extractor. */
+  eof: boolean;
 }
-
-const TRAILING_ZEROS = 4096;
 
 /**
  * Counts what flows through and stops the pipeline when it passes a ceiling, so a bomb is never read to the end.
- * Once the parser has been given a long run of zeros while it was not inside a file's body, the archive has ended
- * (that is the end-of-archive marker and its padding): what follows is counted and dropped. The parser is not
- * linear in trailing zeros, so a few hundred kilobytes of gzip that inflate to hundreds of megabytes of zeros
- * would otherwise keep it busy for minutes.
+ * Once the parser has reported the end-of-archive marker (`eof`) what follows is counted and dropped: the parser,
+ * and the extractor with it, ignore it, but the parser is not linear in it, so a few hundred kilobytes of gzip that
+ * inflate to hundreds of megabytes of zeros would otherwise keep it busy for minutes. Nothing before the marker is
+ * ever dropped, so every entry the extractor would write has been inspected.
  */
 const counter = (ceiling: number, state: ParserState) => {
   let seen = 0;
-  let zeroRun = 0;
-  let ended = false;
   return new Transform({
     transform(chunk: Buffer, _encoding, done) {
       seen += chunk.length;
       if (seen > ceiling) return done(new TooBig());
-      // The parser has handled everything before this chunk, so `bodyOpen` is exact for the zeros seen so far.
-      if (!ended && zeroRun >= TRAILING_ZEROS && !state.bodyOpen) ended = true;
-      if (ended) return done();
-      let trailing = 0;
-      while (trailing < chunk.length && chunk[chunk.length - 1 - trailing] === 0) trailing += 1;
-      zeroRun = trailing === chunk.length ? zeroRun + chunk.length : trailing;
+      if (state.eof) return done();
       done(null, chunk);
     },
   });
@@ -119,7 +111,7 @@ export async function inspectArchive(file: string, limits: ArchiveLimits = ARCHI
   let overFiles = false;
   let overBytes = false;
 
-  const state: ParserState = { bodyOpen: false };
+  const state: ParserState = { eof: false };
   const parser = new Parser({
     // Report every entry exactly as stored (nothing here is ever written), so that each refusal can name its entry
     // instead of the parser quietly dropping it.
@@ -127,10 +119,6 @@ export async function inspectArchive(file: string, limits: ArchiveLimits = ARCHI
     onwarn: (_code: string, message: string) => note(`the archive is damaged: ${message}`),
     onReadEntry: (entry) => {
       count += 1;
-      state.bodyOpen = true;
-      entry.once("end", () => {
-        state.bodyOpen = false;
-      });
       entry.resume();
       if (count > limits.files) {
         overFiles = true;
@@ -164,6 +152,10 @@ export async function inspectArchive(file: string, limits: ArchiveLimits = ARCHI
       if (unpacked > limits.unpackedBytes) overBytes = true;
       entries.push({ path: isDir ? `${segments.join("/")}/` : segments.join("/"), type: isDir ? "dir" : "file", size });
     },
+  });
+
+  parser.on("eof", () => {
+    state.eof = true;
   });
 
   // Headers and padding are not counted in the declared sizes, so the ceiling leaves room for them.
