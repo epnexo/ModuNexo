@@ -8,7 +8,7 @@ import { OperationBusyError, finishOperation, setStep, startOperation } from "..
 import { DATA_DIR } from "../packages/paths.ts";
 import { REPO_ROOT } from "../packages/context.ts";
 import { ApplyFailedError, ApplyRefusedError } from "./apply.ts";
-import { type BuildHandle, type BuildRunner, buildWithRollback } from "./build.ts";
+import { BuildFailedError, type BuildHandle, type BuildRunner, buildWithRollback } from "./build.ts";
 import { clearJournal, writeJournal } from "./journal.ts";
 import { recoverInterrupted, registryFromDisk } from "./recover.ts";
 
@@ -39,6 +39,15 @@ export interface ChangeResult {
 }
 
 const message = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+
+/** What a failure says, with the end of the build's own output when it was the build that failed. */
+const reasonOf = (error: unknown): string => {
+  if (error instanceof BuildFailedError) {
+    const tail = error.output.trim().split("\n").slice(-12).join("\n").slice(-1200);
+    return tail === "" ? message(error) : `${message(error)}\n${tail}`;
+  }
+  return message(error);
+};
 
 /**
  * Enables, disables or uninstalls an installed module and rebuilds the web app to match, with the order and the
@@ -116,7 +125,7 @@ export async function changeModule(options: ChangeOptions): Promise<ChangeResult
     const undone = !notes.some((note) => note.startsWith("undo failed"));
     if (undone) clearJournal(dataDir);
     for (const [signal, handler] of stopHandlers) process.off(signal, handler);
-    const reason = `${step}: ${controller.signal.aborted ? "interrupted by a signal" : message(error)}`;
+    const reason = `${step}: ${controller.signal.aborted ? "interrupted by a signal" : reasonOf(error)}`;
     await finishOperation(pool, operationId, undone ? "rolled_back" : "failed", [reason, ...notes].join("; "));
     const why = controller.signal.aborted ? `interrupted by a signal at "${step}"` : `failed at "${step}": ${message(error)}`;
     throw new ApplyFailedError(step, operationId, `${action} of ${moduleId} ${why}`, error);

@@ -11,7 +11,7 @@ import { LifecycleService, fileHookLoader } from "../lifecycle/index.ts";
 import { OperationBusyError, finishOperation, setStep, startOperation } from "../operations/index.ts";
 import { DATA_DIR, buildPackageContext, listIntakes, stagingPath, validatePackageTree } from "../packages/index.ts";
 import { REPO_ROOT } from "../packages/context.ts";
-import { type BuildHandle, type BuildRunner, buildWithRollback } from "./build.ts";
+import { BuildFailedError, type BuildHandle, type BuildRunner, buildWithRollback } from "./build.ts";
 import { clearJournal, writeJournal } from "./journal.ts";
 import { type Placement, placePackage } from "./place.ts";
 import { recoverInterrupted, registryFromDisk } from "./recover.ts";
@@ -62,6 +62,15 @@ export interface ApplyResult {
 }
 
 const message = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+
+/** What a failure says, with the end of the build's own output when it was the build that failed. */
+const reasonOf = (error: unknown): string => {
+  if (error instanceof BuildFailedError) {
+    const tail = error.output.trim().split("\n").slice(-12).join("\n").slice(-1200);
+    return tail === "" ? message(error) : `${message(error)}\n${tail}`;
+  }
+  return message(error);
+};
 
 /**
  * Installs or upgrades a staged package: places it, builds the web app with it registered, runs the lifecycle,
@@ -188,7 +197,7 @@ export async function applyPackage(options: ApplyOptions): Promise<ApplyResult> 
       }
     }
     if (step === "lifecycle") notes.push("database changes the lifecycle had already applied are not undone; the previous build keeps serving and a retry continues from there");
-    const reason = `${step}: ${controller.signal.aborted ? "interrupted by a signal" : message(error)}`;
+    const reason = `${step}: ${controller.signal.aborted ? "interrupted by a signal" : reasonOf(error)}`;
     const undone = !notes.some((note) => note.startsWith("undo failed"));
     if (undone) clearJournal(dataDir);
     for (const [signal, handler] of stopHandlers) process.off(signal, handler);
