@@ -73,7 +73,7 @@ describe("handleUpload", () => {
     const response = await handleUpload(post("/api/apps/packages", { body: "x" }), refused.deps);
     assert.equal(response.status, 422);
     assert.deepEqual((await read(response)).problems, ["a is wrong", "b is wrong"]);
-    const { UploadTooLargeError } = await import("@epnexo/core/packages");
+    const { UploadTooLargeError } = await import("@epnexo/core/apps");
     const over = deps({ receive: async () => { throw new UploadTooLargeError(1000); } });
     assert.equal((await handleUpload(post("/api/apps/packages", { body: "x" }), over.deps)).status, 413);
   });
@@ -106,7 +106,7 @@ describe("handleStart", () => {
   it("is refused for a visitor who may not write, and with 409 while a run is alive", async () => {
     const plain = deps({ viewer: async () => USER });
     assert.equal((await handleStart(json({ sha256: SHA }), plain.deps)).status, 403);
-    const { LaunchBusyError } = await import("@epnexo/core/install");
+    const { LaunchBusyError } = await import("@epnexo/core/apps");
     const busy = deps({
       launch: async () => {
         throw new LaunchBusyError({ moduleId: "x", version: "1", sha256: SHA, kind: "install", status: "running", step: "build", detail: null, actor: "a", pid: 1, startedAt: new Date(), finishedAt: null, id: 1 });

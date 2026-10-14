@@ -570,3 +570,28 @@ compiled into the web app. `modules pack` evaluates the author's `manifest.ts`, 
 be resolved from the module folder (a project with the SDK installed). `EPNEXO_DATA_DIR` moves `var/`. The pipeline is Linux-only: it uses GNU `cp -al` for the build cache and
 `/proc/<pid>/cmdline` to recognise the launcher; elsewhere a restart is reported as not requested and the server
 must be restarted by hand.
+
+## The Apps screen
+
+`/apps` shows what the running build was generated with. An administrator (or the local operator while sign-in is
+off) also sees the flow for adding a package: upload the archive and, if the publisher gave one, its SHA-256; read
+the review (what `modules add` prints); confirm; and follow the run. A non-administrator sees the list only.
+
+- **Upload** does what `modules add` does and installs nothing. **Confirm** starts `modules apply` as a process of
+  its own (it survives the server restart it causes), recorded as the signed-in user, and answers at once. The
+  page polls the run and keeps polling across the restart. Only one run at a time: a second confirmation is
+  refused while one is alive.
+- **History** lists the runs (`core.module_operations`) and every package received, accepted or refused, with its
+  problems.
+- Enable, disable and uninstall are not on the screen yet; use `npm run modules`.
+
+The API behind it, administrator-only and same-origin for writes, like the settings API:
+
+| Request | Does |
+| --- | --- |
+| `POST /api/apps/packages` | the body is the archive (raw bytes, up to 50 MB, counted as it streams); optional header `x-expected-sha256`. `200` staged with the review, `422` refused with every problem, `413` too large |
+| `POST /api/apps/operations` `{ "sha256": "<hex>" }` | starts the install or upgrade of a staged package. `202` started, `404` not staged, `409` a run is alive |
+| `GET /api/apps` | recent runs, received packages and the run in progress |
+
+The process the screen starts is fixed (the repository's CLI, the SHA-256 and a plain actor name as its only
+arguments, never through a shell); its output goes to `var/logs/apply-*.log`.

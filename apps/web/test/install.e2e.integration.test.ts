@@ -222,3 +222,72 @@ describe("install pipeline: end to end", () => {
     assert.deepEqual(last, { status: "rolled_back", step: "build" });
   });
 });
+
+describe("Apps screen API: upload, confirm, follow the run", () => {
+  const api = (method: string, path: string, init: { body?: BodyInit; headers?: Record<string, string> } = {}) =>
+    fetch(`http://127.0.0.1:${port}${path}`, {
+      method,
+      headers: { origin: `http://127.0.0.1:${port}`, ...init.headers },
+      ...(init.body === undefined ? {} : { body: init.body }),
+    });
+  const test = (name: string, run: () => Promise<void>) =>
+    it(name, { timeout: 600_000 }, async (t) => {
+      if (db === undefined) return t.skip(skipReason);
+      await run();
+    });
+
+  test("refuses another site and a body that is not a package, and lists the runs", async () => {
+    const cross = await fetch(`http://127.0.0.1:${port}/api/apps/packages`, { method: "POST", headers: { origin: "http://evil.example" }, body: "x" });
+    assert.equal(cross.status, 403);
+    const garbage = await api("POST", "/api/apps/packages", { body: "this is not an archive", headers: { "content-type": "application/gzip" } });
+    assert.equal(garbage.status, 422);
+    assert.ok(Array.isArray(((await garbage.json()) as { problems: unknown[] }).problems));
+    const state = await api("GET", "/api/apps");
+    assert.equal(state.status, 200);
+    const body = (await state.json()) as { operations: { status: string }[]; running: unknown };
+    assert.ok(body.operations.length >= 3, "the earlier runs are listed");
+    assert.equal(body.running, null);
+  });
+
+  test("uploads a package, confirms it, and the run goes through to the restarted server", async () => {
+    const context = await buildPackageContext({ modulesDir: join(REPO_ROOT, "modules"), pool: db! });
+    const packed = await packFolder(writeModule("1.3.0", pageWith("apply-marker-v3")), context, join(work, "ui-1.3.0.tgz"));
+    const upload = await api("POST", "/api/apps/packages", { body: readFileSync(packed.outFile), headers: { "content-type": "application/gzip", "x-expected-sha256": packed.sha256 } });
+    assert.equal(upload.status, 200, await upload.clone().text());
+    const staged = (await upload.json()) as { status: string; sha256: string; review: { id: string; version: string } };
+    assert.deepEqual({ status: staged.status, sha256: staged.sha256, id: staged.review.id, version: staged.review.version }, { status: "staged", sha256: packed.sha256, id: MODULE_ID, version: "1.3.0" });
+    assert.equal((await db!.query("select 1 from core.modules where installed_version = '1.3.0'")).rowCount, 0, "uploading installs nothing");
+
+    const start = await api("POST", "/api/apps/operations", { body: JSON.stringify({ sha256: packed.sha256 }), headers: { "content-type": "application/json" } });
+    assert.equal(start.status, 202, await start.clone().text());
+
+    // While it runs a second start is refused.
+    const deadline = Date.now() + 120_000;
+    let seen: { operations: { status: string; step: string; actor: string }[]; running: unknown } | undefined;
+    while (Date.now() < deadline) {
+      const reply = await fetch(`http://127.0.0.1:${port}/api/apps`).catch(() => null);
+      if (reply?.ok) {
+        seen = (await reply.json()) as typeof seen;
+        if (seen?.running !== null) break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+    assert.notEqual(seen?.running, null, "the run showed up as running");
+    const second = await api("POST", "/api/apps/operations", { body: JSON.stringify({ sha256: packed.sha256 }), headers: { "content-type": "application/json" } });
+    assert.equal(second.status, 409);
+
+    await waitForPage(`/${MODULE_ID}`, "apply-marker-v3", 240_000);
+    const final = await api("GET", "/api/apps");
+    const body = (await final.json()) as { operations: { status: string; actor: string; version: string }[]; running: unknown };
+    assert.equal(body.operations[0]!.status, "succeeded");
+    assert.equal(body.operations[0]!.version, "1.3.0");
+    assert.equal(body.operations[0]!.actor, "local-operator", "the run is recorded as who asked for it");
+    assert.deepEqual((await db!.query("select installed_version from core.modules")).rows, [{ installed_version: "1.3.0" }]);
+  });
+
+  test("the Apps page shows the add-a-package flow to an administrator", async () => {
+    const page = await pageText("/apps");
+    assert.ok(page !== null && page.includes("Add a package"), page?.slice(0, 300));
+    assert.ok(page.includes("History"));
+  });
+});

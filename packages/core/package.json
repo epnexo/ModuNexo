@@ -13,7 +13,8 @@
     "./registry": "./src/registry.ts",
     "./packages": "./src/packages/index.ts",
     "./operations": "./src/operations/index.ts",
-    "./install": "./src/install/index.ts"
+    "./install": "./src/install/index.ts",
+    "./apps": "./src/apps.ts"
   },
   "dependencies": {
     "@epnexo/sdk": "^0.1.0",
