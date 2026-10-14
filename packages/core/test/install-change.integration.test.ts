@@ -81,8 +81,18 @@ async function install(id = "reports", options: PackageOptions = {}): Promise<vo
   restarts.length = 0;
 }
 
-const change = (action: "enable" | "disable" | "uninstall", extra: { id?: string; mode?: "keep" | "purge"; run?: BuildRunner } = {}) =>
-  changeModule({ pool, moduleId: extra.id ?? "reports", action, ...(extra.mode === undefined ? {} : { mode: extra.mode }), actor: "change-test", ...paths(), run: extra.run ?? goodBuild, requestRestart });
+const change = (action: "enable" | "disable" | "uninstall", extra: { id?: string; mode?: "keep" | "purge"; run?: BuildRunner; afterPreflight?: () => Promise<void> } = {}) =>
+  changeModule({
+    pool,
+    moduleId: extra.id ?? "reports",
+    action,
+    ...(extra.mode === undefined ? {} : { mode: extra.mode }),
+    ...(extra.afterPreflight === undefined ? {} : { afterPreflight: extra.afterPreflight }),
+    actor: "change-test",
+    ...paths(),
+    run: extra.run ?? goodBuild,
+    requestRestart,
+  });
 const state = async (id = "reports") => (await pool.query("select state from core.modules where id = $1", [id])).rows[0]?.state as string | undefined;
 const registryText = () => readFileSync(join(work, "web", REGISTRY_FILE), "utf8");
 const schemaExists = async (name: string) => (await pool.query("select 1 from information_schema.schemata where schema_name = $1", [name])).rowCount === 1;
@@ -171,6 +181,17 @@ describe("changeModule", () => {
     await assert.rejects(change("disable"), (error) => error instanceof ApplyRefusedError && /another operation/.test(error.message));
     assert.equal(await state(), "enabled");
     assert.equal(builds.length, 0);
+  });
+
+  test("the state is read again once the run holds the lock: a change that went stale is refused, nothing is built", async () => {
+    await install();
+    // Between the first look and the lock, somebody else disables the module.
+    const stale = change("disable", { afterPreflight: async () => void (await pool.query("update core.modules set state = 'disabled' where id = 'reports'")) });
+    await assert.rejects(stale, (error) => error instanceof ApplyRefusedError && /already disabled/.test(error.message));
+    assert.equal(builds.length, 0);
+    const [run] = await listOperations(pool, { moduleId: "reports", limit: 1 });
+    assert.equal(run!.status, "failed", "the run that took the lock is closed, not left running");
+    assert.match(run!.detail ?? "", /already disabled/);
   });
 
   test("a stop signal during the build rolls back", async () => {

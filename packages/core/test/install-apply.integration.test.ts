@@ -90,7 +90,8 @@ beforeEach(() => {
   restarts.length = 0;
 });
 
-const apply = (sha256: string, run: BuildRunner = goodBuild) => applyPackage({ pool, sha256, actor: "apply-test", ...paths(), run, requestRestart });
+const apply = (sha256: string, run: BuildRunner = goodBuild, afterPreflight?: () => Promise<void>) =>
+  applyPackage({ pool, sha256, actor: "apply-test", ...paths(), run, requestRestart, ...(afterPreflight === undefined ? {} : { afterPreflight }) });
 const modulesRows = async () => (await pool.query("select id, state, installed_version from core.modules order by id")).rows;
 const buildId = () => readFileSync(join(work, "web", ".next", "BUILD_ID"), "utf8");
 const schemaExists = async (name: string) => (await pool.query("select 1 from information_schema.schemata where schema_name = $1", [name])).rowCount === 1;
@@ -197,6 +198,19 @@ describe("applyPackage: upgrade", () => {
     await assert.rejects(apply(older), /older|newer|downgrade|greater/i);
     assert.equal(JSON.parse(readFileSync(join(work, "modules", "reports", "package.json"), "utf8")).version, "1.1.0");
     assert.equal(readdirSync(paths().dataDir).includes("previous"), false);
+  });
+});
+
+describe("applyPackage: the state is read again under the lock", () => {
+  test("an install whose module appeared in the meantime is refused, nothing is placed or built, the run is closed", async () => {
+    const sha = await stage();
+    const stale = apply(sha, goodBuild, async () => void (await pool.query("insert into core.modules (id, state, installed_version) values ('reports', 'enabled', '0.5.0')")));
+    await assert.rejects(stale, (error) => error instanceof ApplyRefusedError && /changed/.test(error.message));
+    assert.deepEqual(readdirSync(join(work, "modules")), []);
+    assert.equal(builds.length, 0);
+    const [run] = await listOperations(pool, { moduleId: "reports", limit: 1 });
+    assert.equal(run!.status, "failed");
+    assert.match(run!.detail ?? "", /changed/);
   });
 });
 
