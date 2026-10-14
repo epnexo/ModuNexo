@@ -1,8 +1,11 @@
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** Where the platform keeps what it receives and unpacks. Not tracked by git. */
-export const DATA_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../var");
+/**
+ * Where the platform keeps what it receives and unpacks: `var/` at the repository root, or `EPNEXO_DATA_DIR` when
+ * it is set (tests and unusual deployments). Not tracked by git.
+ */
+export const DATA_DIR = process.env.EPNEXO_DATA_DIR ? resolve(process.env.EPNEXO_DATA_DIR) : resolve(dirname(fileURLToPath(import.meta.url)), "../../../../var");
 
 const SHA256 = /^[0-9a-f]{64}$/;
 

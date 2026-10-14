@@ -169,6 +169,7 @@ npm run modules -- upgrade <id>
 npm run modules -- uninstall <id> --keep  # or --purge; no flag is refused, both is a usage error
 npm run epnexo -- modules pack <folder> [--out <file>]
 npm run epnexo -- modules add <archive> [--sha256 <hex>] [--json]
+npm run epnexo -- modules apply <sha256> [--json]
 npm run db:migrate                        # the core only; reports installed modules that need "modules upgrade"
 npm run registry:generate [-- --dry-run] [-- --out <dir>]
 npm run epnexo -- admin create --email <email> --name <name>
@@ -250,10 +251,8 @@ next run deletes whatever in it is no longer wanted and removes the empty folder
 
 ## Not here yet
 
-Planned as later features: the install pipeline for a received package (promote it into `modules/`, install,
-build, restart, roll back), the Apps screen on top of it (until then the CLI prints the reminder and the
-regeneration, rebuild and restart are manual), and the module scaffold. A cleanup path for orphaned rows is not
-designed.
+Planned as later features: the Apps screen on top of the install pipeline (upload, review, confirm, progress,
+enable/disable/uninstall, audit), and the module scaffold. A cleanup path for orphaned rows is not designed.
 
 ### Sign-in mode
 
@@ -521,4 +520,46 @@ What the platform refuses, so a package cannot choose where it writes or what it
 
 Installing a module is code execution with database access: its migrations run as SQL, and its hooks and pages run
 inside the platform. Review what `modules add` prints, and install only what you trust. Installing from a staged
-package is the next feature; today the staged tree is only inspected.
+package is `modules apply`, below.
+
+### Installing a staged package
+
+```bash
+npm run epnexo -- modules apply <sha256>     # the SHA-256 that `modules add` printed
+```
+
+`modules apply` installs a new module or upgrades the installed module of the same id to the package's version
+(the version must be greater). It takes minutes, because it builds the web app, and prints each step:
+
+1. **Preflight.** The package must have been staged, its tree must still be there and it is validated again against
+   the platform as it is now. Anything wrong is refused (exit `3`) before a file is touched.
+2. **Place.** The staged tree is copied to `modules/<id>/` and `node_modules/<package name>` is made a relative
+   symlink to it, which is what a workspace install does; no package manager runs. An upgrade moves the folder it
+   replaces to `var/previous/<id>-<version>/`.
+3. **Verify.** The `manifest.ts` that is about to run (it is code) is loaded and must equal the `manifest.json`
+   that was reviewed. A package that shows one manifest and runs another is refused and undone.
+4. **Build.** The web app is registered with the module and built with `next build`. The previous `.next` is kept
+   aside, with its build cache linked back so the build is incremental. This runs **before** the database is
+   touched, so a build that fails changes nothing in it.
+5. **Lifecycle.** The module's migrations and hooks run through the same lifecycle as `modules install` or
+   `modules upgrade` (dependency, platform and version rules included).
+6. **Restart.** The running server is asked to restart so it serves the new build.
+
+If any step fails, the files, the link, the build and the registration are put back and the run ends
+`rolled_back`; the previous build keeps serving. One thing cannot be undone: if the lifecycle fails after some of
+its migrations applied, those stay (the lifecycle's own rule) and a retry continues from there; the run says so.
+Every run is a row in `core.module_operations` (module, version, package SHA-256, kind, status, the step it is at,
+detail, actor, times); only one runs at a time, and a run whose process died is closed as interrupted by the next
+start.
+
+**Restart contract.** `npm run web:start` now runs the server under a small supervisor that records its pid in
+`var/run/web.pid` and restarts the server on `SIGUSR2`, and only then: a server that crashes or refuses to start
+ends the launcher with its exit code, as before. `modules apply` signals that pid after checking that the process
+is the launcher (its command line), so a stale file can never make it signal something else. With no server
+running it says so and nothing is signalled; start it with `npm run web:start`. `web:dev` is not supervised.
+
+Things to know. While the build runs the server's `.next` has been moved aside, so pages that were not yet loaded
+by the running server fail until the build finishes or is rolled back; do an install when that is acceptable.
+Installing is code execution with database access: the module's hooks run inside the platform and its pages are
+compiled into the web app. `modules pack` evaluates the author's `manifest.ts`, so it runs where `@epnexo/sdk` can
+be resolved from the module folder (a project with the SDK installed). `EPNEXO_DATA_DIR` moves `var/`.
