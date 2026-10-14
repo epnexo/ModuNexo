@@ -5,3 +5,4 @@ export * from "./restart.ts";
 export * from "./journal.ts";
 export * from "./recover.ts";
 export * from "./launch.ts";
+export * from "./change.ts";
