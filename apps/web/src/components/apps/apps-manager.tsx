@@ -53,6 +53,9 @@ export function AppsManager({ initial, installed }: { initial: AppsState; instal
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [starting, setStarting] = useState(false);
   const wasRunning = useRef(initial.running !== null);
+  // The apply process takes a moment to record its run, so after confirming the page watches for a while even
+  // though nothing is "running" yet.
+  const [watchUntil, setWatchUntil] = useState(0);
 
   const refresh = useCallback(async () => {
     try {
@@ -65,17 +68,18 @@ export function AppsManager({ initial, installed }: { initial: AppsState; instal
 
   const running = state.running;
   useEffect(() => {
-    if (running === null) {
-      if (wasRunning.current) {
-        wasRunning.current = false;
-        void refresh();
-      }
-      return;
+    if (running !== null) wasRunning.current = true;
+    else if (wasRunning.current) {
+      wasRunning.current = false;
+      void refresh();
     }
-    wasRunning.current = true;
-    const timer = setInterval(() => void refresh(), 2000);
+    if (running === null && Date.now() >= watchUntil) return;
+    const timer = setInterval(() => {
+      void refresh();
+      if (running === null && Date.now() >= watchUntil) clearInterval(timer);
+    }, 2000);
     return () => clearInterval(timer);
-  }, [running, refresh]);
+  }, [running, refresh, watchUntil]);
 
   async function upload() {
     if (file === null) return;
@@ -108,6 +112,7 @@ export function AppsManager({ initial, installed }: { initial: AppsState; instal
       const data = (await response.json().catch(() => ({}))) as { error?: string };
       if (response.ok) {
         setStaged(null);
+        setWatchUntil(Date.now() + 60_000);
         setMessage({ kind: "ok", text: "Started. The web app is rebuilt and the server restarts at the end; this page keeps following the run." });
         await refresh();
       } else setMessage({ kind: "error", text: data.error ?? "Could not start the run." });

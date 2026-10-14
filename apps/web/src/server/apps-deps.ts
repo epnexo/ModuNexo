@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { ARCHIVE_LIMITS, buildPackageContext, launchApply, listIntakes, listOperations, liveOperation, receiveUpload, stagingPath } from "@epnexo/core/apps";
+import { ARCHIVE_LIMITS, buildPackageContext, closeStaleOperations, launchApply, listIntakes, listOperations, liveOperation, receiveUpload, stagingPath } from "@epnexo/core/apps";
 import { type AppsDeps, plainActor } from "./apps-api.ts";
 import { platform } from "./platform.ts";
 import { resolveViewer } from "./viewer.ts";
@@ -46,10 +46,13 @@ export function appsDeps(): AppsDeps {
         dataDir: dataDir(root),
         entry: ["--import", "tsx", join(root, "packages", "core", "src", "cli", "index.ts")],
         cwd: root,
+        settleMs: 4000,
       });
     },
     state: async () => {
       const { pool } = platform();
+      // A run whose process is gone (killed, power loss) must not be listed as running.
+      await closeStaleOperations(pool);
       const [operations, packages, running] = await Promise.all([listOperations(pool, { limit: 20 }), listIntakes(pool, { limit: 30 }), liveOperation(pool)]);
       const dates = (row: object): Record<string, unknown> => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, iso(value)]));
       return { operations: operations.map(dates), packages: packages.map(dates), running: running === undefined ? null : dates(running) };

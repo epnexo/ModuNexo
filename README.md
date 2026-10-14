@@ -251,8 +251,8 @@ next run deletes whatever in it is no longer wanted and removes the empty folder
 
 ## Not here yet
 
-Planned as later features: the Apps screen on top of the install pipeline (upload, review, confirm, progress,
-enable/disable/uninstall, audit), and the module scaffold. A cleanup path for orphaned rows is not designed.
+Planned as later features: enable, disable and uninstall from the Apps screen (they need a rebuild pipeline of
+their own), and the module scaffold. A cleanup path for orphaned rows is not designed.
 
 ### Sign-in mode
 
