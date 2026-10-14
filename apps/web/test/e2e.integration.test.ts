@@ -15,6 +15,7 @@ import { createPool } from "@epnexo/core/pool";
 import { Registry, migrate } from "@epnexo/core";
 import { createScratchDatabase } from "@epnexo/core/testing";
 import type pg from "pg";
+import { acquireWebLock } from "./helpers/web-lock.ts";
 
 const MASTER_KEY = "e".repeat(40);
 const EMAIL = "e2e@example.test";
@@ -114,7 +115,10 @@ async function stopServer(): Promise<{ code: number | null | "timeout"; ms: numb
   return { code, ms: Date.now() - started };
 }
 
+let releaseWebLock: (() => void) | undefined;
+
 before(async () => {
+  releaseWebLock = await acquireWebLock();
   const scratch = await createScratchDatabase();
   if (scratch.url === undefined) {
     skipReason = scratch.skipReason;
@@ -150,6 +154,7 @@ after(async () => {
   }
   await db?.end();
   await drop?.();
+  releaseWebLock?.();
 });
 
 const test = (name: string, work: () => Promise<void>) =>
