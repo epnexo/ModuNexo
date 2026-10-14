@@ -567,4 +567,6 @@ Things to know. While the build runs the server's `.next` has been moved aside, 
 by the running server fail until the build finishes or is rolled back; do an install when that is acceptable.
 Installing is code execution with database access: the module's hooks run inside the platform and its pages are
 compiled into the web app. `modules pack` evaluates the author's `manifest.ts`, so it runs where `@epnexo/sdk` can
-be resolved from the module folder (a project with the SDK installed). `EPNEXO_DATA_DIR` moves `var/`.
+be resolved from the module folder (a project with the SDK installed). `EPNEXO_DATA_DIR` moves `var/`. The pipeline is Linux-only: it uses GNU `cp -al` for the build cache and
+`/proc/<pid>/cmdline` to recognise the launcher; elsewhere a restart is reported as not requested and the server
+must be restarted by hand.

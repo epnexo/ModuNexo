@@ -101,6 +101,8 @@ export async function buildWithRollback(options: BuildOptions): Promise<BuildHan
     renameSync(dist, backup);
     hadBuild = true;
     mkdirSync(dist);
+    // GNU `cp -al` (this platform is Linux). The cache is linked, not copied: a build that rewrites a cache file in
+    // place changes the kept one too, which is harmless, a cache only ever makes a build faster.
     if (existsSync(join(backup, "cache"))) await run("cp", ["-al", join(backup, "cache"), join(dist, "cache")]);
   }
   let result: BuildRunResult;

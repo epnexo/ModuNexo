@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -33,7 +33,17 @@ export async function acquireWebLock(): Promise<() => void> {
     } catch {
       holder = 0;
     }
-    if (holder > 0 && !alive(holder)) rmSync(LOCK, { recursive: true, force: true });
+    if (holder > 0 && !alive(holder)) {
+      // Moving it away is atomic: of several waiters that saw the same dead holder only one wins, and the others
+      // cannot remove the fresh lock that winner is about to create.
+      const stale = `${LOCK}.stale-${process.pid}-${Date.now()}`;
+      try {
+        renameSync(LOCK, stale);
+        rmSync(stale, { recursive: true, force: true });
+      } catch {
+        // Somebody else took it first.
+      }
+    }
     else if (Date.now() > deadline) throw new Error(`the web build lock is held by pid ${holder}`);
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
