@@ -170,6 +170,7 @@ npm run modules -- uninstall <id> --keep  # or --purge; no flag is refused, both
 npm run epnexo -- modules pack <folder> [--out <file>]
 npm run epnexo -- modules add <archive> [--sha256 <hex>] [--json]
 npm run epnexo -- modules apply <sha256> [--json]
+npm run epnexo -- modules enable|disable|uninstall <id> --rebuild   # the change plus the rebuild and restart
 npm run db:migrate                        # the core only; reports installed modules that need "modules upgrade"
 npm run registry:generate [-- --dry-run] [-- --out <dir>]
 npm run epnexo -- admin create --email <email> --name <name>
@@ -583,7 +584,12 @@ the review (what `modules add` prints); confirm; and follow the run. A non-admin
   refused while one is alive.
 - **History** lists the runs (`core.module_operations`) and every package received, accepted or refused, with its
   problems.
-- Enable, disable and uninstall are not on the screen yet; use `npm run modules`.
+- **Installed modules** lists each module with Enable, Disable and Uninstall. Each one rebuilds the web app for the
+  new state (the build embeds only enabled modules), then runs the lifecycle and restarts the server, with the
+  guarantees of an install: the rules of the lifecycle are checked first, a build that fails changes nothing in
+  the database, a failed lifecycle puts the previous build back, and a killed run is recovered by the next one.
+  Uninstall asks what happens to the data and has no default: *keep* leaves the schema and its migration history,
+  *delete* drops them and asks you to type the module id.
 
 The API behind it, administrator-only and same-origin for writes, like the settings API:
 
@@ -591,7 +597,16 @@ The API behind it, administrator-only and same-origin for writes, like the setti
 | --- | --- |
 | `POST /api/apps/packages` | the body is the archive (raw bytes, up to 50 MB, counted as it streams); optional header `x-expected-sha256`. `200` staged with the review, `422` refused with every problem, `413` too large |
 | `POST /api/apps/operations` `{ "sha256": "<hex>" }` | starts the install or upgrade of a staged package. `202` started, `404` not staged, `409` a run is alive |
+| `POST /api/apps/modules/<id>` `{ "action": "enable" \| "disable" \| "uninstall", "mode": "keep" \| "purge" }` | starts a change of state with a rebuild; `mode` is required for uninstall and for nothing else. `202` started, `422` refused by the lifecycle (with its reason), `409` a run is alive |
 | `GET /api/apps` | recent runs, received packages and the run in progress |
 
 The process the screen starts is fixed (the repository's CLI, the SHA-256 and a plain actor name as its only
 arguments, never through a shell); its output goes to `var/logs/apply-*.log`.
+
+### Changing a module's state with a rebuild
+
+`npm run modules -- enable|disable|uninstall <id>` keeps doing what it did: it changes the database and prints the
+reminder to regenerate and rebuild by hand. Add `--rebuild` (optionally `--actor <name>` and `--data-dir <path>`)
+and the same change runs through the pipeline: the registry for the state after the change is built into the web
+app first, then the lifecycle runs, then the server is asked to restart. The Apps screen starts exactly that
+command. Uninstall still needs `--keep` or `--purge`.

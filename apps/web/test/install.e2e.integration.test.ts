@@ -299,3 +299,68 @@ describe("Apps screen API: upload, confirm, follow the run", () => {
     assert.ok(page.includes("History"));
   });
 });
+
+describe("Apps screen API: enable, disable, uninstall", () => {
+  const post = (path: string, body: unknown) =>
+    fetch(`http://127.0.0.1:${port}${path}`, {
+      method: "POST",
+      headers: { origin: `http://127.0.0.1:${port}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  const test = (name: string, run: () => Promise<void>) =>
+    it(name, { timeout: 900_000 }, async (t) => {
+      if (db === undefined) return t.skip(skipReason);
+      await run();
+    });
+
+  /** Waits for the newest run to be of this kind and finished; the server restarts meanwhile, so errors retry. */
+  async function finishedRun(kind: string): Promise<{ status: string; kind: string }> {
+    const deadline = Date.now() + 420_000;
+    while (Date.now() < deadline) {
+      const { rows } = await db!.query("select kind, status from core.module_operations order by id desc limit 1");
+      if (rows[0]?.kind === kind && rows[0].status !== "running") return rows[0];
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    assert.fail(`no finished ${kind} run`);
+  }
+  async function waitForGone(path: string): Promise<void> {
+    const deadline = Date.now() + 120_000;
+    while (Date.now() < deadline) {
+      const reachable = await fetch(`http://127.0.0.1:${port}/login`).then(() => true).catch(() => false);
+      if (reachable && (await pageText(path)) === null) return;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    assert.fail(`${path} is still served`);
+  }
+
+  test("refuses what the lifecycle refuses, and an uninstall with no mode", async () => {
+    assert.equal((await post(`/api/apps/modules/${MODULE_ID}`, { action: "uninstall" })).status, 400);
+    const already = await post(`/api/apps/modules/${MODULE_ID}`, { action: "enable" });
+    assert.equal(already.status, 422, "already enabled is the lifecycle's refusal, shown as it is");
+    assert.match(String(((await already.json()) as { error: string }).error), /already enabled/);
+  });
+
+  test("disable takes the module out of the build, enable brings it back", async () => {
+    const off = await post(`/api/apps/modules/${MODULE_ID}`, { action: "disable" });
+    assert.equal(off.status, 202, await off.clone().text());
+    assert.deepEqual(await finishedRun("disable"), { kind: "disable", status: "succeeded" });
+    await waitForGone(`/${MODULE_ID}`);
+    assert.deepEqual((await db!.query("select state from core.modules")).rows, [{ state: "disabled" }]);
+
+    const on = await post(`/api/apps/modules/${MODULE_ID}`, { action: "enable" });
+    assert.equal(on.status, 202, await on.clone().text());
+    assert.deepEqual(await finishedRun("enable"), { kind: "enable", status: "succeeded" });
+    await waitForPage(`/${MODULE_ID}`, "apply-marker-v3", 240_000);
+  });
+
+  test("uninstall with keep removes the module from the app and leaves its data", async () => {
+    const response = await post(`/api/apps/modules/${MODULE_ID}`, { action: "uninstall", mode: "keep" });
+    assert.equal(response.status, 202, await response.clone().text());
+    assert.deepEqual(await finishedRun("uninstall"), { kind: "uninstall", status: "succeeded" });
+    await waitForGone(`/${MODULE_ID}`);
+    assert.equal((await db!.query("select 1 from core.modules")).rowCount, 0);
+    assert.equal((await db!.query("select 1 from information_schema.schemata where schema_name = 'apply_fixture'")).rowCount, 1, "the schema is kept");
+    const [last] = (await db!.query("select kind, sha256, actor from core.module_operations order by id desc limit 1")).rows;
+    assert.deepEqual(last, { kind: "uninstall", sha256: null, actor: "local-operator" });
+  });
+});
