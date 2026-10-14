@@ -44,7 +44,7 @@ commands:
                                    build the archive of a module folder (writes manifest.json from manifest.ts)
   modules add <archive> [--sha256 <hex>] [--data-dir <path>] [--json]
                                    bring a package in and review it; nothing is installed or run
-  modules apply <sha256> [--data-dir <path>] [--json]
+  modules apply <sha256> [--data-dir <path>] [--actor <name>] [--json]
                                    install or upgrade a package that "modules add" staged: place, build the web
                                    app, run the lifecycle, restart the server; undone if a step fails
   db:migrate                       apply the core migrations; report installed modules that need "modules upgrade"
@@ -86,6 +86,7 @@ const OPTIONS = {
   email: { type: "string" },
   name: { type: "string" },
   module: { type: "string" },
+  actor: { type: "string" },
   help: { type: "boolean" },
 } as const;
 
@@ -99,7 +100,7 @@ const COMMAND_OPTIONS: Record<string, readonly string[]> = {
   "modules uninstall": ["keep", "purge"],
   "modules pack": ["out"],
   "modules add": ["json", "sha256", "data-dir"],
-  "modules apply": ["json", "data-dir"],
+  "modules apply": ["json", "data-dir", "actor"],
   "db:migrate": [],
   "registry:generate": ["dry-run", "out"],
   "admin create": ["email", "name"],
@@ -183,6 +184,9 @@ function parse(argv: string[]): Parsed | "help" {
     if (takesId ? ids.length !== 1 : ids.length > 0) throw new UsageError(takesId ? `${command} takes exactly one ${noun.slice(2)}` : `${command} takes no arguments`);
   }
   if (command === "modules apply" && !/^[0-9a-fA-F]{64}$/.test(ids[0]!)) throw new UsageError("modules apply takes the 64 hexadecimal characters of a package SHA-256");
+  if (typeof parsed.values.actor === "string" && !/^[A-Za-z0-9][A-Za-z0-9:._@-]{0,99}$/.test(parsed.values.actor)) {
+    throw new UsageError("--actor takes a plain name (letters, digits and : . _ @ -, at most 100 characters)");
+  }
   if (typeof parsed.values.sha256 === "string" && !/^[0-9a-fA-F]{64}$/.test(parsed.values.sha256)) {
     throw new UsageError("--sha256 takes 64 hexadecimal characters");
   }
@@ -421,6 +425,7 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
           {
             sha256: parsed.ids[0]!.toLowerCase(),
             json: parsed.values.json === true,
+            actor: typeof parsed.values.actor === "string" ? parsed.values.actor : "cli",
             dataDir: typeof parsed.values["data-dir"] === "string" ? parsed.values["data-dir"] : DATA_DIR,
             modulesDir: packagesModulesDir,
           },
