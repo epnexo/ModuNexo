@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { type AppsDeps, handleStart, handleState, handleUpload, plainActor } from "../src/server/apps-api.ts";
+import { type AppsDeps, handleChange, handleStart, handleState, handleUpload, plainActor } from "../src/server/apps-api.ts";
 
 const SHA = "ab".repeat(32);
 const ADMIN = { actor: "admin@example.test", canWrite: true };
@@ -9,10 +9,11 @@ const USER = { actor: "user@example.test", canWrite: false };
 interface Calls {
   receive: { expectedSha256?: string; actor: string }[];
   launch: { sha256: string; actor: string }[];
+  change: { moduleId: string; action: string; mode?: string; actor: string }[];
 }
 
 function deps(overrides: Partial<AppsDeps> = {}): { deps: AppsDeps; calls: Calls } {
-  const calls: Calls = { receive: [], launch: [] };
+  const calls: Calls = { receive: [], launch: [], change: [] };
   const base: AppsDeps = {
     viewer: async () => ADMIN,
     receive: async (_body, options) => {
@@ -23,6 +24,10 @@ function deps(overrides: Partial<AppsDeps> = {}): { deps: AppsDeps; calls: Calls
     launch: async (sha256, actor) => {
       calls.launch.push({ sha256, actor });
       return { pid: 4242, logFile: "/var/logs/x.log" };
+    },
+    launchChange: async (moduleId, action, mode, actor) => {
+      calls.change.push({ moduleId, action, ...(mode === undefined ? {} : { mode }), actor });
+      return { pid: 1, logFile: "/var/logs/c.log" };
     },
     state: async () => ({ operations: [], packages: [], running: null }),
     maxUploadBytes: 1000,
@@ -154,5 +159,53 @@ describe("plainActor", () => {
     assert.match(plainActor("--data-dir"), /^[A-Za-z0-9]/);
     assert.match(plainActor("   "), /^[A-Za-z0-9]/);
     assert.ok(plainActor("x".repeat(500)).length <= 100);
+  });
+});
+
+describe("handleChange", () => {
+  const change = (id: string, body: unknown) => post(`/api/apps/modules/${id}`, { body: JSON.stringify(body), headers: { "content-type": "application/json" } });
+
+  it("starts enable, disable and uninstall (with an explicit mode) as the signed-in user and answers 202", async () => {
+    const { deps: d, calls } = deps();
+    assert.equal((await handleChange(change("reports", { action: "disable" }), d, "reports")).status, 202);
+    assert.equal((await handleChange(change("reports", { action: "enable" }), d, "reports")).status, 202);
+    assert.equal((await handleChange(change("reports", { action: "uninstall", mode: "purge" }), d, "reports")).status, 202);
+    assert.deepEqual(calls.change, [
+      { moduleId: "reports", action: "disable", actor: ADMIN.actor },
+      { moduleId: "reports", action: "enable", actor: ADMIN.actor },
+      { moduleId: "reports", action: "uninstall", mode: "purge", actor: ADMIN.actor },
+    ]);
+  });
+
+  it("refuses an uninstall with no mode (there is no default), a mode on anything else, and unknown actions", async () => {
+    const { deps: d, calls } = deps();
+    for (const body of [{ action: "uninstall" }, { action: "uninstall", mode: "drop" }, { action: "disable", mode: "keep" }, { action: "install" }, { action: "upgrade" }, {}, [], { action: "enable", extra: 1 }]) {
+      assert.equal((await handleChange(change("reports", body), d, "reports")).status, 400, JSON.stringify(body));
+    }
+    assert.deepEqual(calls.change, []);
+  });
+
+  it("refuses an id that is not a module id, another site, a non-administrator, and a run in progress", async () => {
+    const { deps: d, calls } = deps();
+    for (const id of ["../x", "A", "a b", "", "x;y", "-rf"]) assert.equal((await handleChange(change("x", { action: "enable" }), d, id)).status, 400, id);
+    const cross = new Request("http://h/api/apps/modules/reports", { method: "POST", headers: { origin: "http://evil", host: "h" }, body: JSON.stringify({ action: "enable" }) });
+    assert.equal((await handleChange(cross, d, "reports")).status, 403);
+    assert.equal((await handleChange(change("reports", { action: "enable" }), deps({ viewer: async () => USER }).deps, "reports")).status, 403);
+    const { LaunchBusyError, LaunchFailedError } = await import("@epnexo/core/apps");
+    const busy = deps({
+      launchChange: async () => {
+        throw new LaunchBusyError({ moduleId: "x", version: "1", sha256: null, kind: "install", status: "running", step: "build", detail: null, actor: "a", pid: 1, startedAt: new Date(), finishedAt: null, id: 1 });
+      },
+    });
+    assert.equal((await handleChange(change("reports", { action: "enable" }), busy.deps, "reports")).status, 409);
+    const refused = deps({
+      launchChange: async () => {
+        throw new LaunchFailedError(3, "refused: cannot disable \"reports\": enabled modules depend on it");
+      },
+    });
+    const response = await handleChange(change("reports", { action: "disable" }), refused.deps, "reports");
+    assert.equal(response.status, 422);
+    assert.match(String((await read(response)).error), /depend/);
+    assert.deepEqual(calls.change, []);
   });
 });
