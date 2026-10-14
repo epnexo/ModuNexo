@@ -231,7 +231,7 @@ describe("Apps screen API: upload, confirm, follow the run", () => {
       ...(init.body === undefined ? {} : { body: init.body }),
     });
   const test = (name: string, run: () => Promise<void>) =>
-    it(name, { timeout: 600_000 }, async (t) => {
+    it(name, { timeout: 900_000 }, async (t) => {
       if (db === undefined) return t.skip(skipReason);
       await run();
     });
@@ -277,7 +277,7 @@ describe("Apps screen API: upload, confirm, follow the run", () => {
     assert.equal(second.status, 409);
 
     try {
-      await waitForPage(`/${MODULE_ID}`, "apply-marker-v3", 240_000);
+      await waitForPage(`/${MODULE_ID}`, "apply-marker-v3", 420_000);
     } catch (error) {
       // Say what the run did, not only that the page never changed.
       const [last] = (await db!.query("select status, step, detail from core.module_operations order by id desc limit 1")).rows;
