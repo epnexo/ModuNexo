@@ -564,7 +564,9 @@ is the launcher (its command line), so a stale file can never make it signal som
 running it says so and nothing is signalled; start it with `npm run web:start`. `web:dev` is not supervised. A server that ignores the stop request is killed after 15 seconds so a restart
 cannot hang; and only a process whose command line is `apps/web/scripts/run.ts start` is ever signalled.
 
-Things to know. While the build runs the server's `.next` has been moved aside, so pages that were not yet loaded
+Things to know. Every build starts from an empty `.next` (the cache is not shared with the kept build, because
+sharing it corrupted builds), so each install, upgrade, enable, disable or uninstall pays a full build; on this class
+of machine that is minutes. While the build runs the server's `.next` has been moved aside, so pages that were not yet loaded
 by the running server fail until the build finishes or is rolled back; do an install when that is acceptable.
 Installing is code execution with database access: the module's hooks run inside the platform and its pages are
 compiled into the web app. `modules pack` evaluates the author's `manifest.ts`, so it runs where `@epnexo/sdk` can

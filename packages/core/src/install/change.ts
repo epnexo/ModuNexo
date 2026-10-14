@@ -28,6 +28,8 @@ export interface ChangeOptions {
   run?: BuildRunner;
   requestRestart?: () => Promise<string>;
   onStep?: (step: string, detail: string) => void;
+  /** Runs between the first look at the state and taking the lock; for tests of the window between them. */
+  afterPreflight?: () => Promise<void>;
 }
 
 export interface ChangeResult {
@@ -65,26 +67,42 @@ export async function changeModule(options: ChangeOptions): Promise<ChangeResult
 
   warnings.push(...(await recoverInterrupted({ pool, dataDir, modulesDir, webRoot })));
 
-  // Preflight: the lifecycle's own rules, before anything is recorded or changed.
-  const before = await registryFromDisk(modulesDir, false);
-  const decision = planTransition({ action, moduleId, ...(options.mode === undefined ? {} : { mode: options.mode }) }, await readStates(pool), before);
-  if (!decision.ok) throw new ApplyRefusedError(decision.refusal.message);
-  const { plan } = decision;
-  if (plan.noop) throw new ApplyRefusedError(`module "${moduleId}": nothing to do`);
+  // What the action would do, from the state as it is now: the lifecycle's own rules, and the registry the build
+  // needs before and after. It is computed twice: once before anything is recorded, so a refusal leaves no trace,
+  // and again once this run holds the lock, because another run may have finished in between.
+  const decide = async () => {
+    const before = await registryFromDisk(modulesDir, false);
+    const decision = planTransition({ action, moduleId, ...(options.mode === undefined ? {} : { mode: options.mode }) }, await readStates(pool), before);
+    if (!decision.ok) throw new ApplyRefusedError(decision.refusal.message);
+    if (decision.plan.noop) throw new ApplyRefusedError(`module "${moduleId}": nothing to do`);
+    const statusesBefore = await new LifecycleService(pool, before).list();
+    const previous = registrationModulesFor(statusesBefore, before, modulesDir).modules;
+    const next: RegistrationModule[] = previous.filter((module) => module.manifest.id !== moduleId);
+    if (action === "enable") next.push({ manifest: before.get(moduleId)!, packageName: readPackageName(modulesDir, moduleId) });
+    return { plan: decision.plan, previousModules: previous, modules: next, registry: before };
+  };
 
-  const statusesBefore = await new LifecycleService(pool, before).list();
-  const previousModules = registrationModulesFor(statusesBefore, before, modulesDir).modules;
-  const manifest = before.get(moduleId)!;
-  const modules: RegistrationModule[] = previousModules.filter((module) => module.manifest.id !== moduleId);
-  if (action === "enable") modules.push({ manifest, packageName: readPackageName(modulesDir, moduleId) });
+  await decide();
+  await options.afterPreflight?.();
 
   let operationId: number;
   try {
-    operationId = await startOperation(pool, { moduleId, version: plan.version, kind: action, actor: options.actor });
+    // The version is only for the record; the lifecycle states are decided again below under the lock.
+    const states = await readStates(pool);
+    operationId = await startOperation(pool, { moduleId, version: states.get(moduleId)?.installedVersion ?? "0.0.0", kind: action, actor: options.actor });
   } catch (error) {
     if (error instanceof OperationBusyError) throw new ApplyRefusedError(error.message);
     throw error;
   }
+
+  let current: Awaited<ReturnType<typeof decide>>;
+  try {
+    current = await decide();
+  } catch (error) {
+    await finishOperation(pool, operationId, "failed", `refused once the run held the lock: ${message(error)}`);
+    throw error;
+  }
+  const { plan, previousModules, modules, registry: before } = current;
 
   let step = "build";
   let build: BuildHandle | undefined;

@@ -48,6 +48,8 @@ export interface ApplyOptions {
   run?: BuildRunner;
   /** Asks the running server to restart and says what happened. Default: nothing is asked. */
   requestRestart?: () => Promise<string>;
+  /** Runs between the first look at the state and taking the lock; for tests of the window between them. */
+  afterPreflight?: () => Promise<void>;
   /** Called as each step begins, for a command line that shows progress. */
   onStep?: (step: string, detail: string) => void;
 }
@@ -109,7 +111,8 @@ export async function applyPackage(options: ApplyOptions): Promise<ApplyResult> 
   if (installed !== undefined && semver.valid(installed) !== null && !semver.gt(review.version, installed)) {
     throw new ApplyRefusedError(`${review.id} ${review.version} is not newer than the installed ${installed}; an upgrade needs a greater version`);
   }
-  const previousModules = registrationModulesFor(statusesBefore, before, modulesDir).modules;
+  let previousModules = registrationModulesFor(statusesBefore, before, modulesDir).modules;
+  await options.afterPreflight?.();
 
   let operationId: number;
   try {
@@ -118,6 +121,17 @@ export async function applyPackage(options: ApplyOptions): Promise<ApplyResult> 
     if (error instanceof OperationBusyError) throw new ApplyRefusedError(error.message);
     throw error;
   }
+
+  // Another run may have finished between the first look and the lock: what this one does is decided on the state
+  // as it is now, and if that no longer matches what was reviewed it stops here, before touching anything.
+  const statusesNow = await new LifecycleService(pool, before).list();
+  const installedNow = statusesNow.find((status) => status.id === review.id)?.installedVersion;
+  if (installedNow !== installed) {
+    const why = `${review.id} changed while this run was starting (installed ${installed ?? "none"} before, ${installedNow ?? "none"} now); apply again to act on the current state`;
+    await finishOperation(pool, operationId, "failed", `refused once the run held the lock: ${why}`);
+    throw new ApplyRefusedError(why);
+  }
+  previousModules = registrationModulesFor(statusesNow, before, modulesDir).modules;
 
   let step = "place";
   const progress = async (name: string, detail: string) => {

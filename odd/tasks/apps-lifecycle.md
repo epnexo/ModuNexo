@@ -35,7 +35,7 @@ Quoted fragments are the owner's words; the rest is the plan agreed in the sessi
 - [x] **T3** (S5) CLI `--rebuild` on enable/disable/uninstall, and the detached launch. Route: inline.
 - [x] **T4** (S1, S3) API `POST /api/apps/modules/<id>` and the screen's controls. Route: inline. Risk: item 1.
 - [x] **T5** End to end with a real build. Route: inline.
-- [ ] **T6** (S7) README, independent verifier, native review. Route: inline plus verifier.
+- [x] **T6** (S7) README, independent verifier, native review. Route: inline plus verifier.
 
 Forecast: about 900 authored changed lines; one slice per task.
 
@@ -54,3 +54,13 @@ Forecast: about 900 authored changed lines; one slice per task.
   starts from an empty `.next` (`e04c9fc`); the full suite went from failing in 4 of 5 runs to 864/864.
   Also: a restart request that arrives during a restart is kept (the supervisor restarts once more), and a failed
   build's last lines are kept in the run's detail, so the Apps history says why.
+- **L4** (2026-10-14) Independent verifier (sonnet, scratch DB, one real e2e run): S1-S7 met, no blockers, five
+  advisories. Fixed: the installed list is reloaded when a run ends; `launchChange` refuses a mode that does not
+  apply instead of dropping it. Native review of `b2bdaaf..HEAD` (risk, resilience, reliability): approved and
+  acknowledged, two warnings. Fixed with tests: the state is read again once the run holds the lock (change and
+  apply), so a run that went stale is refused and closed before anything is placed or built. Documented: every
+  build is now cold (minutes) because the shared cache was corrupting builds. Left: a refusal that ends the child
+  after the 4 s settle time shows "started" with no run row (same design as apply); a restart queued during a
+  restart briefly spawns a child that is stopped at once. Incident to report to the owner: the verifier ran a real
+  `--rebuild` against this repository's `apps/web` (the command has no web-root option) and a long-lived
+  `next-server` that is not part of this project was no longer running afterwards; its cause is not established.
