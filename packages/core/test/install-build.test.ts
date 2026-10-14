@@ -35,6 +35,7 @@ const leftovers = () => readdirSync(root).filter((name) => name.includes("rollba
 
 const succeeds: BuildRunner = async (webRoot) => {
   assert.match(readFileSync(join(webRoot, REGISTRY_FILE), "utf8"), /beta/, "the build sees the new module registered");
+  assert.equal(existsSync(join(webRoot, ".next", "cache")), false, "the new build starts clean: no cache is shared with the kept build");
   rmSync(join(webRoot, ".next/server"), { recursive: true, force: true });
   writeFileSync(join(webRoot, ".next/BUILD_ID"), "new");
   return { code: 0, output: "built" };

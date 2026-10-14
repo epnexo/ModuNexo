@@ -93,3 +93,8 @@ Forecast: about 1,500 authored changed lines; one slice per task.
   Documented as limits: the pipeline is Linux-only (`cp -al`, `/proc`), and the linked build cache can be
   changed in place by a build (harmless: it is a cache). Final suite before this commit 798 pass, 0 fail; the
   real end-to-end run passes (3/3).
+- **L8** (2026-10-14) Superseded by A4d, found there: linking the build cache between the kept `.next` and the new
+  one (L3, L7) was wrong. Under a loaded full suite builds failed with errors about files that exist
+  (`TS6053 File ... page.tsx not found`; `ENOENT _clientMiddlewareManifest.js` written moments before) and only
+  when a cache was reused; Turbopack and TypeScript write the cache in place, so the kept build and the new one
+  shared mutable state. The new build now starts from an empty `.next`; the previous one is moved aside whole.
