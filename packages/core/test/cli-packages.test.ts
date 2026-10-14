@@ -310,6 +310,8 @@ describe("cli: modules apply", () => {
       assert.equal((await cli("modules", "apply", "reports")).code, 2);
       assert.equal((await cli("modules", "apply", "a".repeat(64), "--keep")).code, 2);
       assert.equal((await cli("modules", "apply", "a".repeat(64), "--sha256", "a".repeat(64))).code, 2);
+      assert.equal((await cli("modules", "apply", "a".repeat(64), "--actor", "--data-dir")).code, 2);
+      assert.equal((await cli("modules", "apply", "a".repeat(64), "--actor", "a b")).code, 2);
     });
   });
 
