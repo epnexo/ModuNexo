@@ -1,8 +1,6 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { launchApply } from "@epnexo/core/install";
-import { liveOperation, listOperations } from "@epnexo/core/operations";
-import { ARCHIVE_LIMITS, buildPackageContext, listIntakes, receiveUpload, stagingPath } from "@epnexo/core/packages";
+import { ARCHIVE_LIMITS, buildPackageContext, launchApply, listIntakes, listOperations, liveOperation, receiveUpload, stagingPath } from "@epnexo/core/apps";
 import { type AppsDeps, plainActor } from "./apps-api.ts";
 import { platform } from "./platform.ts";
 import { resolveViewer } from "./viewer.ts";
