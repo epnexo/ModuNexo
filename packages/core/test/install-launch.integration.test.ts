@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, afterEach, before, beforeEach, describe, it } from "node:test";
 import type pg from "pg";
-import { LaunchBusyError, LaunchFailedError, launchApply } from "../src/install/launch.ts";
+import { LaunchBusyError, LaunchFailedError, launchApply, launchChange } from "../src/install/launch.ts";
 import { finishOperation, startOperation } from "../src/operations/index.ts";
 import { Registry } from "../src/registry.ts";
 import { migrate } from "../src/runner.ts";
@@ -107,6 +107,22 @@ describe("launchApply", () => {
       launchApply({ pool: pool!, sha256: SHA, actor: ACTOR, dataDir: join(work, "var"), entry: [recorder()], cwd: join(work, "does-not-exist"), settleMs: 3000 }),
       (error) => error instanceof LaunchFailedError && /could not start/i.test(error.message) && /ENOENT|no such/i.test(error.message),
     );
+  });
+
+  test("launchChange runs the command with --rebuild, the mode and the actor", async () => {
+    await launchChange({ pool: pool!, moduleId: "reports", action: "uninstall", mode: "purge", actor: ACTOR, dataDir: join(work, "var"), entry: [recorder()] });
+    await until(() => existsSync(join(work, "args.json")));
+    assert.deepEqual(JSON.parse(readFileSync(join(work, "args.json"), "utf8")), ["modules", "uninstall", "reports", "--rebuild", "--purge", "--actor", ACTOR, "--data-dir", join(work, "var")]);
+  });
+
+  test("launchChange refuses an id or an action that is not what it expects, and a busy platform", async () => {
+    for (const moduleId of ["", "../x", "A", "a b", "--rebuild", "x;y"]) {
+      await assert.rejects(launchChange({ pool: pool!, moduleId, action: "enable", actor: ACTOR, dataDir: join(work, "var"), entry: [recorder()] }));
+    }
+    await assert.rejects(launchChange({ pool: pool!, moduleId: "reports", action: "install" as never, actor: ACTOR, dataDir: join(work, "var"), entry: [recorder()] }));
+    const running = await startOperation(pool!, { moduleId: "x", version: "1.0.0", sha256: "c".repeat(64), kind: "install", actor: ACTOR });
+    await assert.rejects(launchChange({ pool: pool!, moduleId: "reports", action: "disable", actor: ACTOR, dataDir: join(work, "var"), entry: [recorder()] }), LaunchBusyError);
+    await finishOperation(pool!, running, "succeeded");
   });
 });
 
