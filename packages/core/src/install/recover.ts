@@ -7,7 +7,7 @@ import { discoverModules } from "../discovery.ts";
 import { LifecycleService } from "../lifecycle/index.ts";
 import { closeStaleOperations, liveOperation } from "../operations/index.ts";
 import { Registry } from "../registry.ts";
-import { clearJournal, readJournal } from "./journal.ts";
+import { clearJournal, isChange, readJournal } from "./journal.ts";
 import { undoPlacement } from "./place.ts";
 
 /** The registry of what is on disk, as the CLI builds it. `fresh` re-reads packages replaced during this process. */
@@ -45,17 +45,20 @@ export async function recoverInterrupted(options: RecoverOptions): Promise<strin
     if (current === null && !existsSync(backup)) return [];
 
     const notes: string[] = [];
-    const subject = current === null ? "a run" : `the ${current.kind} of ${current.moduleId} ${current.version}`;
+    const subject = current === null ? "a run" : isChange(current) ? `the ${current.action} of ${current.moduleId}` : `the ${current.kind} of ${current.moduleId} ${current.version}`;
     let keep = false;
     if (current !== null && current.phase === "lifecycle") {
-      const { rows } = await options.pool.query("select installed_version from core.modules where id = $1", [current.moduleId]);
-      keep = rows[0]?.installed_version === current.version;
+      const { rows } = await options.pool.query("select state, installed_version from core.modules where id = $1", [current.moduleId]);
+      if (isChange(current)) {
+        const found = rows[0] === undefined ? "gone" : rows[0].state;
+        keep = found === current.expected;
+      } else keep = rows[0]?.installed_version === current.version;
     }
     if (keep) {
       rmSync(backup, { recursive: true, force: true });
       notes.push(`recovered: ${subject} was interrupted after its database step had completed, so its result was kept (restart the server to serve it)`);
     } else {
-      if (current !== null) undoPlacement(current);
+      if (current !== null && !isChange(current)) undoPlacement(current);
       if (existsSync(backup)) {
         rmSync(join(options.webRoot, ".next"), { recursive: true, force: true });
         renameSync(backup, join(options.webRoot, ".next"));
