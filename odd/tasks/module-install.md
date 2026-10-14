@@ -46,8 +46,8 @@ Quoted fragments are the owner's words; the rest is the plan agreed in the sessi
   fake build. Route: inline. Risk: items 1 and 5. Commit `72ab8c3`.
 - [x] **T5** (S1, S5) CLI `modules apply`, the restart contract (server exit code + pid file + `web:start`
   supervision). Route: inline. Risk: item 5. Commit `09d1512`.
-- [ ] **T6** (S8) Real end-to-end with a fixture module and a real build, README, independent verifier, native
-  reviews. Route: inline plus verifier.
+- [x] **T6** (S8) Real end-to-end with a fixture module and a real build, README, independent verifier, native
+  reviews. Route: inline plus verifier. Commits `a5bc49a`, `d90da71`, `777521f`.
 
 Forecast: about 1,500 authored changed lines; one slice per task.
 
@@ -86,3 +86,10 @@ Forecast: about 1,500 authored changed lines; one slice per task.
   the build step (cleanly undone, exit 1) rather than at preflight; `--json` refusals print plain text; empty
   directories can remain after a rollback. One full-suite run showed a single unreproducible failure in
   `cli-db-migrate` under load (passes alone and in two further full runs). Suite 798 pass, 0 fail.
+- **L7** (2026-10-14) Native review of `e02777e..d90da71` (risk, resilience, reliability): approved and
+  acknowledged, five warnings. Fixed test first or with tests: build rollback and placement undo are tried
+  separately; the recovery branches (keep when the database step completed, undo in the lifecycle and placing
+  phases, no-op while a run is alive) are covered; the e2e lock removes a stale lock by an atomic rename.
+  Documented as limits: the pipeline is Linux-only (`cp -al`, `/proc`), and the linked build cache can be
+  changed in place by a build (harmless: it is a cache). Final suite before this commit 798 pass, 0 fail; the
+  real end-to-end run passes (3/3).
