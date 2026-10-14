@@ -38,8 +38,8 @@ Quoted fragments are the owner's words; the rest is the plan agreed in the sessi
 
 - [x] **T1** (S6) Migration `0007_module_operations.sql` and the operations store (start, step, finish, list,
   single-run lock). Route: inline. Commit `a3c5ac6`.
-- [ ] **T2** (S2, S4) Placement and undo: copy staged tree, link in `node_modules`, keep the previous version.
-  Route: inline. Risk: item 1 (replaces files of an installed module).
+- [x] **T2** (S2, S4) Placement and undo: copy staged tree, link in `node_modules`, keep the previous version.
+  Route: inline. Risk: item 1 (replaces files of an installed module). Commit `353a38f`.
 - [ ] **T3** (S3, S4) Build step with rollback of `.next` and the generated registry; the build command is
   injectable. Route: inline. Risk: item 5.
 - [ ] **T4** (S1, S3, S4, S6, S7) `applyPackage`: the pipeline end to end with undo, against a scratch DB and a
