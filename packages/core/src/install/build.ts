@@ -1,12 +1,9 @@
-import { execFile, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import { promisify } from "node:util";
 import { generateRegistration } from "../codegen/generate.ts";
 import type { RegistrationModule } from "../codegen/render.ts";
-
-const run = promisify(execFile);
 
 export interface BuildRunResult {
   code: number;
@@ -78,8 +75,8 @@ export const nextBuildRunner: BuildRunner = (webRoot, signal) =>
   });
 
 /**
- * Registers `modules` with the web app and builds it, keeping the previous `.next` (moved aside, with its build cache
- * linked back so the build stays incremental) until `commit`. A failed build restores the previous build and the
+ * Registers `modules` with the web app and builds it from a clean `.next`, keeping the previous one (moved aside,
+ * untouched) until `commit`. A failed build restores the previous build and the
  * previous registration before it throws, so the app is left as it was.
  */
 export async function buildWithRollback(options: BuildOptions): Promise<BuildHandle> {
@@ -96,14 +93,13 @@ export async function buildWithRollback(options: BuildOptions): Promise<BuildHan
 
   rmSync(backup, { recursive: true, force: true });
   if (existsSync(dist)) {
-    // The previous build is moved aside whole, so nothing the new build writes can touch it. Only the build cache
-    // is linked back into the new `.next`, so the build stays incremental.
+    // The previous build is moved aside whole, so nothing the new build writes can touch it, and the new build
+    // starts from an empty `.next`. Its cache is deliberately not carried over: Turbopack and TypeScript write the
+    // cache in place, so sharing it (as links) between the kept build and the new one corrupted both, and builds
+    // failed with errors about files that exist. A cold build is slower and always right.
     renameSync(dist, backup);
     hadBuild = true;
     mkdirSync(dist);
-    // GNU `cp -al` (this platform is Linux). The cache is linked, not copied: a build that rewrites a cache file in
-    // place changes the kept one too, which is harmless, a cache only ever makes a build faster.
-    if (existsSync(join(backup, "cache"))) await run("cp", ["-al", join(backup, "cache"), join(dist, "cache")]);
   }
   let result: BuildRunResult;
   try {

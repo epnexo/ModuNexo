@@ -540,7 +540,7 @@ npm run epnexo -- modules apply <sha256>     # the SHA-256 that `modules add` pr
 3. **Verify.** The `manifest.ts` that is about to run (it is code) is loaded and must equal the `manifest.json`
    that was reviewed. A package that shows one manifest and runs another is refused and undone.
 4. **Build.** The web app is registered with the module and built with `next build`. The previous `.next` is kept
-   aside, with its build cache linked back so the build is incremental. This runs **before** the database is
+   aside, and the new build starts from a clean `.next` (no cache is shared with it). This runs **before** the database is
    touched, so a build that fails changes nothing in it.
 5. **Lifecycle.** The module's migrations and hooks run through the same lifecycle as `modules install` or
    `modules upgrade` (dependency, platform and version rules included).
@@ -568,8 +568,7 @@ Things to know. While the build runs the server's `.next` has been moved aside, 
 by the running server fail until the build finishes or is rolled back; do an install when that is acceptable.
 Installing is code execution with database access: the module's hooks run inside the platform and its pages are
 compiled into the web app. `modules pack` evaluates the author's `manifest.ts`, so it runs where `@epnexo/sdk` can
-be resolved from the module folder (a project with the SDK installed). `EPNEXO_DATA_DIR` moves `var/`. The pipeline is Linux-only: it uses GNU `cp -al` for the build cache and
-`/proc/<pid>/cmdline` to recognise the launcher; elsewhere a restart is reported as not requested and the server
+be resolved from the module folder (a project with the SDK installed). `EPNEXO_DATA_DIR` moves `var/`. The pipeline is Linux-only: it uses `/proc/<pid>/cmdline` to recognise the launcher; elsewhere a restart is reported as not requested and the server
 must be restarted by hand.
 
 ## The Apps screen
