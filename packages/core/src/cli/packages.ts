@@ -1,5 +1,5 @@
 import type pg from "pg";
-import { ApplyFailedError, ApplyRefusedError, BuildFailedError, applyPackage, requestRestart } from "../install/index.ts";
+import { ApplyFailedError, ApplyRefusedError, BuildFailedError, applyPackage, changeModule, requestRestart } from "../install/index.ts";
 import { DATA_DIR, PackRefusedError, buildPackageContext, intakePackage, packFolder } from "../packages/index.ts";
 import { Refusal } from "./errors.ts";
 import type { CliIo } from "./run.ts";
@@ -87,6 +87,40 @@ export async function runApplyCommand(args: { sha256: string; json: boolean; act
       return;
     }
     io.out(`${result.kind === "install" ? "installed" : "upgraded"} ${result.moduleId} ${result.version} (operation ${result.operationId})`);
+    io.out(result.restart);
+  } catch (error) {
+    if (error instanceof ApplyRefusedError) throw new Refusal(error.message);
+    if (error instanceof ApplyFailedError && error.cause instanceof BuildFailedError) {
+      io.err("the last lines of the build:");
+      for (const line of error.cause.output.trim().split("\n").slice(-25)) io.err(`  ${line}`);
+    }
+    throw error;
+  }
+}
+
+/**
+ * `modules enable|disable|uninstall <id> --rebuild`: the state change with the rebuild pipeline: the web app is
+ * built for the new state first, the lifecycle runs, the server restarts, and a failure puts the build back.
+ */
+export async function runChangeCommand(
+  args: { action: "enable" | "disable" | "uninstall"; moduleId: string; mode?: "keep" | "purge"; actor: string; dataDir: string; modulesDir: string },
+  pool: pg.Pool,
+  io: CliIo,
+): Promise<void> {
+  try {
+    const result = await changeModule({
+      pool,
+      moduleId: args.moduleId,
+      action: args.action,
+      ...(args.mode === undefined ? {} : { mode: args.mode }),
+      actor: args.actor,
+      dataDir: args.dataDir,
+      modulesDir: args.modulesDir,
+      requestRestart: () => requestRestart({ dataDir: args.dataDir }),
+      onStep: (step, detail) => io.out(`[${step}] ${detail}`),
+    });
+    for (const warning of result.warnings) io.err(`warning: ${warning}`);
+    io.out(`${args.action === "enable" ? "enabled" : args.action === "disable" ? "disabled" : "uninstalled"} ${result.moduleId} (operation ${result.operationId})`);
     io.out(result.restart);
   } catch (error) {
     if (error instanceof ApplyRefusedError) throw new Refusal(error.message);

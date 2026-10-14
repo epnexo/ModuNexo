@@ -330,3 +330,37 @@ describe("cli: modules apply", () => {
     assert.match(result.stdout, /modules apply <sha256>/);
   });
 });
+
+describe("cli: --rebuild", () => {
+  it("is only for enable, disable and uninstall, and --actor and --data-dir only go with it", async (t) => {
+    await inScratchDatabase(t, async (_db, cli) => {
+      assert.equal((await cli("modules", "list", "--rebuild")).code, 2);
+      assert.equal((await cli("modules", "install", "reports", "--rebuild")).code, 2);
+      assert.equal((await cli("modules", "enable", "reports", "--actor", "me")).code, 2);
+      assert.equal((await cli("modules", "disable", "reports", "--rebuild", "--actor", "a b")).code, 2);
+    });
+  });
+
+  it("refuses a module that is not installed, with exit code 3, before building anything", async (t) => {
+    await inScratchDatabase(t, async (db, cli) => {
+      for (const args of [["enable", "ghost"], ["disable", "ghost"], ["uninstall", "ghost", "--keep"]]) {
+        const result = await cli("modules", ...args, "--rebuild");
+        assert.equal(result.code, 3, `${args.join(" ")}: ${result.stderr}`);
+        assert.match(result.stderr, /^refused: /);
+      }
+      assert.equal((await db.query("select 1 from core.module_operations")).rowCount, 0);
+    });
+  });
+
+  it("an uninstall without --keep or --purge is refused with the reason", async (t) => {
+    await inScratchDatabase(t, async (_db, cli) => {
+      const result = await cli("modules", "uninstall", "ghost", "--rebuild");
+      assert.equal(result.code, 3);
+    });
+  });
+
+  it("is listed in --help", async () => {
+    const result = await spawn(["--help"], {});
+    assert.match(result.stdout, /--rebuild/);
+  });
+});

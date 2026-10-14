@@ -13,7 +13,7 @@ import { Registry } from "../registry.ts";
 import { MigrationRunError, migrate, pendingMigrations } from "../runner.ts";
 import { SettingValueError, SettingsError } from "../settings/service.ts";
 import { DATA_DIR } from "../packages/paths.ts";
-import { runAddCommand, runApplyCommand, runPackCommand } from "./packages.ts";
+import { runAddCommand, runApplyCommand, runChangeCommand, runPackCommand } from "./packages.ts";
 import { readPassword } from "./password.ts";
 import { runSettingsCommand } from "./settings.ts";
 
@@ -37,6 +37,8 @@ commands:
   modules install <id>             available -> enabled (migrations, onInstall, onEnable)
   modules enable <id>              disabled -> enabled
   modules disable <id>             enabled -> disabled (data is kept)
+                                   enable, disable and uninstall take --rebuild [--actor <name>] [--data-dir <path>]:
+                                   rebuild the web app for the new state first, undo on failure, restart the server
   modules upgrade <id>             apply the package's newer version
   modules uninstall <id> --keep    leave the module's schema and migration history
   modules uninstall <id> --purge   drop the schema and the migration history
@@ -87,6 +89,7 @@ const OPTIONS = {
   name: { type: "string" },
   module: { type: "string" },
   actor: { type: "string" },
+  rebuild: { type: "boolean" },
   help: { type: "boolean" },
 } as const;
 
@@ -94,10 +97,10 @@ const OPTIONS = {
 const COMMAND_OPTIONS: Record<string, readonly string[]> = {
   "modules list": ["json"],
   "modules install": [],
-  "modules enable": [],
-  "modules disable": [],
+  "modules enable": ["rebuild", "actor", "data-dir"],
+  "modules disable": ["rebuild", "actor", "data-dir"],
   "modules upgrade": [],
-  "modules uninstall": ["keep", "purge"],
+  "modules uninstall": ["keep", "purge", "rebuild", "actor", "data-dir"],
   "modules pack": ["out"],
   "modules add": ["json", "sha256", "data-dir"],
   "modules apply": ["json", "data-dir", "actor"],
@@ -184,6 +187,9 @@ function parse(argv: string[]): Parsed | "help" {
     if (takesId ? ids.length !== 1 : ids.length > 0) throw new UsageError(takesId ? `${command} takes exactly one ${noun.slice(2)}` : `${command} takes no arguments`);
   }
   if (command === "modules apply" && !/^[0-9a-fA-F]{64}$/.test(ids[0]!)) throw new UsageError("modules apply takes the 64 hexadecimal characters of a package SHA-256");
+  if ((typeof parsed.values.actor === "string" || typeof parsed.values["data-dir"] === "string") && !parsed.values.rebuild && command !== "modules apply" && command !== "modules add") {
+    throw new UsageError(`--actor and --data-dir apply to ${command} only with --rebuild`);
+  }
   if (typeof parsed.values.actor === "string" && !/^[A-Za-z0-9][A-Za-z0-9:._@-]{0,99}$/.test(parsed.values.actor)) {
     throw new UsageError("--actor takes a plain name (letters, digits and : . _ @ -, at most 100 characters)");
   }
@@ -405,6 +411,29 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
           json: parsed.values.json === true,
         },
         { pool, registry: context.registry, io },
+      );
+      return EXIT_OK;
+    }
+    const rebuilding = parsed.values.rebuild === true && ["modules enable", "modules disable", "modules uninstall"].includes(parsed.command);
+    if (rebuilding) {
+      let changeModulesDir: string;
+      try {
+        changeModulesDir = resolveModulesDir(typeof parsed.values["modules-dir"] === "string" ? parsed.values["modules-dir"] : undefined);
+      } catch (error) {
+        throw new UsageError(error instanceof Error ? error.message : String(error));
+      }
+      pool = createPool(resolveDatabaseUrl(), { connectionTimeoutMillis: 5000 });
+      await runChangeCommand(
+        {
+          action: parsed.command.slice("modules ".length) as "enable" | "disable" | "uninstall",
+          moduleId: parsed.ids[0]!,
+          ...(parsed.values.keep ? { mode: "keep" as const } : parsed.values.purge ? { mode: "purge" as const } : {}),
+          actor: typeof parsed.values.actor === "string" ? parsed.values.actor : "cli",
+          dataDir: typeof parsed.values["data-dir"] === "string" ? parsed.values["data-dir"] : DATA_DIR,
+          modulesDir: changeModulesDir,
+        },
+        pool,
+        io,
       );
       return EXIT_OK;
     }
