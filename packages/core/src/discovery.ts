@@ -31,7 +31,7 @@ export interface DiscoveryResult {
  * Each manifest must default-export its manifest and use the folder name as its id.
  * Relative `migrationsDir` values are resolved against the module folder.
  */
-export async function discoverModules(modulesDir: string): Promise<DiscoveryResult> {
+export async function discoverModules(modulesDir: string, options: { freshImport?: boolean } = {}): Promise<DiscoveryResult> {
   const warnings: string[] = [];
   if (!existsSync(modulesDir)) return { modules: [], warnings };
 
@@ -58,7 +58,10 @@ export async function discoverModules(modulesDir: string): Promise<DiscoveryResu
   const manifests: ModuleManifest[] = [];
   for (const folder of folders) {
     const file = join(modulesDir, folder, "manifest.ts");
-    const loaded: { default?: unknown } = await import(pathToFileURL(file).href);
+    // A module's manifest is imported once per process; `freshImport` makes a package that was just replaced on
+    // disk be read again instead of served from the module cache.
+    const url = pathToFileURL(file).href + (options.freshImport ? `?fresh=${Date.now()}-${Math.random().toString(36).slice(2)}` : "");
+    const loaded: { default?: unknown } = await import(url);
     if (loaded.default === undefined) throw new Error(`${file} must have a default export with the module manifest`);
 
     let manifest: ModuleManifest;
