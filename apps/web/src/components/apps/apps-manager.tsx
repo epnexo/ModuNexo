@@ -1,0 +1,282 @@
+"use client";
+
+import { LoaderCircle } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { type RunRow, isFinished, planAction, runSummary } from "../../server/apps-flow";
+
+interface Review {
+  id: string;
+  version: string;
+  name: string;
+  packageName: string;
+  platform: string;
+  pages: { path: string }[];
+  nav: { label: string }[];
+  permissions: { key: string }[];
+  settings: { key: string }[];
+  migrations: string[];
+  runsHooks: boolean;
+  dependsOn: { id: string; range: string; status: string }[];
+  dependencies: { name: string; range: string }[];
+  scripts: string[];
+}
+
+interface PackageRow {
+  id: number;
+  sha256: string;
+  moduleId: string | null;
+  version: string | null;
+  status: "staged" | "refused";
+  problems: string[] | null;
+  actor: string;
+  receivedAt: string;
+}
+
+export interface AppsState {
+  operations: RunRow[];
+  packages: PackageRow[];
+  running: RunRow | null;
+}
+
+type Staged = { sha256: string; sizeBytes: number; alreadyStaged: boolean; review: Review };
+
+const when = (iso: string) => new Date(iso).toLocaleString();
+const list = (values: string[]) => (values.length === 0 ? "none" : values.join(", "));
+
+export function AppsManager({ initial, installed }: { initial: AppsState; installed: Record<string, string> }) {
+  const [state, setState] = useState<AppsState>(initial);
+  const [file, setFile] = useState<File | null>(null);
+  const [expected, setExpected] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [staged, setStaged] = useState<Staged | null>(null);
+  const [problems, setProblems] = useState<string[] | null>(null);
+  const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+  const [starting, setStarting] = useState(false);
+  const wasRunning = useRef(initial.running !== null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const response = await fetch("/api/apps", { cache: "no-store" });
+      if (response.ok) setState((await response.json()) as AppsState);
+    } catch {
+      // The server restarts at the end of an install; the next poll finds it again.
+    }
+  }, []);
+
+  const running = state.running;
+  useEffect(() => {
+    if (running === null) {
+      if (wasRunning.current) {
+        wasRunning.current = false;
+        void refresh();
+      }
+      return;
+    }
+    wasRunning.current = true;
+    const timer = setInterval(() => void refresh(), 2000);
+    return () => clearInterval(timer);
+  }, [running, refresh]);
+
+  async function upload() {
+    if (file === null) return;
+    setUploading(true);
+    setMessage(null);
+    setStaged(null);
+    setProblems(null);
+    try {
+      const response = await fetch("/api/apps/packages", {
+        method: "POST",
+        headers: { "content-type": "application/gzip", ...(expected.trim() === "" ? {} : { "x-expected-sha256": expected.trim().toLowerCase() }) },
+        body: file,
+      });
+      const data = (await response.json().catch(() => ({}))) as Partial<Staged> & { status?: string; error?: string; problems?: string[] };
+      if (response.ok && data.status === "staged") setStaged(data as Staged);
+      else if (response.status === 422 && data.problems) setProblems(data.problems);
+      else setMessage({ kind: "error", text: data.error ?? "The package could not be uploaded." });
+      void refresh();
+    } catch {
+      setMessage({ kind: "error", text: "Could not reach the server." });
+    }
+    setUploading(false);
+  }
+
+  async function start(sha256: string) {
+    setStarting(true);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/apps/operations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sha256 }) });
+      const data = (await response.json().catch(() => ({}))) as { error?: string };
+      if (response.ok) {
+        setStaged(null);
+        setMessage({ kind: "ok", text: "Started. The web app is rebuilt and the server restarts at the end; this page keeps following the run." });
+        await refresh();
+      } else setMessage({ kind: "error", text: data.error ?? "Could not start the run." });
+    } catch {
+      setMessage({ kind: "error", text: "Could not reach the server." });
+    }
+    setStarting(false);
+  }
+
+  const action = staged === null ? null : planAction(staged.review, installed[staged.review.id]);
+  const busy = running !== null;
+
+  return (
+    <div className="flex flex-col gap-8">
+      {running !== null ? (
+        <section aria-labelledby="run-heading" className="flex flex-col gap-2 rounded-lg border border-border bg-accent-soft p-4 text-accent-soft-foreground">
+          <h2 id="run-heading" className="flex items-center gap-2 text-base font-semibold">
+            <LoaderCircle aria-hidden className="size-4 animate-spin motion-reduce:animate-none" />
+            Run in progress
+          </h2>
+          <p role="status">{runSummary(running)}</p>
+          <p className="text-sm">Started {when(running.startedAt)} by {running.actor}. A build takes a few minutes on this machine.</p>
+        </section>
+      ) : null}
+
+      <section aria-labelledby="add-heading" className="flex flex-col gap-4 rounded-lg border border-border bg-surface p-5">
+        <h2 id="add-heading" className="text-lg font-semibold tracking-tight">
+          Add a package
+        </h2>
+        <p className="max-w-xl text-sm text-muted">
+          Upload a module archive made with <code className="font-mono text-foreground">modules pack</code>. It is read as data and nothing is installed until you
+          confirm. Installing runs the module&apos;s migrations and hooks with access to the database.
+        </p>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="package-file" className="text-sm font-medium">
+              Archive (.tgz)
+            </label>
+            <input id="package-file" type="file" accept=".tgz,.tar.gz,application/gzip" disabled={uploading || busy} onChange={(event) => setFile(event.target.files?.[0] ?? null)} className="text-sm" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="package-sha" className="text-sm font-medium">
+              SHA-256 from the publisher (optional)
+            </label>
+            <input
+              id="package-sha"
+              value={expected}
+              disabled={uploading || busy}
+              onChange={(event) => setExpected(event.target.value)}
+              placeholder="64 hexadecimal characters"
+              className="max-w-xl rounded-md border border-border-strong bg-surface px-3 py-2 font-mono text-sm outline-none transition-colors duration-150 focus-visible:border-accent disabled:opacity-60"
+            />
+          </div>
+          <div>
+            <button
+              type="button"
+              onClick={() => void upload()}
+              disabled={file === null || uploading || busy}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-accent px-4 font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {uploading ? <LoaderCircle aria-hidden className="size-4 animate-spin motion-reduce:animate-none" /> : null}
+              Upload and review
+            </button>
+          </div>
+        </div>
+
+        {problems !== null ? (
+          <div role="alert" className="flex flex-col gap-2 rounded-md bg-danger-soft px-3 py-2 text-danger-soft-foreground">
+            <p className="font-medium">This package was refused:</p>
+            <ul className="list-disc pl-5 text-sm">
+              {problems.map((problem) => (
+                <li key={problem} className="break-words">
+                  {problem}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {staged !== null && action !== null ? (
+          <div className="flex flex-col gap-3 rounded-md border border-border p-4">
+            <h3 className="text-base font-semibold">
+              {staged.review.name} <span className="font-normal text-muted">{staged.review.id} · {staged.review.version}</span>
+            </h3>
+            <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm">
+              <dt className="text-muted">Package</dt>
+              <dd>{staged.review.packageName}</dd>
+              <dt className="text-muted">SHA-256</dt>
+              <dd className="break-all font-mono text-xs">{staged.sha256}</dd>
+              <dt className="text-muted">Platform</dt>
+              <dd>{staged.review.platform}</dd>
+              <dt className="text-muted">Pages</dt>
+              <dd>{list(staged.review.pages.map((page) => page.path))}</dd>
+              <dt className="text-muted">Navigation</dt>
+              <dd>{list(staged.review.nav.map((item) => item.label))}</dd>
+              <dt className="text-muted">Permissions</dt>
+              <dd>{list(staged.review.permissions.map((permission) => permission.key))}</dd>
+              <dt className="text-muted">Settings</dt>
+              <dd>{list(staged.review.settings.map((setting) => setting.key))}</dd>
+              <dt className="text-muted">Migrations</dt>
+              <dd>{list(staged.review.migrations)}</dd>
+              <dt className="text-muted">Hooks</dt>
+              <dd>{staged.review.runsHooks ? "Yes: the package's own code runs inside the platform when it is installed." : "None"}</dd>
+              <dt className="text-muted">Depends on</dt>
+              <dd>{list(staged.review.dependsOn.map((need) => `${need.id} ${need.range} (${need.status})`))}</dd>
+              <dt className="text-muted">Libraries</dt>
+              <dd>{list(staged.review.dependencies.map((dependency) => `${dependency.name} ${dependency.range}`))}</dd>
+              <dt className="text-muted">Scripts</dt>
+              <dd>{staged.review.scripts.length === 0 ? "None (scripts are never run)" : `${staged.review.scripts.join(", ")} (never run)`}</dd>
+            </dl>
+            {action.blocked !== null ? (
+              <p role="alert" className="rounded-md bg-warning-soft px-3 py-2 text-sm">
+                {action.blocked}
+              </p>
+            ) : null}
+            <div>
+              <button
+                type="button"
+                onClick={() => void start(staged.sha256)}
+                disabled={action.blocked !== null || starting || busy}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-accent px-4 font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {starting ? <LoaderCircle aria-hidden className="size-4 animate-spin motion-reduce:animate-none" /> : null}
+                {action.label}
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        <p role="status" className={`text-sm ${message?.kind === "error" ? "text-danger" : "text-muted"}`}>
+          {message?.text ?? ""}
+        </p>
+      </section>
+
+      <section aria-labelledby="history-heading" className="flex flex-col gap-3">
+        <h2 id="history-heading" className="text-lg font-semibold tracking-tight">
+          History
+        </h2>
+        {state.operations.length === 0 && state.packages.length === 0 ? <p className="text-sm text-muted">Nothing has been added or installed from here yet.</p> : null}
+        {state.operations.length > 0 ? (
+          <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
+            {state.operations.map((run) => (
+              <li key={`run-${run.id}`} className="flex flex-col gap-0.5 px-4 py-3">
+                <span className="text-sm">{runSummary(run)}</span>
+                <span className="text-xs text-muted" data-numeric>
+                  {when(run.startedAt)} · {run.actor}
+                  {isFinished(run) ? "" : " · running"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {state.packages.length > 0 ? (
+          <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
+            {state.packages.map((pkg) => (
+              <li key={`pkg-${pkg.id}`} className="flex flex-col gap-0.5 px-4 py-3">
+                <span className="text-sm">
+                  {pkg.status === "staged" ? "Received" : "Refused"} {pkg.moduleId ?? "a package"} {pkg.version ?? ""}
+                </span>
+                <span className="break-all font-mono text-xs text-muted">{pkg.sha256}</span>
+                <span className="text-xs text-muted" data-numeric>
+                  {when(pkg.receivedAt)} · {pkg.actor}
+                </span>
+                {pkg.problems !== null ? <span className="text-xs text-danger">{pkg.problems.join("; ")}</span> : null}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </section>
+    </div>
+  );
+}
