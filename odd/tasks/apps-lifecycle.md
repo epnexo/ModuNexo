@@ -32,9 +32,9 @@ Quoted fragments are the owner's words; the rest is the plan agreed in the sessi
   Route: inline.
 - [x] **T2** (S1, S2, S3, S6) `changeModule`: preflight, build first, lifecycle, undo, restart, journal and
   recovery. Route: inline. Risk: item 1 (can purge a module's data) and item 5.
-- [ ] **T3** (S5) CLI `--rebuild` on enable/disable/uninstall, and the detached launch. Route: inline.
-- [ ] **T4** (S1, S3) API `POST /api/apps/modules/<id>` and the screen's controls. Route: inline. Risk: item 1.
-- [ ] **T5** End to end with a real build. Route: inline.
+- [x] **T3** (S5) CLI `--rebuild` on enable/disable/uninstall, and the detached launch. Route: inline.
+- [x] **T4** (S1, S3) API `POST /api/apps/modules/<id>` and the screen's controls. Route: inline. Risk: item 1.
+- [x] **T5** End to end with a real build. Route: inline.
 - [ ] **T6** (S7) README, independent verifier, native review. Route: inline plus verifier.
 
 Forecast: about 900 authored changed lines; one slice per task.
@@ -47,3 +47,10 @@ Forecast: about 900 authored changed lines; one slice per task.
 - **L2** Decisions taken without asking: the three actions share one pipeline ("change") because all of them
   change the set of enabled modules the build embeds; the existing CLI commands keep their behavior and the
   rebuild is opt-in with `--rebuild`, so nothing that already works changes; purge needs its own confirmation.
+- **L3** (2026-10-14) Commits: T1 `3faf69c`, T2 `83c88bc`, T3 `1f534f7`,
+  T4 `c77cfd2`, T5 `32f49c2`. Found while running the whole suite: builds failed
+  under load with errors about files that exist (`TS6053`, `ENOENT _clientMiddlewareManifest.js`). Cause: the
+  build cache linked between the kept `.next` and the new one (A4b design) is written in place. Every build now
+  starts from an empty `.next` (`e04c9fc`); the full suite went from failing in 4 of 5 runs to 864/864.
+  Also: a restart request that arrives during a restart is kept (the supervisor restarts once more), and a failed
+  build's last lines are kept in the run's detail, so the Apps history says why.
