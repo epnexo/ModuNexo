@@ -28,9 +28,9 @@ Quoted fragments are the owner's words; the rest is the plan agreed in the sessi
 
 ## Tasks
 
-- [ ] **T1** (S4) Migration `0008`: operation kinds enable/disable/uninstall, `sha256` nullable; the store.
+- [x] **T1** (S4) Migration `0008`: operation kinds enable/disable/uninstall, `sha256` nullable; the store.
   Route: inline.
-- [ ] **T2** (S1, S2, S3, S6) `changeModule`: preflight, build first, lifecycle, undo, restart, journal and
+- [x] **T2** (S1, S2, S3, S6) `changeModule`: preflight, build first, lifecycle, undo, restart, journal and
   recovery. Route: inline. Risk: item 1 (can purge a module's data) and item 5.
 - [ ] **T3** (S5) CLI `--rebuild` on enable/disable/uninstall, and the detached launch. Route: inline.
 - [ ] **T4** (S1, S3) API `POST /api/apps/modules/<id>` and the screen's controls. Route: inline. Risk: item 1.
