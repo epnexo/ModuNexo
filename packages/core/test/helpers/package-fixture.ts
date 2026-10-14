@@ -14,21 +14,23 @@ export interface PackageOptions {
 export function packageEntries(options: PackageOptions = {}): TarEntry[] {
   const id = options.id ?? "reports";
   const version = options.version ?? "1.0.0";
+  const manifest = {
+    id,
+    version,
+    name: "Reports",
+    platform: `^${SDK_VERSION}`,
+    dependsOn: {},
+    schema: id.replace(/-/g, "_"),
+    migrationsDir: "migrations",
+    nav: [{ label: "Reports", href: `/${id}` }],
+    pages: [{ path: `/${id}`, entry: "./web/page.tsx", kind: "page" }],
+    ...options.manifest,
+  };
   const files: Record<string, string | null> = {
     "package.json": JSON.stringify({ name: `@acme/${id}`, version, ...options.packageJson }),
-    "manifest.json": JSON.stringify({
-      id,
-      version,
-      name: "Reports",
-      platform: `^${SDK_VERSION}`,
-      dependsOn: {},
-      schema: id.replace(/-/g, "_"),
-      migrationsDir: "migrations",
-      nav: [{ label: "Reports", href: `/${id}` }],
-      pages: [{ path: `/${id}`, entry: "./web/page.tsx", kind: "page" }],
-      ...options.manifest,
-    }),
-    "manifest.ts": "export default {};\n",
+    "manifest.json": JSON.stringify(manifest),
+    // What the platform loads at install: the same manifest, as code.
+    "manifest.ts": `export default ${JSON.stringify(manifest)};\n`,
     "migrations/0001_init.sql": "create table items (id int);\n",
     "web/page.tsx": "export default function Page() { return null; }\n",
     ...options.files,
