@@ -1,17 +1,24 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { AppsManager, type AppsState } from "../../../components/apps/apps-manager";
 import { modules } from "../../../generated/modules";
+import { appsDeps } from "../../../server/apps-deps";
+import { platform } from "../../../server/platform";
+import { resolveViewer } from "../../../server/viewer";
 
 export const metadata: Metadata = { title: "Apps" };
+export const dynamic = "force-dynamic";
 
-// The install and management screen is a later feature (A4); until then the CLI manages modules and this page
-// shows what the running build was generated from.
-export default function AppsPage() {
-  return (
-    <div className="flex max-w-2xl flex-col gap-6">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Apps</h1>
-        <p className="text-muted">The modules this build was generated with.</p>
-      </div>
+export default async function AppsPage() {
+  const viewer = await resolveViewer(await headers());
+  if (viewer === null) redirect("/login");
+
+  const list = (
+    <section aria-labelledby="built-heading" className="flex flex-col gap-3">
+      <h2 id="built-heading" className="text-lg font-semibold tracking-tight">
+        In this build
+      </h2>
       {modules.length === 0 ? (
         <p className="text-muted">No modules are enabled in this build.</p>
       ) : (
@@ -26,9 +33,28 @@ export default function AppsPage() {
           ))}
         </ul>
       )}
+    </section>
+  );
+
+  let manager = null;
+  if (viewer.canWrite) {
+    const { pool } = platform();
+    const initial = (await appsDeps().state()) as unknown as AppsState;
+    const rows = (await pool.query("select id, installed_version from core.modules")).rows as { id: string; installed_version: string }[];
+    manager = <AppsManager initial={initial} installed={Object.fromEntries(rows.map((row) => [row.id, row.installed_version]))} />;
+  }
+
+  return (
+    <div className="flex max-w-3xl flex-col gap-8">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold tracking-tight">Apps</h1>
+        <p className="text-muted">The modules this build was generated with{viewer.canWrite ? ", and the packages you add." : "."}</p>
+      </div>
+      {manager}
+      {list}
       <p className="text-sm text-muted">
-        Install, enable, disable and uninstall from the server with <code className="font-mono text-foreground">npm run modules</code>, then run{" "}
-        <code className="font-mono text-foreground">npm run web:build</code> and restart. Doing it from this screen is the next feature.
+        Enable, disable and uninstall from the server with <code className="font-mono text-foreground">npm run modules</code>, then run{" "}
+        <code className="font-mono text-foreground">npm run web:build</code> and restart. Doing those from this screen is the next feature.
       </p>
     </div>
   );
