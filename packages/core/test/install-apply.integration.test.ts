@@ -9,7 +9,8 @@ import type pg from "pg";
 import { REGISTRY_FILE } from "../src/codegen/render.ts";
 import { generateRegistration } from "../src/codegen/generate.ts";
 import { ApplyFailedError, ApplyRefusedError, applyPackage } from "../src/install/apply.ts";
-import { writeJournal } from "../src/install/journal.ts";
+import { readJournal, writeJournal } from "../src/install/journal.ts";
+import { recoverInterrupted } from "../src/install/recover.ts";
 import { placePackage } from "../src/install/place.ts";
 import type { BuildRunner } from "../src/install/build.ts";
 import { BuildFailedError } from "../src/install/build.ts";
@@ -298,5 +299,59 @@ describe("applyPackage: other rules", () => {
     const result = await apply(await stage({ version: "1.1.0" }));
     assert.equal(result.kind, "upgrade");
     assert.ok(readdirSync(join(paths().dataDir, "previous")).filter((name) => name.startsWith("reports-1.0.0")).length >= 2);
+  });
+});
+
+describe("recoverInterrupted", () => {
+  const crashedUpgrade = async (phase: "placing" | "building" | "lifecycle", version = "1.1.0") => {
+    await apply(await stage());
+    const sha = await stage({ version });
+    placePackage({
+      stagingDir: join(paths().dataDir, "staging", sha),
+      moduleId: "reports",
+      packageName: "@acme/reports",
+      version,
+      kind: "upgrade",
+      previousVersion: "1.0.0",
+      modulesDir: paths().modulesDir,
+      nodeModulesDir: join(work, "node_modules"),
+      dataDir: paths().dataDir,
+      beforeChange: (state) => writeJournal(paths().dataDir, { ...state, version, phase, webRoot: paths().webRoot }),
+    });
+    return sha;
+  };
+  const recover = () => recoverInterrupted({ pool, ...paths() });
+  const moduleVersion = () => JSON.parse(readFileSync(join(work, "modules", "reports", "package.json"), "utf8")).version;
+
+  test("keeps the result when the run died after its database step had completed", async () => {
+    await crashedUpgrade("lifecycle");
+    await pool.query("update core.modules set installed_version = '1.1.0' where id = 'reports'");
+    const notes = await recover();
+    assert.match(notes.join("\n"), /kept/);
+    assert.equal(moduleVersion(), "1.1.0");
+    assert.equal(readJournal(paths().dataDir), null);
+  });
+
+  test("undoes the placement when it died in the lifecycle phase before the database moved", async () => {
+    await crashedUpgrade("lifecycle");
+    const notes = await recover();
+    assert.match(notes.join("\n"), /put back/);
+    assert.equal(moduleVersion(), "1.0.0");
+    assert.equal(readJournal(paths().dataDir), null);
+  });
+
+  test("undoes a placement that died while placing, before the old folder was moved", async () => {
+    await crashedUpgrade("placing");
+    await recover();
+    assert.equal(moduleVersion(), "1.0.0");
+    assert.equal(existsSync(join(paths().dataDir, "previous", "reports-1.0.0")), false);
+  });
+
+  test("does nothing while a run with a live process is in progress", async () => {
+    await crashedUpgrade("building");
+    await startOperation(pool, { moduleId: "reports", version: "1.1.0", sha256: "d".repeat(64), kind: "upgrade", actor: "apply-test" });
+    assert.deepEqual(await recover(), []);
+    assert.equal(moduleVersion(), "1.1.0", "left as it is for the live run");
+    assert.notEqual(readJournal(paths().dataDir), null);
   });
 });

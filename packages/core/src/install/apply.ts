@@ -179,11 +179,13 @@ export async function applyPackage(options: ApplyOptions): Promise<ApplyResult> 
     else await lifecycle.upgrade(review.id);
   } catch (error) {
     const notes: string[] = [];
-    try {
-      build?.rollback();
-      placement?.undo();
-    } catch (undoError) {
-      notes.push(`undo failed: ${message(undoError)}`);
+    // Each undo is tried on its own: a build that cannot be restored must not stop the files being put back.
+    for (const undo of [() => build?.rollback(), () => placement?.undo()]) {
+      try {
+        undo();
+      } catch (undoError) {
+        notes.push(`undo failed: ${message(undoError)}`);
+      }
     }
     if (step === "lifecycle") notes.push("database changes the lifecycle had already applied are not undone; the previous build keeps serving and a retry continues from there");
     const reason = `${step}: ${controller.signal.aborted ? "interrupted by a signal" : message(error)}`;
