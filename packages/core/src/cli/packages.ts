@@ -1,5 +1,6 @@
 import type pg from "pg";
-import { DATA_DIR, buildPackageContext, intakePackage, packFolder, PackRefusedError } from "../packages/index.ts";
+import { ApplyFailedError, ApplyRefusedError, BuildFailedError, applyPackage, requestRestart } from "../install/index.ts";
+import { DATA_DIR, PackRefusedError, buildPackageContext, intakePackage, packFolder } from "../packages/index.ts";
 import { Refusal } from "./errors.ts";
 import type { CliIo } from "./run.ts";
 
@@ -60,4 +61,39 @@ export async function runAddCommand(
   row("libraries", list(review.dependencies.map((dependency) => `${dependency.name} ${dependency.range}`)));
   row("scripts", review.scripts.length === 0 ? "none (never run)" : `${review.scripts.join(", ")} (never run)`);
   io.out("Nothing was installed. The package was read as data; none of its code was run.");
+}
+
+/**
+ * `modules apply <sha256>`: installs or upgrades a package that `modules add` staged: places it, builds the web
+ * app with it, runs the lifecycle and asks the running server to restart. Takes minutes (the build); every step
+ * is printed, and a failure undoes what it can and says what it could not.
+ */
+export async function runApplyCommand(args: { sha256: string; json: boolean; dataDir: string; modulesDir: string }, pool: pg.Pool, io: CliIo): Promise<void> {
+  try {
+    const result = await applyPackage({
+      pool,
+      sha256: args.sha256,
+      actor: "cli",
+      dataDir: args.dataDir,
+      modulesDir: args.modulesDir,
+      requestRestart: () => requestRestart({ dataDir: args.dataDir }),
+      onStep: (step, detail) => {
+        if (!args.json) io.out(`[${step}] ${detail}`);
+      },
+    });
+    for (const warning of result.warnings) io.err(`warning: ${warning}`);
+    if (args.json) {
+      io.out(JSON.stringify({ status: "succeeded", ...result }, null, 2));
+      return;
+    }
+    io.out(`${result.kind === "install" ? "installed" : "upgraded"} ${result.moduleId} ${result.version} (operation ${result.operationId})`);
+    io.out(result.restart);
+  } catch (error) {
+    if (error instanceof ApplyRefusedError) throw new Refusal(error.message);
+    if (error instanceof ApplyFailedError && error.cause instanceof BuildFailedError) {
+      io.err("the last lines of the build:");
+      for (const line of error.cause.output.trim().split("\n").slice(-25)) io.err(`  ${line}`);
+    }
+    throw error;
+  }
 }

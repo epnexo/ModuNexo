@@ -5,7 +5,10 @@ import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { runCli } from "@epnexo/core/cli";
+import { pidFilePath } from "@epnexo/core/install";
+import { DATA_DIR } from "@epnexo/core/packages";
 import { LaunchError, LaunchUsageError, exitCodeFor, planLaunch } from "../src/server/launch.ts";
+import { superviseChild } from "../src/server/supervisor.ts";
 import { ensureRegistry } from "./ensure-registry.ts";
 
 const webRoot = fileURLToPath(new URL("../", import.meta.url));
@@ -45,7 +48,11 @@ async function main(): Promise<number> {
   if (plan.kind === "serve") {
     // Node's own TypeScript support, not the tsx loader this process runs under: see the note in serve.ts.
     const serveScript = fileURLToPath(new URL("./serve.ts", import.meta.url));
-    return runChild(["--disable-warning=ExperimentalWarning", serveScript, plan.dev ? "dev" : "start", plan.host, String(plan.port)]);
+    const serveArgs = ["--disable-warning=ExperimentalWarning", serveScript, plan.dev ? "dev" : "start", plan.host, String(plan.port)];
+    if (plan.dev) return runChild(serveArgs);
+    // Production runs under a small supervisor: an install asks it (SIGUSR2, via the pid file) to restart the
+    // server so the new build is served. It restarts on that request only, never because the server died.
+    return superviseChild({ args: serveArgs, cwd: webRoot, pidFile: pidFilePath(DATA_DIR), signals: process });
   }
   return runChild([createRequire(import.meta.url).resolve("next/dist/bin/next"), ...plan.nextArgs]);
 }

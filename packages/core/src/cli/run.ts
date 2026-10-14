@@ -13,7 +13,7 @@ import { Registry } from "../registry.ts";
 import { MigrationRunError, migrate, pendingMigrations } from "../runner.ts";
 import { SettingValueError, SettingsError } from "../settings/service.ts";
 import { DATA_DIR } from "../packages/paths.ts";
-import { runAddCommand, runPackCommand } from "./packages.ts";
+import { runAddCommand, runApplyCommand, runPackCommand } from "./packages.ts";
 import { readPassword } from "./password.ts";
 import { runSettingsCommand } from "./settings.ts";
 
@@ -44,6 +44,9 @@ commands:
                                    build the archive of a module folder (writes manifest.json from manifest.ts)
   modules add <archive> [--sha256 <hex>] [--data-dir <path>] [--json]
                                    bring a package in and review it; nothing is installed or run
+  modules apply <sha256> [--data-dir <path>] [--json]
+                                   install or upgrade a package that "modules add" staged: place, build the web
+                                   app, run the lifecycle, restart the server; undone if a step fails
   db:migrate                       apply the core migrations; report installed modules that need "modules upgrade"
   registry:generate [--dry-run] [--out <dir>]
                                    write the web app registration for the enabled modules
@@ -63,7 +66,7 @@ commands:
 
 options for every command:
   --modules-dir <path>             where module packages are unpacked (default: modules/ at the repository root)
-  --data-dir <path>                where received packages are kept (modules add; default: var/ at the repository root)
+  --data-dir <path>                where received packages are kept (modules add, apply; default: var/ at the repository root)
   --help                           print this text
 
 environment: DATABASE_URL (and TEST_DATABASE_URL for the tests); admin create and module settings also need ${MASTER_KEY_ENV}
@@ -96,6 +99,7 @@ const COMMAND_OPTIONS: Record<string, readonly string[]> = {
   "modules uninstall": ["keep", "purge"],
   "modules pack": ["out"],
   "modules add": ["json", "sha256", "data-dir"],
+  "modules apply": ["json", "data-dir"],
   "db:migrate": [],
   "registry:generate": ["dry-run", "out"],
   "admin create": ["email", "name"],
@@ -134,7 +138,7 @@ function parse(argv: string[]): Parsed | "help" {
   let ids: string[];
   if (first === "modules") {
     if (second === undefined) throw new UsageError("no modules command given");
-    if (second !== "list" && second !== "pack" && second !== "add" && !ACTION_COMMANDS.includes(second as ActionCommand)) throw new UsageError(`unknown modules command "${second}"`);
+    if (second !== "list" && second !== "pack" && second !== "add" && second !== "apply" && !ACTION_COMMANDS.includes(second as ActionCommand)) throw new UsageError(`unknown modules command "${second}"`);
     command = `modules ${second}`;
     ids = rest;
   } else if (first === "settings") {
@@ -174,10 +178,11 @@ function parse(argv: string[]): Parsed | "help" {
   }
   const takesId = command !== "modules list" && command.startsWith("modules ");
   if (!command.startsWith("settings ")) {
-    const noun = command === "modules pack" ? "a folder" : command === "modules add" ? "an archive" : "a module id";
+    const noun = command === "modules pack" ? "a folder" : command === "modules add" ? "an archive" : command === "modules apply" ? "a package SHA-256" : "a module id";
     if (takesId && ids.length === 0) throw new UsageError(`${command} needs ${noun}`);
     if (takesId ? ids.length !== 1 : ids.length > 0) throw new UsageError(takesId ? `${command} takes exactly one ${noun.slice(2)}` : `${command} takes no arguments`);
   }
+  if (command === "modules apply" && !/^[0-9a-fA-F]{64}$/.test(ids[0]!)) throw new UsageError("modules apply takes the 64 hexadecimal characters of a package SHA-256");
   if (typeof parsed.values.sha256 === "string" && !/^[0-9a-fA-F]{64}$/.test(parsed.values.sha256)) {
     throw new UsageError("--sha256 takes 64 hexadecimal characters");
   }
@@ -399,7 +404,7 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
       );
       return EXIT_OK;
     }
-    if (parsed.command === "modules pack" || parsed.command === "modules add") {
+    if (parsed.command === "modules pack" || parsed.command === "modules add" || parsed.command === "modules apply") {
       let packagesModulesDir: string;
       try {
         packagesModulesDir = resolveModulesDir(typeof parsed.values["modules-dir"] === "string" ? parsed.values["modules-dir"] : undefined);
@@ -411,6 +416,19 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
         return EXIT_OK;
       }
       pool = createPool(resolveDatabaseUrl(), { connectionTimeoutMillis: 5000 });
+      if (parsed.command === "modules apply") {
+        await runApplyCommand(
+          {
+            sha256: parsed.ids[0]!.toLowerCase(),
+            json: parsed.values.json === true,
+            dataDir: typeof parsed.values["data-dir"] === "string" ? parsed.values["data-dir"] : DATA_DIR,
+            modulesDir: packagesModulesDir,
+          },
+          pool,
+          io,
+        );
+        return EXIT_OK;
+      }
       await runAddCommand(
         {
           archive: parsed.ids[0]!,

@@ -48,6 +48,8 @@ export interface ApplyOptions {
   run?: BuildRunner;
   /** Asks the running server to restart and says what happened. Default: nothing is asked. */
   requestRestart?: () => Promise<string>;
+  /** Called as each step begins, for a command line that shows progress. */
+  onStep?: (step: string, detail: string) => void;
 }
 
 export interface ApplyResult {
@@ -114,10 +116,15 @@ export async function applyPackage(options: ApplyOptions): Promise<ApplyResult> 
   }
 
   let step = "place";
+  const progress = async (name: string, detail: string) => {
+    step = name;
+    await setStep(pool, operationId, name, detail);
+    options.onStep?.(name, detail);
+  };
   let placement: Placement | undefined;
   let build: BuildHandle | undefined;
   try {
-    await setStep(pool, operationId, "place", `${kind} ${review.id} ${review.version}`);
+    await progress("place", `${kind} ${review.id} ${review.version}`);
     placement = placePackage({
       stagingDir: staging,
       moduleId: review.id,
@@ -130,8 +137,7 @@ export async function applyPackage(options: ApplyOptions): Promise<ApplyResult> 
       dataDir,
     });
 
-    step = "verify";
-    await setStep(pool, operationId, "verify", "the manifest.ts that will run is the manifest.json that was reviewed");
+    await progress("verify", "the manifest.ts that will run is the manifest.json that was reviewed");
     const after = await registryFrom(modulesDir, true);
     const loaded = after.get(review.id);
     if (loaded === undefined) throw new ApplyRefusedError(`manifest.ts of the package does not declare module "${review.id}"`);
@@ -141,8 +147,7 @@ export async function applyPackage(options: ApplyOptions): Promise<ApplyResult> 
       throw new ApplyRefusedError("manifest.ts of the package is not the manifest.json that was reviewed; the package is inconsistent and was not applied");
     }
 
-    step = "build";
-    await setStep(pool, operationId, "build", "next build");
+    await progress("build", "next build (this takes a while)");
     const lifecycle = new LifecycleService(pool, after, { loadHooks: fileHookLoader(modulesDir) });
     const registration = registrationModulesFor(await lifecycle.list(), after, modulesDir);
     warnings.push(...registration.warnings);
@@ -150,8 +155,7 @@ export async function applyPackage(options: ApplyOptions): Promise<ApplyResult> 
     modules.push({ manifest: loaded, packageName: readPackageName(modulesDir, review.id) });
     build = await buildWithRollback({ webRoot, modules, previousModules, ...(options.run === undefined ? {} : { run: options.run }) });
 
-    step = "lifecycle";
-    await setStep(pool, operationId, "lifecycle", kind === "install" ? "migrations and hooks" : "migrations and hooks of the upgrade");
+    await progress("lifecycle", kind === "install" ? "migrations and hooks" : "migrations and hooks of the upgrade");
     if (kind === "install") await lifecycle.install(review.id);
     else await lifecycle.upgrade(review.id);
   } catch (error) {
@@ -172,6 +176,7 @@ export async function applyPackage(options: ApplyOptions): Promise<ApplyResult> 
   build.commit();
   let restart = "no restart was requested";
   try {
+    options.onStep?.("restart", "asking the running server to restart");
     await setStep(pool, operationId, "restart");
     if (options.requestRestart !== undefined) restart = await options.requestRestart();
   } catch (error) {

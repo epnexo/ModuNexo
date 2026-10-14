@@ -302,3 +302,29 @@ describe("cli: nothing from a package runs", () => {
     });
   });
 });
+
+describe("cli: modules apply", () => {
+  it("is a usage error without a SHA-256, with one that is not 64 hex characters, or with an option that does not apply", async (t) => {
+    await inScratchDatabase(t, async (_db, cli) => {
+      assert.equal((await cli("modules", "apply")).code, 2);
+      assert.equal((await cli("modules", "apply", "reports")).code, 2);
+      assert.equal((await cli("modules", "apply", "a".repeat(64), "--keep")).code, 2);
+      assert.equal((await cli("modules", "apply", "a".repeat(64), "--sha256", "a".repeat(64))).code, 2);
+    });
+  });
+
+  it("refuses a SHA-256 that was never brought in, with exit code 3, and changes nothing", async (t) => {
+    await inScratchDatabase(t, async (db, cli, data) => {
+      const result = await cli("modules", "apply", "c".repeat(64));
+      assert.equal(result.code, 3);
+      assert.match(result.stderr, /^refused: .*modules add/);
+      assert.equal((await db.query("select 1 from core.module_operations")).rowCount, 0);
+      assert.equal(existsSync(join(data, "previous")), false);
+    });
+  });
+
+  it("is listed in --help", async () => {
+    const result = await spawn(["--help"], {});
+    assert.match(result.stdout, /modules apply <sha256>/);
+  });
+});
