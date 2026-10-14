@@ -1,13 +1,14 @@
 import type pg from "pg";
 
-export type OperationKind = "install" | "upgrade";
+export type OperationKind = "install" | "upgrade" | "enable" | "disable" | "uninstall";
 export type OperationStatus = "running" | "succeeded" | "failed" | "rolled_back";
 
 export interface OperationRow {
   id: number;
   moduleId: string;
   version: string;
-  sha256: string;
+  /** The package an install or upgrade applies; null for a change of state. */
+  sha256: string | null;
   kind: OperationKind;
   status: OperationStatus;
   step: string;
@@ -34,7 +35,7 @@ const toRow = (row: Record<string, unknown>): OperationRow => ({
   id: Number(row.id),
   moduleId: row.module_id as string,
   version: row.version as string,
-  sha256: row.sha256 as string,
+  sha256: (row.sha256 as string | null) ?? null,
   kind: row.kind as OperationKind,
   status: row.status as OperationStatus,
   step: row.step as string,
@@ -58,7 +59,8 @@ function alive(pid: number): boolean {
 export interface StartOperation {
   moduleId: string;
   version: string;
-  sha256: string;
+  /** Required for an install or upgrade, and only for those. */
+  sha256?: string;
   kind: OperationKind;
   actor: string;
   /** The process that does the work; defaults to this one. Only used to tell a dead run from a live one. */
@@ -97,7 +99,7 @@ export async function startOperation(pool: pg.Pool, input: StartOperation): Prom
     try {
       const { rows } = await pool.query(
         `insert into core.module_operations (module_id, version, sha256, kind, actor, pid) values ($1, $2, $3, $4, $5, $6) returning id`,
-        [input.moduleId, input.version, input.sha256, input.kind, input.actor, input.pid ?? process.pid],
+        [input.moduleId, input.version, input.sha256 ?? null, input.kind, input.actor, input.pid ?? process.pid],
       );
       return Number(rows[0].id);
     } catch (error) {

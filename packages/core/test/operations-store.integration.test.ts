@@ -91,4 +91,22 @@ describe("module operations", () => {
   test("a SHA-256 that is not 64 hex characters is refused", async () => {
     await assert.rejects(startOperation(pool!, { moduleId: "reports", version: "1.0.0", sha256: "nope", kind: "install", actor: ACTOR }));
   });
+
+  test("a change of state records its kind and has no package SHA-256", async () => {
+    const id = await startOperation(pool!, { moduleId: "reports", version: "1.0.0", kind: "uninstall", actor: ACTOR });
+    const [row] = await listOperations(pool!, { moduleId: "reports", limit: 1 });
+    assert.deepEqual({ id: row!.id, kind: row!.kind, sha256: row!.sha256 }, { id, kind: "uninstall", sha256: null });
+    await finishOperation(pool!, id, "succeeded");
+    for (const kind of ["enable", "disable"] as const) {
+      const next = await startOperation(pool!, { moduleId: "reports", version: "1.0.0", kind, actor: ACTOR });
+      await finishOperation(pool!, next, "succeeded");
+    }
+  });
+
+  test("an install or upgrade must name its package, and a change must not", async () => {
+    await assert.rejects(startOperation(pool!, { moduleId: "reports", version: "1.0.0", kind: "install", actor: ACTOR }), /sha256|check/i);
+    await assert.rejects(startOperation(pool!, { moduleId: "reports", version: "1.0.0", kind: "enable", sha256: SHA, actor: ACTOR }), /check/i);
+    await assert.rejects(pool!.query("insert into core.module_operations (module_id, version, kind, actor, pid) values ('r', '1', 'reinstall', 'x', 1)"), /check/i);
+  });
 });
+
