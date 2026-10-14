@@ -53,18 +53,26 @@ describe("superviseChild", () => {
     assert.equal(startsOf(starts), 1);
   });
 
-  it("a restart request while it is already restarting does not start two children", async () => {
+  it("a restart request while it is already restarting is not lost: the last build is the one served", async () => {
     const starts = join(dir, "starts");
     const bus = new EventEmitter();
     const running = superviseChild({ args: [childScript(starts)], cwd: dir, pidFile: join(dir, "web.pid"), signals: bus });
-    await until(() => startsOf(starts) === 1);
-    bus.emit("SIGUSR2");
-    bus.emit("SIGUSR2");
-    await until(() => startsOf(starts) >= 2);
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    assert.equal(startsOf(starts), 2);
-    bus.emit("SIGTERM");
-    await running;
+    try {
+      await until(() => startsOf(starts) === 1);
+      bus.emit("SIGUSR2");
+      bus.emit("SIGUSR2");
+      // The second request is kept and answered by one more restart; a child that is stopped while it is still
+      // booting never records a start, so the count is two or three, and then it holds steady (one child alive).
+      await until(() => startsOf(starts) >= 2);
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const settled = startsOf(starts);
+      assert.ok(settled === 2 || settled === 3, `starts: ${settled}`);
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      assert.equal(startsOf(starts), settled, "it is not restarting any more");
+    } finally {
+      bus.emit("SIGTERM");
+    }
+    assert.equal(await running, 0);
   });
 });
 
