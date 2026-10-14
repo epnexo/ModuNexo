@@ -42,8 +42,8 @@ Quoted fragments are the owner's words; the rest is the plan agreed in the sessi
   Route: inline. Risk: item 1 (replaces files of an installed module). Commit `353a38f`.
 - [x] **T3** (S3, S4) Build step with rollback of `.next` and the generated registry; the build command is
   injectable. Route: inline. Risk: item 5. Commit `dd5cfac`.
-- [ ] **T4** (S1, S3, S4, S6, S7) `applyPackage`: the pipeline end to end with undo, against a scratch DB and a
-  fake build. Route: inline. Risk: items 1 and 5.
+- [x] **T4** (S1, S3, S4, S6, S7) `applyPackage`: the pipeline end to end with undo, against a scratch DB and a
+  fake build. Route: inline. Risk: items 1 and 5. Commit `72ab8c3`.
 - [ ] **T5** (S1, S5) CLI `modules apply`, the restart contract (server exit code + pid file + `web:start`
   supervision). Route: inline. Risk: item 5.
 - [ ] **T6** (S8) Real end-to-end with a fixture module and a real build, README, independent verifier, native
@@ -66,3 +66,7 @@ Forecast: about 1,500 authored changed lines; one slice per task.
   and only its `cache` folder is linked back. The pipeline calls `next build` itself after generating the
   registry with the new module forced in, because `web:build` runs `registry:generate` from the database,
   where the module is not enabled yet, and would drop it.
+- **L4** (2026-10-14) Found while writing T4: intake validates `manifest.json`, but what the platform loads at
+  install is `manifest.ts`, which is code, so a package could show one thing and run another. `apply` now loads
+  the placed `manifest.ts` and refuses (and undoes) unless it equals the reviewed `manifest.json`. Also,
+  `discoverModules` takes `freshImport` so a replaced package is not served from the module cache in an upgrade.
