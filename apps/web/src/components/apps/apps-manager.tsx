@@ -1,6 +1,7 @@
 "use client";
 
 import { LoaderCircle } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type RunRow, changeLabel, isFinished, planAction, runSummary } from "../../server/apps-flow";
 
@@ -53,6 +54,7 @@ export interface InstalledModule {
 type Pending = { id: string; action: "enable" | "disable" | "uninstall"; mode?: "keep" | "purge" };
 
 export function AppsManager({ initial, installed, modules }: { initial: AppsState; installed: Record<string, string>; modules: InstalledModule[] }) {
+  const router = useRouter();
   const [state, setState] = useState<AppsState>(initial);
   const [file, setFile] = useState<File | null>(null);
   const [expected, setExpected] = useState("");
@@ -83,6 +85,8 @@ export function AppsManager({ initial, installed, modules }: { initial: AppsStat
     else if (wasRunning.current) {
       wasRunning.current = false;
       void refresh();
+      // The installed list and the versions come from the server render: reload them now that the run is over.
+      router.refresh();
     }
     if (running === null && Date.now() >= watchUntil) return;
     const timer = setInterval(() => {
@@ -90,7 +94,7 @@ export function AppsManager({ initial, installed, modules }: { initial: AppsStat
       if (running === null && Date.now() >= watchUntil) clearInterval(timer);
     }, 2000);
     return () => clearInterval(timer);
-  }, [running, refresh, watchUntil]);
+  }, [running, refresh, watchUntil, router]);
 
   async function upload() {
     if (file === null) return;

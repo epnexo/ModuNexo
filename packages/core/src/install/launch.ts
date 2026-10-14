@@ -117,6 +117,7 @@ export async function launchChange(options: LaunchChangeOptions): Promise<Launch
   if (!MODULE_ID.test(options.moduleId) || options.moduleId.length > 64) throw new Error("the module id is not a plain id");
   if (options.action !== "enable" && options.action !== "disable" && options.action !== "uninstall") throw new Error("the action is not one of enable, disable, uninstall");
   if (options.mode !== undefined && options.mode !== "keep" && options.mode !== "purge") throw new Error("the mode is not keep or purge");
+  if (options.mode !== undefined && options.action !== "uninstall") throw new Error("a mode only applies to uninstall");
   if (!ACTOR.test(options.actor)) throw new Error("the actor is not a plain name");
   const mode = options.action === "uninstall" && options.mode !== undefined ? [`--${options.mode}`] : [];
   return launchProcess(options, ["modules", options.action, options.moduleId, "--rebuild", ...mode, "--actor", options.actor, "--data-dir", options.dataDir], `${options.action}-${options.moduleId}`);

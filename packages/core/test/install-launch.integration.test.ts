@@ -124,5 +124,13 @@ describe("launchApply", () => {
     await assert.rejects(launchChange({ pool: pool!, moduleId: "reports", action: "disable", actor: ACTOR, dataDir: join(work, "var"), entry: [recorder()] }), LaunchBusyError);
     await finishOperation(pool!, running, "succeeded");
   });
+
+  test("launchChange refuses a mode for anything but uninstall instead of dropping it", async () => {
+    for (const action of ["enable", "disable"] as const) {
+      await assert.rejects(launchChange({ pool: pool!, moduleId: "reports", action, mode: "keep", actor: ACTOR, dataDir: join(work, "var"), entry: [recorder()] }), /mode/);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    assert.equal(existsSync(join(work, "args.json")), false);
+  });
 });
 
