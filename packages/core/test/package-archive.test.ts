@@ -195,3 +195,30 @@ describe("inspectArchive: trailing zeros", () => {
   });
 });
 
+describe("inspectArchive: what follows a file of zeros is still inspected", () => {
+  it("entries after a zero-filled file are listed and checked, whatever the chunk boundaries", async () => {
+    for (const size of [4096, 8192, 16384 - 512, 16384, 16384 + 512, 65536, 1024 * 1024]) {
+      const archive = tarBytes([
+        { name: "package/", type: "5" },
+        { name: "package/zeros.bin", data: Buffer.alloc(size) },
+        { name: "package/evil-link", type: "2", linkname: "/etc/passwd" },
+      ]);
+      const file = join(dir, `zeros-${size}.tgz`);
+      writeFileSync(file, gzipSync(archive));
+      const result = await inspectArchive(file);
+      assert.equal(result.ok, false, `size ${size}: the entry after the zeros was not inspected`);
+      if (!result.ok) assert.match(result.problems.join("\n"), /symbolic link/);
+    }
+  });
+
+  it("what follows the end-of-archive marker is not read as entries, like the extractor", async () => {
+    const first = tarBytes([{ name: "package/a.txt", data: "a" }]);
+    const second = tarBytes([{ name: "package/after.txt", data: "after" }]);
+    const file = join(dir, "after-eof.tgz");
+    writeFileSync(file, gzipSync(Buffer.concat([first, second])));
+    const result = await inspectArchive(file);
+    assert.equal(result.ok, true, JSON.stringify(result));
+    if (result.ok) assert.deepEqual(result.entries.map((entry) => entry.path), ["package/a.txt"]);
+  });
+});
+
