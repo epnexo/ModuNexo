@@ -40,8 +40,8 @@ Quoted fragments are the owner's words; the rest is the plan agreed in the sessi
   single-run lock). Route: inline. Commit `a3c5ac6`.
 - [x] **T2** (S2, S4) Placement and undo: copy staged tree, link in `node_modules`, keep the previous version.
   Route: inline. Risk: item 1 (replaces files of an installed module). Commit `353a38f`.
-- [ ] **T3** (S3, S4) Build step with rollback of `.next` and the generated registry; the build command is
-  injectable. Route: inline. Risk: item 5.
+- [x] **T3** (S3, S4) Build step with rollback of `.next` and the generated registry; the build command is
+  injectable. Route: inline. Risk: item 5. Commit `dd5cfac`.
 - [ ] **T4** (S1, S3, S4, S6, S7) `applyPackage`: the pipeline end to end with undo, against a scratch DB and a
   fake build. Route: inline. Risk: items 1 and 5.
 - [ ] **T5** (S1, S5) CLI `modules apply`, the restart contract (server exit code + pid file + `web:start`
@@ -61,3 +61,8 @@ Forecast: about 1,500 authored changed lines; one slice per task.
   none exists; one run at a time. Mapping evidence: lifecycle holds the migration advisory lock and builds its
   registry from disk (so apply must discover after placement), codegen only includes enabled modules (so apply
   forces the module in for the build), `next build` runs `registry:generate` itself and needs the database.
+- **L3** (2026-10-14) Design correction found while building T3: the first idea of keeping `.next` as hard links
+  is unsafe (anything that writes in place changes the backup too), so the previous build is moved aside whole
+  and only its `cache` folder is linked back. The pipeline calls `next build` itself after generating the
+  registry with the new module forced in, because `web:build` runs `registry:generate` from the database,
+  where the module is not enabled yet, and would drop it.
