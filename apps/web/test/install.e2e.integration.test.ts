@@ -34,6 +34,7 @@ let work = "";
 let dataDir = "";
 let port = 0;
 let appEnv: Record<string, string> = {};
+let launcherOutput = "";
 
 const childEnv = (extra: Record<string, string>) => ({ ...process.env, ...extra }) as unknown as NodeJS.ProcessEnv;
 const freePort = () =>
@@ -57,10 +58,17 @@ const runNode = (args: string[]) =>
 
 async function startLauncher(): Promise<void> {
   let output = "";
+  launcherOutput = "";
   const child = spawn(process.execPath, ["--import", "tsx", `${WEB_ROOT}scripts/run.ts`, "start"], { cwd: REPO_ROOT, env: childEnv(appEnv), detached: true });
   server = child;
-  child.stdout?.on("data", (chunk) => (output += chunk));
-  child.stderr?.on("data", (chunk) => (output += chunk));
+  child.stdout?.on("data", (chunk) => {
+    output += chunk;
+    launcherOutput = (launcherOutput + chunk).slice(-3000);
+  });
+  child.stderr?.on("data", (chunk) => {
+    output += chunk;
+    launcherOutput = (launcherOutput + chunk).slice(-3000);
+  });
   const deadline = Date.now() + 60_000;
   while (!output.includes("listening on")) {
     if (Date.now() > deadline || child.exitCode !== null) assert.fail(`server did not start:\n${output.slice(-2000)}`);
@@ -337,7 +345,8 @@ describe("Apps screen API: enable, disable, uninstall", () => {
       if (reachable && (await pageText(path)) === null) return;
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
-    assert.fail(`${path} is still served`);
+    const [last] = (await db!.query("select kind, status, step, detail from core.module_operations order by id desc limit 1")).rows;
+    assert.fail(`${path} is still served\nlast run: ${JSON.stringify(last)}\nlauncher output:\n${launcherOutput}`);
   }
 
   test("refuses what the lifecycle refuses, and an uninstall with no mode", async () => {

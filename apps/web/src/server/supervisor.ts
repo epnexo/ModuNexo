@@ -31,6 +31,9 @@ export function superviseChild(options: SuperviseOptions): Promise<number> {
     let child: ChildProcess | undefined;
     let stopping: NodeJS.Signals | null = null;
     let restarting = false;
+    // A request that arrives while a restart is under way is kept: the build may have changed since that restart
+    // began, so one more restart follows it. Requests are never dropped.
+    let again = false;
 
     const cleanup = () => {
       for (const [signal, handler] of handlers) options.signals.off(signal, handler);
@@ -56,6 +59,10 @@ export function superviseChild(options: SuperviseOptions): Promise<number> {
         if (restarting && stopping === null) {
           restarting = false;
           start();
+          if (again) {
+            again = false;
+            onRestart();
+          }
           return;
         }
         if (signal !== null && signal !== stopping) console.error(`error: the web app process was killed by ${signal}`);
@@ -69,7 +76,11 @@ export function superviseChild(options: SuperviseOptions): Promise<number> {
       if (child !== undefined) stop(child, signal);
     };
     const onRestart = () => {
-      if (restarting || stopping !== null || child === undefined) return;
+      if (stopping !== null || child === undefined) return;
+      if (restarting) {
+        again = true;
+        return;
+      }
       restarting = true;
       stop(child, "SIGTERM");
     };
