@@ -28,13 +28,16 @@ export interface RecoverOptions {
 
 /**
  * Finishes what a run that was killed (or lost its machine) left behind, before anything new starts: its journal
- * says what it was changing. If its database step had completed the result is kept; otherwise the files, the
+ * says what it was changing, and without one nothing is touched. If its database step had completed the result is kept; otherwise the files, the
  * link, the build and the registration are put back. Does nothing while a run is alive. Returns what it did.
  */
 export async function recoverInterrupted(options: RecoverOptions): Promise<string[]> {
   const journal = readJournal(options.dataDir);
   const backup = join(options.webRoot, ".next.rollback");
-  if (journal === null && !existsSync(backup)) return [];
+  // The journal is the only evidence of an interrupted run. A kept build on its own proves nothing: it is also what
+  // a run that is building right now leaves, possibly one recorded in another database (a test, a second checkout
+  // sharing the web folder), which this process cannot see as alive. Restoring it would delete that build.
+  if (journal === null) return [];
 
   const lock = await options.pool.connect();
   try {
@@ -42,7 +45,7 @@ export async function recoverInterrupted(options: RecoverOptions): Promise<strin
     await closeStaleOperations(options.pool);
     if ((await liveOperation(options.pool)) !== undefined) return [];
     const current = readJournal(options.dataDir);
-    if (current === null && !existsSync(backup)) return [];
+    if (current === null) return [];
 
     const notes: string[] = [];
     const subject = current === null ? "a run" : isChange(current) ? `the ${current.action} of ${current.moduleId}` : `the ${current.kind} of ${current.moduleId} ${current.version}`;

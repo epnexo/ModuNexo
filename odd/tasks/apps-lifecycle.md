@@ -64,3 +64,11 @@ Forecast: about 900 authored changed lines; one slice per task.
   restart briefly spawns a child that is stopped at once. Incident to report to the owner: the verifier ran a real
   `--rebuild` against this repository's `apps/web` (the command has no web-root option) and a long-lived
   `next-server` that is not part of this project was no longer running afterwards; its cause is not established.
+- **L5** (2026-10-14) Root cause of the intermittent build failures (`ENOENT .../.next/static/<id>/_buildManifest.js.tmp`,
+  `TS6053`), found with a watcher and process snapshots over several full-suite runs; it was not the shared build
+  cache (that change stays: a cold build is correct, and the cache was real shared mutable state). The recovery
+  step of `applyPackage`/`changeModule` treated a lone `.next.rollback` as an interrupted run and restored it over
+  `.next`. The CLI tests (`modules apply <unknown>`, `enable ghost --rebuild`) run those functions against the real
+  `apps/web` with a scratch database that has no live runs, so, in parallel with the end-to-end test building,
+  they "recovered" its kept build and deleted the directory it was writing. Fix, test first: a journal is the only
+  evidence of an interrupted run; without one nothing is touched. The earlier clean full-suite run was luck.

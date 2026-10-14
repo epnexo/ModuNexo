@@ -368,4 +368,15 @@ describe("recoverInterrupted", () => {
     assert.equal(moduleVersion(), "1.1.0", "left as it is for the live run");
     assert.notEqual(readJournal(paths().dataDir), null);
   });
+
+  test("a kept build with no journal is not touched: it may belong to a run of another database that is building right now", async () => {
+    const { renameSync } = await import("node:fs");
+    renameSync(join(work, "web", ".next"), join(work, "web", ".next.rollback"));
+    mkdirSync(join(work, "web", ".next"));
+    writeFileSync(join(work, "web", ".next", "in-progress"), "x");
+    assert.deepEqual(await recover(), []);
+    assert.equal(existsSync(join(work, "web", ".next", "in-progress")), true, "the build in progress is left alone");
+    assert.equal(existsSync(join(work, "web", ".next.rollback")), true);
+  });
 });
+
