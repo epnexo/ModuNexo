@@ -28,6 +28,12 @@ Quoted fragments are the owner's words; the rest is the plan, assumptions marked
 - **S6 Admin only.** Only an administrator reads or changes the profile; the logo route is public read-only.
 - **S7 Audit and docs.** Changes are recorded in `core.settings_events`; the README describes the feature.
 
+- **S8 Set once.** Owner (L2): the CRM is for a business or a person, not both, chosen in an initial setup and then
+  fixed. On the first visit of an administrator with no profile the shell shows a setup page and nothing else.
+  Afterwards Settings edits the details but the kind is shown locked; the server refuses a change of kind (409).
+- **S9 Deliberate reset.** Changing the kind is a separate "Reset identity" action in a danger zone: it needs the
+  current name typed back, removes only the profile and the logo (never CRM data) and brings the setup page back.
+
 ## Tasks
 
 - T1  (commit pending)
@@ -35,6 +41,8 @@ Quoted fragments are the owner's words; the rest is the plan, assumptions marked
 - T3 
 - T4 
 - T5 
+- T6 
+- T7 (S8,S9) web: 409 on kind change, reset needs confirmation; `/setup` page and the gate in the shell layout; locked kind and danger zone in Settings. inline. pending
 
 ## Log
 
@@ -44,3 +52,6 @@ Quoted fragments are the owner's words; the rest is the plan, assumptions marked
   si es persona mucho mas sencillo con opcion de colocar una imagen o crear una interfas profesional para este caso y amigable"
 - Route: all inline (no writer trigger: tasks are sequential and share files). Risk: touches the proxy's public paths
   (item 2, security) in T2/T4.
+- L2 (2026-10-17) owner: "no solo un crm sea de empresas o personal como se creo paresiera que se puede selecionar y despues cambiar
+  cual seria la mejor forma yo sugiero es hacer  una configuracion inicial y hay dejarlo fijo o buscar una forma profesional para hacerlo"
+  then, to my proposal (initial setup, kind fixed, deliberate reset with typed confirmation): "si me parese bien"
