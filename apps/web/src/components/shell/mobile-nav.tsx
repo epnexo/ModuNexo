@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { type ReactNode, useEffect, useState } from "react";
 
 /** The sidebar as a drawer below the `md` breakpoint. The navigation itself is rendered by the server. */
-export function MobileNav({ children }: { children: ReactNode }) {
+export function MobileNav({ children, brand }: { children: ReactNode; brand: ReactNode }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const reduced = useReducedMotion();
@@ -54,7 +54,7 @@ export function MobileNav({ children }: { children: ReactNode }) {
               transition={slide}
             >
               <div className="flex items-center justify-between">
-                <span className="font-semibold tracking-tight">epnexo</span>
+                <div className="min-w-0">{brand}</div>
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
