@@ -31,7 +31,7 @@ Quoted fragments are the owner's words; the rest is the plan, assumptions marked
 ## Tasks
 
 - T1  (commit pending)
-- T2 (S5,S6) web API: `GET/PUT /api/settings/brand`, `PUT/DELETE /api/brand/logo`, public `GET /api/brand/logo`. inline. pending
+- T2 
 - T3 (S1,S2,S4) Settings UI: Profile section for both kinds, logo upload with preview and progress, monogram picker. inline. pending
 - T4 (S3) shell: sidebar, mobile bar, footer, login, titles use the profile. inline. pending
 - T5 (S7) README. inline. pending

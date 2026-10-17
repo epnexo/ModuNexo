@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { MAX_BODY_BYTES, parseJsonBody, readBodyText, sameOriginRequest } from "../src/server/settings-api.ts";
+import { MAX_BODY_BYTES, parseJsonBody, readBodyBytes, readBodyText, sameOriginRequest } from "../src/server/settings-api.ts";
 
 const headers = (init: Record<string, string>) => new Headers(init);
 
@@ -72,5 +72,20 @@ describe("readBodyText", () => {
     const result = await readBodyText(request(stream, { "content-length": String(MAX_BODY_BYTES + 1) }));
     assert.equal(result.ok, false);
     assert.equal(pulled, false);
+  });
+});
+
+describe("readBodyBytes", () => {
+  const request = (body: BodyInit | null, headers: Record<string, string> = {}) => new Request("http://localhost/x", { method: "PUT", body, headers, duplex: "half" } as RequestInit);
+
+  it("reads binary content within its own limit, byte for byte", async () => {
+    const bytes = Uint8Array.from([0, 255, 128, 10]);
+    const result = await readBodyBytes(request(bytes), 10);
+    assert.deepEqual(result.ok && [...result.bytes], [0, 255, 128, 10]);
+  });
+
+  it("refuses a body over the limit, declared or streamed", async () => {
+    assert.equal((await readBodyBytes(request(new Uint8Array(11)), 10)).ok, false);
+    assert.equal((await readBodyBytes(request(new Uint8Array(1), { "content-length": "999" }), 10)).ok, false);
   });
 });
