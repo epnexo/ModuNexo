@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { BrandForm } from "../../../components/settings/brand-form";
 import { AppearanceForm } from "../../../components/settings/appearance-form";
+import { ResetIdentity } from "../../../components/settings/reset-identity";
 import { ModuleSettings } from "../../../components/settings/module-settings";
 import { SecurityForm } from "../../../components/settings/security-form";
 import { modules } from "../../../generated/modules";
@@ -51,7 +52,8 @@ export default async function SettingsPage() {
           </h2>
           <p className="text-sm text-muted">Who this platform belongs to. It replaces the default name in the sidebar, the sign-in page and the page titles.</p>
         </div>
-        <BrandForm initial={brand.profile} logo={brand.logo} canWrite={viewer.canWrite} />
+        <BrandForm mode="edit" initial={brand.profile} logo={brand.logo} canWrite={viewer.canWrite} />
+        {brand.profile === null ? null : <ResetIdentity name={brand.profile.name} />}
       </section>
 
       <section aria-labelledby="appearance-heading" className="flex flex-col gap-5 rounded-lg border border-border bg-surface p-5">
