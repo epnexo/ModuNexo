@@ -596,8 +596,9 @@ must be restarted by hand.
 
 ## The Apps screen
 
-`/apps` shows what the running build was generated with. An administrator (or the local operator while sign-in is
-off) also sees the flow for adding a package: upload the archive and, if the publisher gave one, its SHA-256; read
+`/apps` has two tabs, **Apps** (the installed modules, the default) and **History**, so the page stays quiet. The
+**Add app** button opens the manual upload on demand and closes it once a run starts. An administrator (or the local
+operator while sign-in is off) sees that flow: upload the archive and, if the publisher gave one, its SHA-256; read
 the review (what `modules add` prints); confirm; and follow the run. A non-administrator sees the list only.
 
 - **Upload** does what `modules add` does and installs nothing. **Confirm** starts `modules apply` as a process of
@@ -606,7 +607,7 @@ the review (what `modules add` prints); confirm; and follow the run. A non-admin
   refused while one is alive.
 - **History** lists the runs (`core.module_operations`) and every package received, accepted or refused, with its
   problems.
-- **Installed modules** lists each module with Enable, Disable and Uninstall. Each one rebuilds the web app for the
+- **Apps** lists each installed module with Enable, Disable and Uninstall. Each one rebuilds the web app for the
   new state (the build embeds only enabled modules), then runs the lifecycle and restarts the server, with the
   guarantees of an install: the rules of the lifecycle are checked first, a build that fails changes nothing in
   the database, a failed lifecycle puts the previous build back, and a killed run is recovered by the next one.
