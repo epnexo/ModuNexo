@@ -4,6 +4,14 @@ import { SettingValueError } from "./service.ts";
 
 const PROFILE_KEY = "brand.profile";
 
+/** The kind of a platform is chosen once; changing it is a reset, not an edit. */
+export class BrandKindLockedError extends SettingValueError {
+  constructor(current: string) {
+    super(`this platform is set up for a ${current === "business" ? "business" : "person"}; reset the identity to change that`);
+    this.name = "BrandKindLockedError";
+  }
+}
+
 export interface BrandState {
   profile: BrandProfile | null;
   /** The sha256 of the stored logo, or null; it names the image's URL so a new image is never served stale. */
@@ -42,6 +50,9 @@ export class BrandService {
     const checked = validateProfile(input);
     if (!checked.ok) throw new SettingValueError(checked.message);
     await this.transaction(async (client) => {
+      const current = await client.query("select value from core.platform_settings where key = $1 for update", [PROFILE_KEY]);
+      const stored = current.rows[0] === undefined ? null : validateProfile(current.rows[0].value);
+      if (stored !== null && stored.ok && stored.value.kind !== checked.value.kind) throw new BrandKindLockedError(stored.value.kind);
       await client.query(
         `insert into core.platform_settings (key, value, updated_by) values ($1, $2::jsonb, $3)
          on conflict (key) do update set value = excluded.value, updated_at = now(), updated_by = excluded.updated_by`,
@@ -72,6 +83,18 @@ export class BrandService {
       const removed = await client.query("delete from core.brand_assets where kind = 'logo'");
       if ((removed.rowCount ?? 0) > 0) await client.query("insert into core.settings_events (scope, key, action, actor) values ('platform', 'brand.logo', 'unset', $1)", [actor]);
     });
+  }
+
+  /**
+   * Removes the identity (profile and logo, never any CRM data) so the setup runs again. The current name has to be
+   * typed back, so it cannot happen by accident.
+   */
+  async resetIdentity(confirm: unknown, actor: string): Promise<void> {
+    const { profile } = await this.get();
+    if (profile === null) return;
+    if (typeof confirm !== "string" || confirm.trim() !== profile.name) throw new SettingValueError("type the current name to confirm the reset");
+    await this.clearLogo(actor);
+    await this.clearProfile(actor);
   }
 
   /** Removes the whole identity so the shell goes back to its default name. */

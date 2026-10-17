@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import type pg from "pg";
-import { BrandService, readBrand, readLogo } from "../src/settings/brand-service.ts";
+import { BrandKindLockedError, BrandService, readBrand, readLogo } from "../src/settings/brand-service.ts";
 import { SettingValueError } from "../src/settings/service.ts";
 import { migrate } from "../src/runner.ts";
 import { Registry } from "../src/registry.ts";
@@ -81,5 +81,23 @@ describe("BrandService", () => {
   test("a stored profile that no longer validates reads as none", async () => {
     await pool!.query("insert into core.platform_settings (key, value, updated_by) values ('brand.profile', '{\"kind\":\"business\"}'::jsonb, 'x')");
     assert.equal((await readBrand(pool!)).profile, null);
+  });
+  test("the kind is fixed once set: details can change, the kind cannot", async () => {
+    await service.setProfile(business, "a");
+    await service.setProfile({ ...business, name: "Acme Group" }, "a");
+    assert.equal((await readBrand(pool!)).profile?.name, "Acme Group");
+    await assert.rejects(service.setProfile({ kind: "personal", name: "Ana" }, "a"), BrandKindLockedError);
+    assert.equal((await readBrand(pool!)).profile?.kind, "business");
+  });
+  test("a reset needs the current name, removes the profile and the logo, and lets the kind be chosen again", async () => {
+    await service.setProfile(business, "a");
+    await service.setLogo(png, "a");
+    await assert.rejects(service.resetIdentity("wrong", "a"), SettingValueError);
+    await assert.rejects(service.resetIdentity(undefined, "a"), SettingValueError);
+    assert.notEqual((await readBrand(pool!)).profile, null);
+    await service.resetIdentity(" Acme SAS ", "a");
+    assert.deepEqual(await readBrand(pool!), { profile: null, logo: null });
+    await service.setProfile({ kind: "personal", name: "Ana" }, "a");
+    assert.equal((await readBrand(pool!)).profile?.kind, "personal");
   });
 });
