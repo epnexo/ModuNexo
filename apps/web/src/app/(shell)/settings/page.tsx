@@ -1,8 +1,9 @@
 import { readTrustedProxyState, resolveMasterKey } from "@epnexo/core/auth";
-import { AppearanceService, SettingsService } from "@epnexo/core/settings";
+import { AppearanceService, SettingsService, readBrand } from "@epnexo/core/settings";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { BrandForm } from "../../../components/settings/brand-form";
 import { AppearanceForm } from "../../../components/settings/appearance-form";
 import { ModuleSettings } from "../../../components/settings/module-settings";
 import { SecurityForm } from "../../../components/settings/security-form";
@@ -31,6 +32,7 @@ export default async function SettingsPage() {
   const registry = webRegistry();
   const enabled = await enabledModuleIds(pool);
   const appearance = await new AppearanceService(pool, registry).get();
+  const brand = await readBrand(pool);
   const trustedProxies = await readTrustedProxyState(pool);
   const settings = new SettingsService(pool, registry, { masterKey: resolveMasterKey() });
   const sections = await Promise.all(modules.filter((manifest) => enabled.has(manifest.id)).map(async (manifest) => ({ id: manifest.id, name: manifest.name, entries: await settings.describe(manifest.id) })));
@@ -41,6 +43,16 @@ export default async function SettingsPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="text-muted">Everything here is stored by the platform; nothing needs an environment variable.</p>
       </div>
+
+      <section aria-labelledby="profile-heading" className="flex flex-col gap-5 rounded-lg border border-border bg-surface p-5">
+        <div className="flex flex-col gap-1">
+          <h2 id="profile-heading" className="text-lg font-semibold tracking-tight">
+            Profile
+          </h2>
+          <p className="text-sm text-muted">Who this platform belongs to. It replaces the default name in the sidebar, the sign-in page and the page titles.</p>
+        </div>
+        <BrandForm initial={brand.profile} logo={brand.logo} canWrite={viewer.canWrite} />
+      </section>
 
       <section aria-labelledby="appearance-heading" className="flex flex-col gap-5 rounded-lg border border-border bg-surface p-5">
         <h2 id="appearance-heading" className="text-lg font-semibold tracking-tight">

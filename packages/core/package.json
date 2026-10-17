@@ -10,6 +10,7 @@
     "./auth": "./src/auth/index.ts",
     "./cli": "./src/cli/run.ts",
     "./settings": "./src/settings/index.ts",
+    "./brand": "./src/settings/brand.ts",
     "./registry": "./src/registry.ts",
     "./packages": "./src/packages/index.ts",
     "./operations": "./src/operations/index.ts",
