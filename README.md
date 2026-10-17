@@ -400,6 +400,24 @@ cut off at 64 KB while it is being read, not after. The origin check compares `O
 arrived with, so behind a proxy that rewrites `Host` a legitimate save is refused (never wrongly accepted); have
 the proxy pass `Host` through.
 
+### Profile (business or person)
+
+Settings has a Profile section where an administrator says whom the platform belongs to. Until one is saved the shell
+shows its default name, `epnexo`.
+
+- **A business** needs a name, a legal representative and a contact email; website, phone, tax id and address are
+  optional. **A person** needs a name and may add a photo; without one the shell draws a monogram (initials on a
+  color the person picks).
+- The logo or photo replaces `epnexo` in the sidebar, the mobile bar, the sign-in page and the page titles, and a
+  business also gets a footer with its name, website, email and phone.
+- The image is PNG, JPEG or WebP, up to 512 KB, and is checked by its bytes, not its name. SVG is refused because it
+  can carry script. It is stored in `core.brand_assets` (migration 0009); the profile text is the setting
+  `brand.profile` in `core.platform_settings`. Every change is a row in `core.settings_events`.
+- `PUT /api/settings/brand` (the profile as JSON) and `DELETE` (back to the default), `PUT|DELETE /api/brand/logo`
+  (the raw image) are administrator-only and same-origin. `GET /api/brand/logo` is public, and is the only public
+  path besides the sign-in page, so the sign-in page can show the logo; it is served with `nosniff` and a
+  sandboxing content security policy, with an `ETag` of the file's hash.
+
 ### Appearance
 
 The platform has three appearance settings: the default theme (`system`, `light`, `dark`), the accent hue (0 to

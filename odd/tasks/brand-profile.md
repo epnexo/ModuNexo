@@ -33,8 +33,8 @@ Quoted fragments are the owner's words; the rest is the plan, assumptions marked
 - T1  (commit pending)
 - T2 
 - T3 
-- T4 (S3) shell: sidebar, mobile bar, footer, login, titles use the profile. inline. pending
-- T5 (S7) README. inline. pending
+- T4 
+- T5 
 
 ## Log
 
