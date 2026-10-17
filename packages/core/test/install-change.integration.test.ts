@@ -123,6 +123,18 @@ describe("changeModule", () => {
     assert.match(registryText(), /reports/);
   });
 
+  test("an uninstalled module can be installed again: its folder is kept under var/removed", async () => {
+    await install();
+    assert.equal(existsSync(join(work, "modules", "reports")), true);
+    const result = await change("uninstall", { mode: "keep" });
+    assert.equal(existsSync(join(work, "modules", "reports")), false);
+    assert.equal(readdirSync(join(work, "var", "removed")).length, 1);
+    assert.match(result.warnings.join("\n"), /kept at/);
+    await install();
+    assert.equal(await state(), "enabled");
+    assert.equal(existsSync(join(work, "modules", "reports")), true);
+  });
+
   test("uninstall keep leaves the schema, purge drops it, and neither is in the build", async () => {
     await install("keeper", { files: { "migrations/0001_init.sql": "create table items (id int);\n" } });
     await change("uninstall", { id: "keeper", mode: "keep" });
