@@ -1,6 +1,6 @@
 "use client";
 
-import { FileArchive, LoaderCircle } from "lucide-react";
+import { FileArchive, LoaderCircle, Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type RunRow, changeLabel, isFinished, planAction, runSummary } from "../../server/apps-flow";
@@ -62,6 +62,8 @@ type Pending = { id: string; action: "enable" | "disable" | "uninstall"; mode?: 
 export function AppsManager({ initial, installed, modules }: { initial: AppsState; installed: Record<string, string>; modules: InstalledModule[] }) {
   const router = useRouter();
   const [state, setState] = useState<AppsState>(initial);
+  const [tab, setTab] = useState<"apps" | "history">("apps");
+  const [adding, setAdding] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [expected, setExpected] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -157,6 +159,9 @@ export function AppsManager({ initial, installed, modules }: { initial: AppsStat
       const data = (await response.json().catch(() => ({}))) as { error?: string };
       if (response.ok) {
         setStaged(null);
+        setAdding(false);
+        setFile(null);
+        setExpected("");
         setWatchUntil(Date.now() + 60_000);
         setMessage({ kind: "ok", text: "Started. The web app is rebuilt and the server restarts at the end; this page keeps following the run." });
         await refresh();
@@ -206,10 +211,69 @@ export function AppsManager({ initial, installed, modules }: { initial: AppsStat
         </section>
       ) : null}
 
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border">
+        <div role="tablist" aria-label="Apps" className="flex gap-1">
+          {(
+            [
+              ["apps", "Apps"],
+              ["history", "History"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              id={`tab-${id}`}
+              aria-selected={tab === id}
+              aria-controls={`panel-${id}`}
+              onClick={() => setTab(id)}
+              className={
+                "-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors duration-150 " +
+                (tab === id ? "border-accent text-foreground" : "border-transparent text-muted hover:text-foreground")
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setTab("apps");
+            setAdding(true);
+          }}
+          disabled={adding}
+          className="mb-2 inline-flex h-9 items-center gap-2 rounded-md bg-accent px-3 text-sm font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <Plus aria-hidden className="size-4" />
+          Add app
+        </button>
+      </div>
+
+      <p role="status" className={`text-sm empty:hidden ${message?.kind === "error" ? "text-danger" : "text-muted"}`}>
+        {message?.text ?? ""}
+      </p>
+
+      {adding && tab === "apps" ? (
       <section aria-labelledby="add-heading" className="flex flex-col gap-4 rounded-lg border border-border bg-surface p-5">
-        <h2 id="add-heading" className="text-lg font-semibold tracking-tight">
-          Add a package
-        </h2>
+        <div className="flex items-start justify-between gap-3">
+          <h2 id="add-heading" className="text-lg font-semibold tracking-tight">
+            Add an app manually
+          </h2>
+          <button
+            type="button"
+            onClick={() => {
+              setAdding(false);
+              setStaged(null);
+              setProblems(null);
+            }}
+            disabled={uploading || starting}
+            aria-label="Close"
+            className="inline-flex size-9 items-center justify-center rounded-md text-muted transition-colors duration-150 hover:bg-panel-hover hover:text-foreground disabled:opacity-60"
+          >
+            <X aria-hidden className="size-5" />
+          </button>
+        </div>
         <p className="max-w-xl text-sm text-muted">
           Upload a module archive made with <code className="font-mono text-foreground">modules pack</code>. It is read as data and nothing is installed until you
           confirm. Installing runs the module&apos;s migrations and hooks with access to the database.
@@ -363,17 +427,21 @@ export function AppsManager({ initial, installed, modules }: { initial: AppsStat
           </div>
         ) : null}
 
-        <p role="status" className={`text-sm ${message?.kind === "error" ? "text-danger" : "text-muted"}`}>
-          {message?.text ?? ""}
-        </p>
       </section>
+      ) : null}
 
-      <section aria-labelledby="installed-heading" className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-5">
-        <h2 id="installed-heading" className="text-lg font-semibold tracking-tight">
-          Installed modules
-        </h2>
-        {modules.length === 0 ? <p className="text-sm text-muted">No module is installed.</p> : null}
-        <ul className="divide-y divide-border">
+      {tab === "apps" ? (
+      <section id="panel-apps" role="tabpanel" aria-labelledby="tab-apps" className="flex flex-col gap-3">
+        <h2 className="sr-only">Installed apps</h2>
+        {modules.length === 0 ? (
+          <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed border-border-strong p-6">
+            <p className="text-sm text-muted">No app is installed yet.</p>
+            <button type="button" onClick={() => setAdding(true)} disabled={adding} className="h-9 rounded-md border border-border-strong px-3 text-sm hover:bg-panel-hover disabled:opacity-60">
+              Add your first app
+            </button>
+          </div>
+        ) : null}
+        <ul className="divide-y divide-border rounded-lg border border-border bg-surface px-4">
           {modules.map((module) => {
             const open = pending !== null && pending.id === module.id;
             return (
@@ -463,11 +531,9 @@ export function AppsManager({ initial, installed, modules }: { initial: AppsStat
           })}
         </ul>
       </section>
-
-      <section aria-labelledby="history-heading" className="flex flex-col gap-3">
-        <h2 id="history-heading" className="text-lg font-semibold tracking-tight">
-          History
-        </h2>
+      ) : (
+      <section id="panel-history" role="tabpanel" aria-labelledby="tab-history" className="flex flex-col gap-3">
+        <h2 className="sr-only">History</h2>
         {state.operations.length === 0 && state.packages.length === 0 ? <p className="text-sm text-muted">Nothing has been added or installed from here yet.</p> : null}
         {state.operations.length > 0 ? (
           <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
@@ -499,6 +565,7 @@ export function AppsManager({ initial, installed, modules }: { initial: AppsStat
           </ul>
         ) : null}
       </section>
+      )}
     </div>
   );
 }
