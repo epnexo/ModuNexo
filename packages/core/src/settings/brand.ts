@@ -20,6 +20,7 @@ export interface BusinessProfile {
 export interface PersonalProfile {
   kind: "personal";
   name: string;
+  email?: string;
   /** Hue (0-360) of the generated monogram shown when there is no photo. */
   monogramHue: number;
 }
@@ -54,7 +55,12 @@ export function validateProfile(input: unknown): Checked<BrandProfile> {
   if (raw.kind === "personal") {
     const hue = raw.monogramHue === undefined ? 250 : raw.monogramHue;
     if (typeof hue !== "number" || !Number.isInteger(hue) || hue < 0 || hue > 360) return { ok: false, message: "the monogram color must be a whole number from 0 to 360" };
-    return { ok: true, value: { kind: "personal", name: name.value!, monogramHue: hue } };
+    const contact = text(raw.email, "the email", 254, false);
+    if (!contact.ok) return contact;
+    if (contact.value !== undefined && !EMAIL.test(contact.value)) return { ok: false, message: "the email is not a valid address" };
+    const person: PersonalProfile = { kind: "personal", name: name.value!, monogramHue: hue };
+    if (contact.value !== undefined) person.email = contact.value;
+    return { ok: true, value: person };
   }
 
   const representative = text(raw.representative, "the legal representative", 80, true);

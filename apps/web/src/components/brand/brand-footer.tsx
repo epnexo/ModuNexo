@@ -11,6 +11,11 @@ export function BrandFooter({ profile }: { profile: BrandProfile | null }) {
         <span>
           &copy; {year} {profile.name}
         </span>
+        {profile.kind === "personal" && profile.email ? (
+          <a href={`mailto:${profile.email}`} className={link}>
+            {profile.email}
+          </a>
+        ) : null}
         {profile.kind === "business" ? (
           <>
             {profile.website ? (

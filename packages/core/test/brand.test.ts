@@ -35,6 +35,11 @@ describe("validateProfile", () => {
     assert.equal(validateProfile({ kind: "personal", name: "Ana", monogramHue: 400 }).ok, false);
     assert.equal(validateProfile({ kind: "personal", name: "Ana", monogramHue: 1.5 }).ok, false);
   });
+  it("keeps a person's optional email, drops an empty one and refuses a bad one", () => {
+    assert.deepEqual(validateProfile({ kind: "personal", name: "Ana", email: " ana@x.co " }), { ok: true, value: { kind: "personal", name: "Ana", monogramHue: 250, email: "ana@x.co" } });
+    assert.deepEqual(validateProfile({ kind: "personal", name: "Ana", email: "" }), { ok: true, value: { kind: "personal", name: "Ana", monogramHue: 250 } });
+    assert.equal(validateProfile({ kind: "personal", name: "Ana", email: "ana@" }).ok, false);
+  });
   it("refuses an unknown kind and a non-object", () => {
     assert.equal(validateProfile({ kind: "team", name: "x" }).ok, false);
     assert.equal(validateProfile(null).ok, false);

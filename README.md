@@ -409,7 +409,7 @@ is **Reset identity** (a danger zone in Settings, or `DELETE /api/settings/brand
 it removes the profile and the logo, never any CRM data, and brings the setup back.
 
 - **A business** needs a name, a legal representative and a contact email; website, phone, tax id and address are
-  optional. **A person** needs a name and may add a photo; without one the shell draws a monogram (initials on a
+  optional. **A person** needs a name and may add an email and a photo; without one the shell draws a monogram (initials on a
   color the person picks).
 - The logo or photo replaces `epnexo` in the sidebar, the mobile bar, the sign-in page and the page titles, and a
   business also gets a footer with its name, website, email and phone.

@@ -24,12 +24,12 @@ interface Fields {
 function fieldsOf(profile: BrandProfile | null): Fields {
   const empty: Fields = { kind: null, name: "", representative: "", email: "", website: "", phone: "", taxId: "", address: "", monogramHue: 250 };
   if (profile === null) return empty;
-  if (profile.kind === "personal") return { ...empty, kind: "personal", name: profile.name, monogramHue: profile.monogramHue };
+  if (profile.kind === "personal") return { ...empty, kind: "personal", name: profile.name, email: profile.email ?? "", monogramHue: profile.monogramHue };
   return { ...empty, kind: "business", name: profile.name, representative: profile.representative, email: profile.email, website: profile.website ?? "", phone: profile.phone ?? "", taxId: profile.taxId ?? "", address: profile.address ?? "" };
 }
 
 function profileOf(values: Fields): Record<string, unknown> {
-  if (values.kind === "personal") return { kind: "personal", name: values.name, monogramHue: values.monogramHue };
+  if (values.kind === "personal") return { kind: "personal", name: values.name, email: values.email, monogramHue: values.monogramHue };
   return { kind: "business", name: values.name, representative: values.representative, email: values.email, website: values.website, phone: values.phone, taxId: values.taxId, address: values.address };
 }
 
@@ -233,6 +233,8 @@ export function BrandForm({ initial, logo, canWrite, mode }: { initial: BrandPro
               {text("address", "Address")}
             </>
           ) : (
+            <>
+            {text("email", "Email", { type: "email", hint: "Optional. Shown in the footer." })}
             <div className="flex flex-col gap-1.5">
               <label htmlFor="brand-hue" className="text-sm font-medium">
                 Monogram color
@@ -243,6 +245,7 @@ export function BrandForm({ initial, logo, canWrite, mode }: { initial: BrandPro
               </div>
               <p className="text-sm text-muted">Used when there is no photo.</p>
             </div>
+            </>
           )}
         </>
       )}
