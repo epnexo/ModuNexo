@@ -115,6 +115,33 @@ function freshPreviousDir(dataDir: string, moduleId: string, version: string): s
 }
 
 /**
+ * Takes an uninstalled module out of the way so the same id can be installed again: the folder moves to
+ * `var/removed/<id>-<version>` (kept, never deleted) and its workspace link is removed. Returns where it went,
+ * or null when there was nothing to move.
+ */
+export function removePackage(options: { moduleId: string; packageName: string; version: string; modulesDir: string; nodeModulesDir: string; dataDir: string }): string | null {
+  const { moduleId, packageName, version } = options;
+  if (!MODULE_ID.test(moduleId) || !PACKAGE_NAME.test(packageName) || !VERSION.test(version)) throw new PlacementRefusedError("not a module to remove");
+  const moduleDir = join(options.modulesDir, moduleId);
+  const linkPath = join(options.nodeModulesDir, ...packageName.split("/"));
+  try {
+    if (lstatSync(linkPath).isSymbolicLink() && readlinkSync(linkPath) === relative(dirname(linkPath), moduleDir)) rmSync(linkPath);
+  } catch {
+    // no link to remove
+  }
+  if (!existsSync(moduleDir)) return null;
+  const base = join(options.dataDir, "removed", `${moduleId}-${version}`);
+  let target = base;
+  for (let n = 2; existsSync(target); n += 1) {
+    if (n >= 1000) throw new PlacementRefusedError(`too many kept copies of ${moduleId} ${version}`);
+    target = `${base}.${n}`;
+  }
+  mkdirSync(dirname(target), { recursive: true });
+  renameSync(moduleDir, target);
+  return target;
+}
+
+/**
  * Makes a staged package a module the platform can see: a copy at `modules/<id>` and a relative symlink at
  * `node_modules/<package name>`, which is what a workspace install would have made. No package manager runs.
  * An upgrade moves the folder it replaces to `var/previous/<id>-<version>`; `undo` puts it back.

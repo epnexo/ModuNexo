@@ -10,6 +10,7 @@ import { REPO_ROOT } from "../packages/context.ts";
 import { ApplyFailedError, ApplyRefusedError } from "./apply.ts";
 import { BuildFailedError, type BuildHandle, type BuildRunner, buildWithRollback } from "./build.ts";
 import { clearJournal, writeJournal } from "./journal.ts";
+import { removePackage } from "./place.ts";
 import { recoverInterrupted, registryFromDisk } from "./recover.ts";
 
 export type ChangeAction = "enable" | "disable" | "uninstall";
@@ -112,6 +113,8 @@ export async function changeModule(options: ChangeOptions): Promise<ChangeResult
     process.on(signal, handler);
     return [signal, handler] as const;
   });
+  const installedVersion = (await readStates(pool)).get(moduleId)?.installedVersion ?? plan.version;
+  const packageName = action === "uninstall" ? readPackageName(modulesDir, moduleId) : "";
   const expected = action === "enable" ? "enabled" : action === "disable" ? "disabled" : "gone";
   const journal = (phase: "building" | "lifecycle") => writeJournal(dataDir, { type: "change", moduleId, action, expected, version: plan.version, phase, webRoot });
   const progress = async (name: string, detail: string) => {
@@ -152,6 +155,14 @@ export async function changeModule(options: ChangeOptions): Promise<ChangeResult
   for (const [signal, handler] of stopHandlers) process.off(signal, handler);
   build.commit();
   clearJournal(dataDir);
+  if (action === "uninstall") {
+    try {
+      const kept = removePackage({ moduleId, packageName, version: installedVersion, modulesDir, nodeModulesDir: join(repoRoot, "node_modules"), dataDir });
+      if (kept !== null) warnings.push(`the folder of ${moduleId} was kept at ${kept}`);
+    } catch (error) {
+      warnings.push(`the folder modules/${moduleId} could not be moved away, so it cannot be installed again until it is: ${message(error)}`);
+    }
+  }
   let restart = "no restart was requested";
   try {
     options.onStep?.("restart", "asking the running server to restart");
