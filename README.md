@@ -594,6 +594,14 @@ compiled into the web app. `modules pack` evaluates the author's `manifest.ts`, 
 be resolved from the module folder (a project with the SDK installed). `EPNEXO_DATA_DIR` moves `var/`. The pipeline is Linux-only: it uses `/proc/<pid>/cmdline` to recognise the launcher; elsewhere a restart is reported as not requested and the server
 must be restarted by hand.
 
+## Menu rule: one concern at a time
+
+Owner rule (2026-10-17): a screen never stacks every option. A screen with more than one concern shows one at a time
+behind tabs (`apps/web/src/components/ui/tabs.tsx`, the tab is kept in the address as `#id`, arrow keys move between
+tabs), and anything occasional (adding an app, resetting the identity) opens on demand instead of sitting on the
+page. Settings has the tabs Profile, Appearance, Security and Modules; Apps has Apps and History. New screens and
+module pages follow the same rule.
+
 ## The Apps screen
 
 `/apps` has two tabs, **Apps** (the installed modules, the default) and **History**, so the page stays quiet. The

@@ -3,6 +3,7 @@ import { AppearanceService, SettingsService, readBrand } from "@epnexo/core/sett
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { Tabs } from "../../../components/ui/tabs";
 import { BrandForm } from "../../../components/settings/brand-form";
 import { AppearanceForm } from "../../../components/settings/appearance-form";
 import { ResetIdentity } from "../../../components/settings/reset-identity";
@@ -45,6 +46,10 @@ export default async function SettingsPage() {
         <p className="text-muted">Everything here is stored by the platform; nothing needs an environment variable.</p>
       </div>
 
+      <Tabs
+        label="Settings"
+        tabs={[
+          { id: "profile", label: "Profile", content: (<>
       <section aria-labelledby="profile-heading" className="flex flex-col gap-5 rounded-lg border border-border bg-surface p-5">
         <div className="flex flex-col gap-1">
           <h2 id="profile-heading" className="text-lg font-semibold tracking-tight">
@@ -56,6 +61,8 @@ export default async function SettingsPage() {
         {brand.profile === null ? null : <ResetIdentity name={brand.profile.name} />}
       </section>
 
+          </>) },
+          { id: "appearance", label: "Appearance", content: (<>
       <section aria-labelledby="appearance-heading" className="flex flex-col gap-5 rounded-lg border border-border bg-surface p-5">
         <h2 id="appearance-heading" className="text-lg font-semibold tracking-tight">
           Appearance
@@ -63,6 +70,8 @@ export default async function SettingsPage() {
         <AppearanceForm initial={appearance.platform} canWrite={viewer.canWrite} />
       </section>
 
+          </>) },
+          { id: "security", label: "Security", content: (<>
       <section aria-labelledby="security-heading" className="flex flex-col gap-5 rounded-lg border border-border bg-surface p-5">
         <h2 id="security-heading" className="text-lg font-semibold tracking-tight">
           Security
@@ -70,6 +79,8 @@ export default async function SettingsPage() {
         <SecurityForm initial={trustedProxies.list} invalidStored={trustedProxies.invalid} canWrite={viewer.canWrite} />
       </section>
 
+          </>) },
+          { id: "modules", label: "Modules", content: (<>
       {sections.length === 0 ? (
         <p className="text-sm text-muted">No modules are enabled, so there are no module settings yet.</p>
       ) : (
@@ -85,6 +96,9 @@ export default async function SettingsPage() {
           />
         ))
       )}
+          </>) },
+        ]}
+      />
     </div>
   );
 }

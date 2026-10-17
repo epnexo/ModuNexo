@@ -3,6 +3,7 @@
 import { FileArchive, LoaderCircle, Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Tabs } from "../ui/tabs";
 import { type RunRow, changeLabel, isFinished, planAction, runSummary } from "../../server/apps-flow";
 
 interface Review {
@@ -198,58 +199,8 @@ export function AppsManager({ initial, installed, modules }: { initial: AppsStat
   const action = staged === null ? null : planAction(staged.review, installed[staged.review.id]);
   const busy = running !== null;
 
-  return (
-    <div className="flex flex-col gap-8">
-      {running !== null ? (
-        <section aria-labelledby="run-heading" className="flex flex-col gap-2 rounded-lg border border-border bg-accent-soft p-4 text-accent-soft-foreground">
-          <h2 id="run-heading" className="flex items-center gap-2 text-base font-semibold">
-            <LoaderCircle aria-hidden className="size-4 animate-spin motion-reduce:animate-none" />
-            Run in progress
-          </h2>
-          <p role="status">{runSummary(running)}</p>
-          <p className="text-sm">Started {when(running.startedAt)} by {running.actor}. A build takes a few minutes on this machine.</p>
-        </section>
-      ) : null}
-
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border">
-        <div role="tablist" aria-label="Apps" className="flex gap-1">
-          {(
-            [
-              ["apps", "Apps"],
-              ["history", "History"],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              id={`tab-${id}`}
-              aria-selected={tab === id}
-              aria-controls={`panel-${id}`}
-              onClick={() => setTab(id)}
-              className={
-                "-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors duration-150 " +
-                (tab === id ? "border-accent text-foreground" : "border-transparent text-muted hover:text-foreground")
-              }
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            setTab("apps");
-            setAdding(true);
-          }}
-          disabled={adding}
-          className="mb-2 inline-flex h-9 items-center gap-2 rounded-md bg-accent px-3 text-sm font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <Plus aria-hidden className="size-4" />
-          Add app
-        </button>
-      </div>
-
+  const appsContent = (
+    <>
       <p role="status" className={`text-sm empty:hidden ${message?.kind === "error" ? "text-danger" : "text-muted"}`}>
         {message?.text ?? ""}
       </p>
@@ -430,8 +381,7 @@ export function AppsManager({ initial, installed, modules }: { initial: AppsStat
       </section>
       ) : null}
 
-      {tab === "apps" ? (
-      <section id="panel-apps" role="tabpanel" aria-labelledby="tab-apps" className="flex flex-col gap-3">
+      <section className="flex flex-col gap-3">
         <h2 className="sr-only">Installed apps</h2>
         {modules.length === 0 ? (
           <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed border-border-strong p-6">
@@ -531,8 +481,12 @@ export function AppsManager({ initial, installed, modules }: { initial: AppsStat
           })}
         </ul>
       </section>
-      ) : (
-      <section id="panel-history" role="tabpanel" aria-labelledby="tab-history" className="flex flex-col gap-3">
+    </>
+  );
+
+  const historyContent = (
+    <>
+      <section className="flex flex-col gap-3">
         <h2 className="sr-only">History</h2>
         {state.operations.length === 0 && state.packages.length === 0 ? <p className="text-sm text-muted">Nothing has been added or installed from here yet.</p> : null}
         {state.operations.length > 0 ? (
@@ -565,7 +519,45 @@ export function AppsManager({ initial, installed, modules }: { initial: AppsStat
           </ul>
         ) : null}
       </section>
-      )}
+    </>
+  );
+
+  return (
+    <div className="flex flex-col gap-8">
+      {running !== null ? (
+        <section aria-labelledby="run-heading" className="flex flex-col gap-2 rounded-lg border border-border bg-accent-soft p-4 text-accent-soft-foreground">
+          <h2 id="run-heading" className="flex items-center gap-2 text-base font-semibold">
+            <LoaderCircle aria-hidden className="size-4 animate-spin motion-reduce:animate-none" />
+            Run in progress
+          </h2>
+          <p role="status">{runSummary(running)}</p>
+          <p className="text-sm">Started {when(running.startedAt)} by {running.actor}. A build takes a few minutes on this machine.</p>
+        </section>
+      ) : null}
+
+      <Tabs
+        label="Apps"
+        value={tab}
+        onValueChange={(id) => setTab(id as "apps" | "history")}
+        actions={
+          <button
+            type="button"
+            onClick={() => {
+              setTab("apps");
+              setAdding(true);
+            }}
+            disabled={adding}
+            className="inline-flex h-9 items-center gap-2 rounded-md bg-accent px-3 text-sm font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Plus aria-hidden className="size-4" />
+            Add app
+          </button>
+        }
+        tabs={[
+          { id: "apps", label: "Apps", content: appsContent },
+          { id: "history", label: "History", content: historyContent },
+        ]}
+      />
     </div>
   );
 }
