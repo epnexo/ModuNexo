@@ -42,7 +42,7 @@ Quoted fragments are the owner's words; the rest is the plan, assumptions marked
 - T4 
 - T5 
 - T6 
-- T7 (S8,S9) web: 409 on kind change, reset needs confirmation; `/setup` page and the gate in the shell layout; locked kind and danger zone in Settings. inline. pending
+- T7 
 
 ## Log
 

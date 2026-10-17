@@ -36,7 +36,7 @@ function profileOf(values: Fields): Record<string, unknown> {
 const size = (bytes: number) => (bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`);
 const field = "h-10 rounded-md border border-border-strong bg-surface px-3 outline-none transition-colors duration-150 focus-visible:border-accent disabled:opacity-60";
 
-export function BrandForm({ initial, logo, canWrite }: { initial: BrandProfile | null; logo: string | null; canWrite: boolean }) {
+export function BrandForm({ initial, logo, canWrite, mode }: { initial: BrandProfile | null; logo: string | null; canWrite: boolean; mode: "setup" | "edit" }) {
   const router = useRouter();
   const [values, setValues] = useState(() => fieldsOf(initial));
   const [pending, setPending] = useState(false);
@@ -66,7 +66,10 @@ export function BrandForm({ initial, logo, canWrite }: { initial: BrandProfile |
     setStatus(null);
     const result = await request("/api/settings/brand", "PUT", JSON.stringify(profileOf(values)), { "content-type": "application/json" });
     setStatus(result.ok ? { kind: "ok", text: "Saved." } : { kind: "error", text: result.error ?? "Could not save." });
-    if (result.ok) router.refresh();
+    if (result.ok) {
+      if (mode === "setup") router.replace("/");
+      router.refresh();
+    }
     setPending(false);
   }
 
@@ -134,28 +137,34 @@ export function BrandForm({ initial, logo, canWrite }: { initial: BrandProfile |
 
   return (
     <form onSubmit={save} className="flex flex-col gap-6">
-      <fieldset className="flex flex-col gap-2" disabled={!canWrite || busy}>
-        <legend className="mb-1.5 text-sm font-medium">This platform is for</legend>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {(
-            [
-              ["business", "A business", "Shows your logo, name and contact details across the platform."],
-              ["personal", "A person", "A simple, friendly identity: a name and an optional photo."],
-            ] as const
-          ).map(([kind, title, hint]) => (
-            <label
-              key={kind}
-              className={"flex cursor-pointer flex-col gap-1 rounded-lg border p-4 transition-colors duration-150 " + (values.kind === kind ? "border-accent bg-accent-soft text-accent-soft-foreground" : "border-border-strong hover:bg-panel-hover")}
-            >
-              <span className="flex items-center gap-2 font-medium">
-                <input type="radio" name="brand-kind" value={kind} checked={values.kind === kind} onChange={() => set({ kind })} className="accent-(--accent)" />
-                {title}
-              </span>
-              <span className="text-sm text-muted">{hint}</span>
-            </label>
-          ))}
-        </div>
-      </fieldset>
+      {mode === "edit" ? (
+        <p className="text-sm text-muted">
+          This platform is set up for <strong className="font-medium text-foreground">{values.kind === "business" ? "a business" : "a person"}</strong>. That choice is fixed; to change it, reset the identity below.
+        </p>
+      ) : (
+        <fieldset className="flex flex-col gap-2" disabled={!canWrite || busy}>
+          <legend className="mb-1.5 text-sm font-medium">This platform is for</legend>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {(
+              [
+                ["business", "A business", "Shows your logo, name and contact details across the platform."],
+                ["personal", "A person", "A simple, friendly identity: a name and an optional photo."],
+              ] as const
+            ).map(([kind, title, hint]) => (
+              <label
+                key={kind}
+                className={"flex cursor-pointer flex-col gap-1 rounded-lg border p-4 transition-colors duration-150 " + (values.kind === kind ? "border-accent bg-accent-soft text-accent-soft-foreground" : "border-border-strong hover:bg-panel-hover")}
+              >
+                <span className="flex items-center gap-2 font-medium">
+                  <input type="radio" name="brand-kind" value={kind} checked={values.kind === kind} onChange={() => set({ kind })} className="accent-(--accent)" />
+                  {title}
+                </span>
+                <span className="text-sm text-muted">{hint}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
 
       {values.kind === null ? null : (
         <>
@@ -245,7 +254,7 @@ export function BrandForm({ initial, logo, canWrite }: { initial: BrandProfile |
           className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-accent px-4 font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-70"
         >
           {pending ? <LoaderCircle aria-hidden className="size-4 animate-spin motion-reduce:animate-none" /> : null}
-          Save profile
+          {mode === "setup" ? "Finish setup" : "Save profile"}
         </button>
         <p role="status" className={`text-sm ${status?.kind === "error" ? "text-danger" : "text-muted"}`}>
           {status?.text ?? (canWrite ? "" : "Only an administrator can change this.")}

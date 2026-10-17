@@ -402,8 +402,11 @@ the proxy pass `Host` through.
 
 ### Profile (business or person)
 
-Settings has a Profile section where an administrator says whom the platform belongs to. Until one is saved the shell
-shows its default name, `epnexo`.
+The first time an administrator opens the shell, with no profile saved, every page sends them to `/setup`, where they
+say whom the platform belongs to. That choice, business or person, is made once: Settings afterwards edits the details
+but shows the kind locked, and `PUT /api/settings/brand` answers `409` to a change of kind. The only way to change it
+is **Reset identity** (a danger zone in Settings, or `DELETE /api/settings/brand` with `{ "confirm": "<current name>" }`):
+it removes the profile and the logo, never any CRM data, and brings the setup back.
 
 - **A business** needs a name, a legal representative and a contact email; website, phone, tax id and address are
   optional. **A person** needs a name and may add a photo; without one the shell draws a monogram (initials on a

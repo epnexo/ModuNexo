@@ -26,6 +26,8 @@ export default async function ShellLayout({ children }: { children: ReactNode })
   const groups = groupNavigation(navigation, (permission) => subjectCan(viewer.subject, permission));
   const scopes = moduleScopes(modules);
   const brand = await loadBrand();
+  // The platform has no identity until the administrator has been through the setup.
+  if (brand.profile === null) redirect("/setup");
 
   return (
     <div className="flex min-h-dvh">
