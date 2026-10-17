@@ -1,6 +1,6 @@
 "use client";
 
-import { LoaderCircle } from "lucide-react";
+import { FileArchive, LoaderCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type RunRow, changeLabel, isFinished, planAction, runSummary } from "../../server/apps-flow";
@@ -51,6 +51,12 @@ export interface InstalledModule {
   state: "enabled" | "disabled";
 }
 
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 type Pending = { id: string; action: "enable" | "disable" | "uninstall"; mode?: "keep" | "purge" };
 
 export function AppsManager({ initial, installed, modules }: { initial: AppsState; installed: Record<string, string>; modules: InstalledModule[] }) {
@@ -59,6 +65,9 @@ export function AppsManager({ initial, installed, modules }: { initial: AppsStat
   const [file, setFile] = useState<File | null>(null);
   const [expected, setExpected] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState<number | null>(null);
+  const [picking, setPicking] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
   const [staged, setStaged] = useState<Staged | null>(null);
   const [problems, setProblems] = useState<string[] | null>(null);
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
@@ -96,26 +105,47 @@ export function AppsManager({ initial, installed, modules }: { initial: AppsStat
     return () => clearInterval(timer);
   }, [running, refresh, watchUntil, router]);
 
+  function send(body: File, headers: Record<string, string>): Promise<{ status: number; data: unknown }> {
+    return new Promise((resolve, reject) => {
+      const request = new XMLHttpRequest();
+      request.open("POST", "/api/apps/packages");
+      for (const [name, value] of Object.entries(headers)) request.setRequestHeader(name, value);
+      request.upload.onprogress = (event) => {
+        if (event.lengthComputable) setProgress(Math.round((event.loaded / event.total) * 100));
+      };
+      request.onload = () => {
+        let data: unknown = {};
+        try {
+          data = JSON.parse(request.responseText);
+        } catch {
+          data = {};
+        }
+        resolve({ status: request.status, data });
+      };
+      request.onerror = () => reject(new Error("network"));
+      request.send(body);
+    });
+  }
+
   async function upload() {
     if (file === null) return;
     setUploading(true);
+    setProgress(0);
     setMessage(null);
     setStaged(null);
     setProblems(null);
     try {
-      const response = await fetch("/api/apps/packages", {
-        method: "POST",
-        headers: { "content-type": "application/gzip", ...(expected.trim() === "" ? {} : { "x-expected-sha256": expected.trim().toLowerCase() }) },
-        body: file,
-      });
-      const data = (await response.json().catch(() => ({}))) as Partial<Staged> & { status?: string; error?: string; problems?: string[] };
-      if (response.ok && data.status === "staged") setStaged(data as Staged);
+      const headers = { "content-type": "application/gzip", ...(expected.trim() === "" ? {} : { "x-expected-sha256": expected.trim().toLowerCase() }) };
+      const response = await send(file, headers);
+      const data = response.data as Partial<Staged> & { status?: string; error?: string; problems?: string[] };
+      if (response.status >= 200 && response.status < 300 && data.status === "staged") setStaged(data as Staged);
       else if (response.status === 422 && data.problems) setProblems(data.problems);
       else setMessage({ kind: "error", text: data.error ?? "The package could not be uploaded." });
       void refresh();
     } catch {
       setMessage({ kind: "error", text: "Could not reach the server." });
     }
+    setProgress(null);
     setUploading(false);
   }
 
@@ -189,7 +219,45 @@ export function AppsManager({ initial, installed, modules }: { initial: AppsStat
             <label htmlFor="package-file" className="text-sm font-medium">
               Archive (.tgz)
             </label>
-            <input id="package-file" type="file" accept=".tgz,.tar.gz,application/gzip" disabled={uploading || busy} onChange={(event) => setFile(event.target.files?.[0] ?? null)} className="text-sm" />
+            <input
+              ref={fileInput}
+              id="package-file"
+              type="file"
+              accept=".tgz,.tar.gz,application/gzip"
+              disabled={uploading || busy}
+              className="sr-only"
+              onChange={(event) => {
+                setPicking(false);
+                setFile(event.target.files?.[0] ?? null);
+              }}
+            />
+            <div className="flex max-w-xl items-center gap-3 rounded-md border border-dashed border-border-strong bg-surface px-3 py-3" aria-live="polite">
+              {picking ? <LoaderCircle aria-hidden className="size-5 shrink-0 animate-spin text-muted motion-reduce:animate-none" /> : <FileArchive aria-hidden className="size-5 shrink-0 text-muted" />}
+              <div className="min-w-0 flex-1 text-sm">
+                {picking ? (
+                  <span className="text-muted">Waiting for the file dialog&hellip;</span>
+                ) : file !== null ? (
+                  <>
+                    <span className="block truncate font-medium">{file.name}</span>
+                    <span className="text-muted">{formatSize(file.size)}</span>
+                  </>
+                ) : (
+                  <span className="text-muted">No file selected</span>
+                )}
+              </div>
+              <button
+                type="button"
+                disabled={uploading || busy || picking}
+                onClick={() => {
+                  setPicking(true);
+                  fileInput.current?.click();
+                  window.addEventListener("focus", () => setTimeout(() => setPicking(false), 400), { once: true });
+                }}
+                className="h-9 shrink-0 rounded-md border border-border-strong px-3 text-sm transition-colors duration-150 hover:bg-panel-hover disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {file === null ? "Choose file" : "Change"}
+              </button>
+            </div>
           </div>
           <div className="flex flex-col gap-1.5">
             <label htmlFor="package-sha" className="text-sm font-medium">
@@ -212,8 +280,23 @@ export function AppsManager({ initial, installed, modules }: { initial: AppsStat
               className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-accent px-4 font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-70"
             >
               {uploading ? <LoaderCircle aria-hidden className="size-4 animate-spin motion-reduce:animate-none" /> : null}
-              Upload and review
+              {uploading ? (progress !== null && progress < 100 ? `Uploading ${progress}%` : "Reviewing package\u2026") : "Upload and review"}
             </button>
+            {uploading ? (
+              <div
+                role="progressbar"
+                aria-label="Upload progress"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={progress !== null && progress < 100 ? progress : undefined}
+                className="mt-3 h-1.5 max-w-xl overflow-hidden rounded-full bg-border-strong"
+              >
+                <div
+                  className={`h-full rounded-full bg-accent transition-[width] duration-150 ${progress !== null && progress < 100 ? "" : "w-full animate-pulse motion-reduce:animate-none"}`}
+                  style={progress !== null && progress < 100 ? { width: `${progress}%` } : undefined}
+                />
+              </div>
+            ) : null}
           </div>
         </div>
 
