@@ -80,3 +80,30 @@ export async function readJsonBody(request: Request): Promise<ParsedBody> {
   const body = await readBodyText(request);
   return body.ok ? parseJsonBody(body.text) : body;
 }
+
+export type BodyBytes = { ok: true; bytes: Buffer } | { ok: false; message: string };
+
+/** The request body as bytes under the same bounded-read rule as `readBodyText`, for an upload with its own limit. */
+export async function readBodyBytes(request: Request, limit: number): Promise<BodyBytes> {
+  const tooLarge: BodyBytes = { ok: false, message: `the request body is larger than ${limit} bytes` };
+  const declared = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > limit) {
+    await request.body?.cancel().catch(() => undefined);
+    return tooLarge;
+  }
+  if (request.body === null) return { ok: true, bytes: Buffer.alloc(0) };
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel().catch(() => undefined);
+      return tooLarge;
+    }
+    chunks.push(value);
+  }
+  return { ok: true, bytes: Buffer.concat(chunks) };
+}

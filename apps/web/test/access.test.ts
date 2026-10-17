@@ -6,8 +6,8 @@ const input = (overrides: Partial<AccessInput>): AccessInput => ({ pathname: "/"
 
 describe("isPublicPath", () => {
   it("is true for the sign-in page and the auth endpoints only", () => {
-    for (const path of ["/login", "/login/", "/api/auth", "/api/auth/sign-in/email", "/api/auth/get-session"]) assert.equal(isPublicPath(path), true, path);
-    for (const path of ["/", "/apps", "/settings", "/api/authx", "/api/other", "/loginx", "/login/extra", "/LOGIN", "/a/login"]) assert.equal(isPublicPath(path), false, path);
+    for (const path of ["/login", "/login/", "/api/auth", "/api/auth/sign-in/email", "/api/auth/get-session", "/api/brand/logo"]) assert.equal(isPublicPath(path), true, path);
+    for (const path of ["/", "/apps", "/settings", "/api/authx", "/api/other", "/api/brand/logo/x", "/api/brand", "/api/settings/brand", "/loginx", "/login/extra", "/LOGIN", "/a/login"]) assert.equal(isPublicPath(path), false, path);
   });
 });
 
@@ -30,7 +30,7 @@ describe("decideAccess: sign-in required", () => {
 
   it("sends a signed-in visitor away from the sign-in page and lets everything else through", () => {
     assert.deepEqual(decideAccess(input({ pathname: "/login", hasSession: true })), { action: "redirect", to: "/" });
-    for (const pathname of ["/", "/apps", "/api/modules", "/api/auth/get-session"]) {
+    for (const pathname of ["/", "/apps", "/api/modules", "/api/auth/get-session", "/api/brand/logo"]) {
       assert.deepEqual(decideAccess(input({ pathname, hasSession: true })), { action: "allow" }, pathname);
     }
   });
@@ -43,7 +43,7 @@ describe("decideAccess: sign-in required", () => {
 
 describe("decideAccess: sign-in disabled", () => {
   it("serves a local request without a session", () => {
-    for (const pathname of ["/", "/apps", "/settings", "/api/modules", "/api/auth/get-session"]) {
+    for (const pathname of ["/", "/apps", "/settings", "/api/modules", "/api/auth/get-session", "/api/brand/logo"]) {
       assert.deepEqual(decideAccess(input({ pathname, mode: "disabled" })), { action: "allow" }, pathname);
     }
   });
@@ -64,7 +64,7 @@ describe("decideAccess: sign-in disabled", () => {
   });
 
   it("refuses a local connection that names a public host: DNS rebinding, or a public proxy without forwarding headers", () => {
-    for (const pathname of ["/", "/login", "/api/auth/get-session"]) {
+    for (const pathname of ["/", "/login", "/api/auth/get-session", "/api/brand/logo"]) {
       assert.deepEqual(decideAccess(input({ pathname, mode: "disabled", hostOk: false })), { action: "deny", status: 403, message: "Forbidden" }, pathname);
     }
   });

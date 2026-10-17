@@ -20,10 +20,11 @@ export type AccessDecision =
 
 const LOGIN_PATH = "/login";
 const AUTH_API_PREFIX = "/api/auth";
+const LOGO_PATH = "/api/brand/logo";
 
-/** The sign-in page and the library's endpoints, which a visitor without a session has to reach. */
+/** The sign-in page, the library's endpoints and the brand logo (the sign-in page shows it), which a visitor without a session has to reach. */
 export function isPublicPath(pathname: string): boolean {
-  return pathname === LOGIN_PATH || pathname === `${LOGIN_PATH}/` || pathname === AUTH_API_PREFIX || pathname.startsWith(`${AUTH_API_PREFIX}/`);
+  return pathname === LOGIN_PATH || pathname === `${LOGIN_PATH}/` || pathname === AUTH_API_PREFIX || pathname.startsWith(`${AUTH_API_PREFIX}/`) || pathname === LOGO_PATH;
 }
 
 const isApi = (pathname: string) => pathname === "/api" || pathname.startsWith("/api/");
