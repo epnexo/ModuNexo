@@ -1,4 +1,4 @@
-import { Registry } from "@epnexo/core/registry";
+import { Registry } from "@modunexo/core/registry";
 import type pg from "pg";
 import { modules } from "../generated/modules.ts";
 

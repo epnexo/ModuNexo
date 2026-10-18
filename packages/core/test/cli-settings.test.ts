@@ -29,7 +29,7 @@ const spawn = (args: string[], env: Record<string, string>, stdin = ""): Promise
 
 let modulesDir: string;
 beforeEach(() => {
-  modulesDir = mkdtempSync(join(tmpdir(), "epnexo-cli-settings-"));
+  modulesDir = mkdtempSync(join(tmpdir(), "modunexo-cli-settings-"));
   mkdirSync(join(modulesDir, "alpha", "migrations"), { recursive: true });
   const manifest = {
     id: "alpha",
@@ -63,7 +63,7 @@ async function inScratchDatabase(t: TestContext, work: (db: pg.Pool, cli: Cli) =
   const cli: Cli = (args, options = {}) =>
     spawn(
       [...args, "--modules-dir", modulesDir],
-      { DATABASE_URL: url, ...(options.masterKey === false ? {} : { EPNEXO_MASTER_KEY: typeof options.masterKey === "string" ? options.masterKey : MASTER_KEY }) },
+      { DATABASE_URL: url, ...(options.masterKey === false ? {} : { MODUNEXO_MASTER_KEY: typeof options.masterKey === "string" ? options.masterKey : MASTER_KEY }) },
       options.stdin,
     );
   try {
@@ -234,7 +234,7 @@ describe("cli: settings, secrets", () => {
     await inScratchDatabase(t, async (_db, cli) => {
       const result = await cli(["settings", "list", "--module", "alpha"], { masterKey: false });
       assert.equal(result.code, 1);
-      assert.match(result.stderr, /EPNEXO_MASTER_KEY/);
+      assert.match(result.stderr, /MODUNEXO_MASTER_KEY/);
     });
   });
 

@@ -4,9 +4,9 @@
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { runCli } from "@epnexo/core/cli";
-import { pidFilePath } from "@epnexo/core/install";
-import { DATA_DIR } from "@epnexo/core/packages";
+import { runCli } from "@modunexo/core/cli";
+import { pidFilePath } from "@modunexo/core/install";
+import { DATA_DIR } from "@modunexo/core/packages";
 import { LaunchError, LaunchUsageError, exitCodeFor, planLaunch } from "../src/server/launch.ts";
 import { superviseChild } from "../src/server/supervisor.ts";
 import { ensureRegistry } from "./ensure-registry.ts";

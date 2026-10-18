@@ -30,7 +30,7 @@ async function inScratchDatabase(t: TestContext, work: (db: pg.Pool, cli: Cli) =
   if (!scratch.url) return t.skip(scratch.skipReason);
   const db = createPool(scratch.url);
   // The auth commands must work without the master key, so it is given only to the commands that need it.
-  const cli: Cli = (args, stdin) => spawn(args, { DATABASE_URL: scratch.url!, ...(args[0] === "admin" ? { EPNEXO_MASTER_KEY: MASTER_KEY } : {}) }, stdin);
+  const cli: Cli = (args, stdin) => spawn(args, { DATABASE_URL: scratch.url!, ...(args[0] === "admin" ? { MODUNEXO_MASTER_KEY: MASTER_KEY } : {}) }, stdin);
   try {
     if (migrated) assert.equal((await cli(["db:migrate"])).code, 0);
     await work(db, cli);

@@ -3,7 +3,7 @@
 import { LoaderCircle, Trash2, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useRef, useState } from "react";
-import type { BrandProfile } from "@epnexo/core/brand";
+import type { BrandProfile } from "@modunexo/core/brand";
 import { BrandMark } from "../brand/brand-mark";
 
 const MAX_BYTES = 512 * 1024;

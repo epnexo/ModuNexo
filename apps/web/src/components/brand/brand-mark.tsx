@@ -1,6 +1,6 @@
-import { type BrandProfile, initialsOf } from "@epnexo/core/brand";
+import { type BrandProfile, initialsOf } from "@modunexo/core/brand";
 
-export const DEFAULT_BRAND_NAME = "epnexo";
+export const DEFAULT_BRAND_NAME = "Modunexo";
 
 export function brandName(profile: BrandProfile | null): string {
   return profile === null ? DEFAULT_BRAND_NAME : profile.name;

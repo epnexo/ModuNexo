@@ -11,7 +11,7 @@ const modules = listModulePackages(join(repositoryRoot, "modules"));
 for (const warning of modules.warnings) console.warn(`warning: ${warning}`);
 
 const config: NextConfig = {
-  transpilePackages: ["@epnexo/core", "@epnexo/sdk", ...modules.names],
+  transpilePackages: ["@modunexo/core", "@modunexo/sdk", ...modules.names],
   // The monorepo root, so the workspace packages outside this directory are traced and watched.
   outputFileTracingRoot: repositoryRoot,
   turbopack: { root: repositoryRoot },

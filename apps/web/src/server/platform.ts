@@ -1,8 +1,8 @@
-import { type Auth, createAuth, resolveMasterKey } from "@epnexo/core/auth";
-import { createPool, resolveDatabaseUrl } from "@epnexo/core/pool";
-import { SettingsService } from "@epnexo/core/settings";
-import { ModuleDbService } from "@epnexo/core/data";
-import { DB_READER, SETTINGS_READER, type DbReader, type SettingsReader } from "@epnexo/sdk";
+import { type Auth, createAuth, resolveMasterKey } from "@modunexo/core/auth";
+import { createPool, resolveDatabaseUrl } from "@modunexo/core/pool";
+import { SettingsService } from "@modunexo/core/settings";
+import { ModuleDbService } from "@modunexo/core/data";
+import { DB_READER, SETTINGS_READER, type DbReader, type SettingsReader } from "@modunexo/sdk";
 import type pg from "pg";
 import { resolvePublicUrl } from "./launch.ts";
 import { CLOSED, STORE, closePlatform, holder, reopenPlatform } from "./platform-lifecycle.ts";

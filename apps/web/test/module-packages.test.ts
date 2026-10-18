@@ -7,7 +7,7 @@ import { listModulePackages } from "../src/server/module-packages.ts";
 
 let dir: string;
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "epnexo-modpkg-"));
+  dir = mkdtempSync(join(tmpdir(), "modunexo-modpkg-"));
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 

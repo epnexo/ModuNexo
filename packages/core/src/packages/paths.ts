@@ -2,10 +2,16 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
- * Where the platform keeps what it receives and unpacks: `var/` at the repository root, or `EPNEXO_DATA_DIR` when
- * it is set (tests and unusual deployments). Not tracked by git.
+ * Where the platform keeps what it receives and unpacks: `var/` at the repository root, or `MODUNEXO_DATA_DIR` when
+ * it is set (tests and unusual deployments). `EPNEXO_DATA_DIR`, the name before the rename, is still accepted. Not
+ * tracked by git.
  */
-export const DATA_DIR = process.env.EPNEXO_DATA_DIR ? resolve(process.env.EPNEXO_DATA_DIR) : resolve(dirname(fileURLToPath(import.meta.url)), "../../../../var");
+export function resolveDataDir(env: Record<string, string | undefined> = process.env): string {
+  const chosen = env.MODUNEXO_DATA_DIR || env.EPNEXO_DATA_DIR;
+  return chosen ? resolve(chosen) : resolve(dirname(fileURLToPath(import.meta.url)), "../../../../var");
+}
+
+export const DATA_DIR = resolveDataDir();
 
 const SHA256 = /^[0-9a-f]{64}$/;
 

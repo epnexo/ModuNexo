@@ -1,4 +1,4 @@
-import { BrandService, MAX_IMAGE_BYTES, SettingValueError, readBrand, readLogo } from "@epnexo/core/settings";
+import { BrandService, MAX_IMAGE_BYTES, SettingValueError, readBrand, readLogo } from "@modunexo/core/settings";
 import { platform } from "../../../../server/platform.ts";
 import { authorizeWrite, json, readBodyBytes } from "../../../../server/settings-api.ts";
 

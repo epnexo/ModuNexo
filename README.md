@@ -1,4 +1,4 @@
-# epnexo platform
+# Modunexo
 
 A module platform: a small core that installs, enables, disables, upgrades and uninstalls modules, each living
 in its own repository, and generates the registration the web app needs from the modules that are enabled. This
@@ -8,11 +8,11 @@ repository holds the SDK modules compile against and the core. The feature plan 
 
 | Path | What it is |
 | --- | --- |
-| `packages/sdk` | `@epnexo/sdk`: manifest v2 types, `defineModule`, `validateManifest`. No database access. |
-| `packages/core` | `@epnexo/core`: the registry, migration runner, lifecycle, registration codegen and CLI. |
+| `packages/sdk` | `@modunexo/sdk`: manifest v2 types, `defineModule`, `validateManifest`. No database access. |
+| `packages/core` | `@modunexo/core`: the registry, migration runner, lifecycle, registration codegen and CLI. |
 | `modules/` | Installed module packages, one folder per module, linked by the npm workspace glob. Not tracked in git. |
 | `modules-src/` | Sources of the modules you write, made by `modules new`. Tracked in git. |
-| `.claude/skills/epnexo-module/` | The skill that walks an author (or an agent) through building a module. |
+| `.claude/skills/modunexo-module/` | The skill that walks an author (or an agent) through building a module. |
 | `apps/` | Applications built on the core. Empty today; the web shell is a later feature. |
 | `odd/tasks/` | Feature documents. |
 
@@ -25,9 +25,9 @@ module by name, and modules never import each other's code.
 npm install
 docker compose up -d db      # Postgres 16 on 127.0.0.1:5436, compose project "epnexo-shell-core"
 cp .env.example .env         # DATABASE_URL and TEST_DATABASE_URL
-echo "EPNEXO_MASTER_KEY=$(openssl rand -base64 48)" >> .env
+echo "MODUNEXO_MASTER_KEY=$(openssl rand -base64 48)" >> .env
 npm run db:migrate           # creates the core schema
-npm run epnexo -- admin create --email you@example.com --name "Your Name"   # asks for the password
+npm run modunexo -- admin create --email you@example.com --name "Your Name"   # asks for the password
 npm test                     # node:test through tsx, packages/*/test/**/*.test.ts
 npm run typecheck            # tsc --noEmit
 ```
@@ -37,9 +37,19 @@ The only environment variables are infrastructure ones:
 - `DATABASE_URL` - the database the CLI works on.
 - `TEST_DATABASE_URL` - the database integration tests run on. Its name must end in `_test` and it must not be
   the development database. It is created on demand on the same server.
-- `EPNEXO_MASTER_KEY` - the one secret the platform reads from the environment, at least 32 characters
+- `MODUNEXO_MASTER_KEY` - the one secret the platform reads from the environment, at least 32 characters
   (`openssl rand -base64 48`). The sign-in secret is derived from it, so there is no separate variable for it.
   Changing it signs every user out. Only the commands that touch authentication need it.
+- `MODUNEXO_DATA_DIR` - optional: where received packages are kept (default `var/`).
+
+The project was called epnexo before it was renamed. `EPNEXO_MASTER_KEY` and `EPNEXO_DATA_DIR` still work as aliases
+(the new name wins when both are set), and `npm run epnexo` still runs the CLI, so an existing `.env` and existing
+scripts keep working. A few internal identifiers deliberately keep the old name for compatibility:
+
+- the key-derivation context (`epnexo:<purpose>`), which must never change or stored secrets stop decrypting;
+- the Postgres lock names, and the database, user and compose names (`epnexo`, `epnexo-shell-core`), so an existing
+  data volume is reused;
+- the marker the code generator recognises, which still accepts the files an older version wrote.
 
 No server answering, or neither variable set, **skips** the integration tests with the reason printed; a server
 that answers but refuses (bad credentials, missing permission) **fails** the suite. With the database up,
@@ -50,7 +60,7 @@ that answers but refuses (bad credentials, missing permission) **fails** the sui
 A module is a package under `modules/<id>/` with a `manifest.ts` that default-exports its manifest:
 
 ```ts
-import { defineModule } from "@epnexo/sdk";
+import { defineModule } from "@modunexo/sdk";
 
 export default defineModule({
   id: "sample",                       // kebab-case, equal to the folder name
@@ -109,15 +119,15 @@ returns `{ modules, warnings }`; a symlink whose target is gone is skipped with 
 ## Building a module
 
 ```bash
-npm run epnexo -- modules new field-notes --name "Field Notes"   # writes modules-src/field-notes/
-npm run epnexo -- modules pack modules-src/field-notes --out field-notes.tgz
-npm run epnexo -- modules add field-notes.tgz --sha256 <hex>     # review
-npm run epnexo -- modules apply <hex>                            # install, rebuild, restart
+npm run modunexo -- modules new field-notes --name "Field Notes"   # writes modules-src/field-notes/
+npm run modunexo -- modules pack modules-src/field-notes --out field-notes.tgz
+npm run modunexo -- modules add field-notes.tgz --sha256 <hex>     # review
+npm run modunexo -- modules apply <hex>                            # install, rebuild, restart
 ```
 
 `modules new` writes a module that already works: a manifest with one permission, nav entry and page, a first
 migration and a page that lists and adds rows. It refuses an id that is not kebab-case or would give a reserved
-schema, and never touches a folder that exists. The skill `.claude/skills/epnexo-module/SKILL.md` carries the full
+schema, and never touches a folder that exists. The skill `.claude/skills/modunexo-module/SKILL.md` carries the full
 procedure for an agent or a person.
 
 ### Data: `getDb`
@@ -125,7 +135,7 @@ procedure for an agent or a person.
 A module reaches its own tables through the SDK, from a page, a server action or a route (never at import time):
 
 ```ts
-import { getDb } from "@epnexo/sdk";
+import { getDb } from "@modunexo/sdk";
 
 const db = getDb("field-notes");
 const { rows } = await db.query<{ id: number; title: string }>("select id, title from items where id = $1", [id]);
@@ -214,7 +224,7 @@ uninstall; `<step>: <message>` for a failure) and `occurred_at`.
 
 ## CLI
 
-One entry, `packages/core/src/cli/index.ts`, wired as npm scripts (`npm run epnexo -- <command>` runs any command):
+One entry, `packages/core/src/cli/index.ts`, wired as npm scripts (`npm run modunexo -- <command>` runs any command):
 
 ```bash
 npm run modules -- list [--json]          # every known module: state, versions, flags
@@ -223,15 +233,15 @@ npm run modules -- enable <id>
 npm run modules -- disable <id>
 npm run modules -- upgrade <id>
 npm run modules -- uninstall <id> --keep  # or --purge; no flag is refused, both is a usage error
-npm run epnexo -- modules new <id> [--name <text>] [--dir <parent>]   # a working module folder, default modules-src/<id>
-npm run epnexo -- modules pack <folder> [--out <file>]
-npm run epnexo -- modules add <archive> [--sha256 <hex>] [--json]
-npm run epnexo -- modules apply <sha256> [--json]
-npm run epnexo -- modules enable|disable|uninstall <id> --rebuild   # the change plus the rebuild and restart
+npm run modunexo -- modules new <id> [--name <text>] [--dir <parent>]   # a working module folder, default modules-src/<id>
+npm run modunexo -- modules pack <folder> [--out <file>]
+npm run modunexo -- modules add <archive> [--sha256 <hex>] [--json]
+npm run modunexo -- modules apply <sha256> [--json]
+npm run modunexo -- modules enable|disable|uninstall <id> --rebuild   # the change plus the rebuild and restart
 npm run db:migrate                        # the core only; reports installed modules that need "modules upgrade"
 npm run registry:generate [-- --dry-run] [-- --out <dir>]
-npm run epnexo -- admin create --email <email> --name <name>
-npm run epnexo -- auth status | require | disable
+npm run modunexo -- admin create --email <email> --name <name>
+npm run modunexo -- auth status | require | disable
 ```
 
 Every command takes `--modules-dir <path>` (default `modules/`; a path that is given must exist) and `--help`.
@@ -262,12 +272,12 @@ standard input, never from an argument, so it does not reach the process list or
 it is asked twice without echo; from a pipe the first line is the password and only its line ending is dropped:
 
 ```bash
-npm run epnexo -- admin create --email ada@example.com --name "Ada"            # hidden prompt
-printf '%s\n' "$PASSWORD" | npm run epnexo -- admin create --email ada@example.com --name "Ada"
+npm run modunexo -- admin create --email ada@example.com --name "Ada"            # hidden prompt
+printf '%s\n' "$PASSWORD" | npm run modunexo -- admin create --email ada@example.com --name "Ada"
 ```
 
 A password shorter than 12 characters and an email that already exists are refused with exit code `3`, and nothing
-is created. The command needs `EPNEXO_MASTER_KEY` and a migrated database, and reads no module.
+is created. The command needs `MODUNEXO_MASTER_KEY` and a migrated database, and reads no module.
 
 ### Users and roles
 
@@ -282,9 +292,9 @@ Any other stored role (the library's default `user`) signs in but holds no modul
 command line, so there is no screen to attack:
 
 ```bash
-npm run epnexo -- user create --email bo@example.com --name "Bo" --role operator   # password from stdin, like admin create
-npm run epnexo -- user list [--json]
-npm run epnexo -- user role --email bo@example.com --role admin
+npm run modunexo -- user create --email bo@example.com --name "Bo" --role operator   # password from stdin, like admin create
+npm run modunexo -- user list [--json]
+npm run modunexo -- user role --email bo@example.com --role admin
 ```
 
 `user role` refuses to demote the last active (not banned) administrator, so the platform cannot be left without one.
@@ -298,7 +308,7 @@ library when it needs a schema change fails the suite until a new core migration
 ## Registration codegen
 
 Next.js resolves routes and client code at build time, so the web app cannot discover modules at run time.
-`registry:generate` (or `generateRegistration` in `@epnexo/core`) turns the manifests of the **enabled** modules
+`registry:generate` (or `generateRegistration` in `@modunexo/core`) turns the manifests of the **enabled** modules
 into the files the web app needs, under `apps/web` unless `--out` says otherwise:
 
 | File | Content |
@@ -339,9 +349,9 @@ Sign-in is required by default. For an instance that lives only on a trusted loc
 and switched back on when the instance is exposed:
 
 ```bash
-npm run epnexo -- auth status     # sign-in: required | disabled
-npm run epnexo -- auth disable
-npm run epnexo -- auth require
+npm run modunexo -- auth status     # sign-in: required | disabled
+npm run modunexo -- auth disable
+npm run modunexo -- auth require
 ```
 
 The mode is stored in the database (`core.platform_settings`, key `auth.signIn`), so it does not need the master
@@ -369,8 +379,8 @@ npm run web:dev       # development server
 
 `WEB_HOST` (default `127.0.0.1`) and `WEB_PORT` (default `3000`) choose where it listens; use `WEB_HOST=0.0.0.0` to
 serve the local network. `WEB_PUBLIC_URL` is optional and describes the proxy or tunnel in front of the app, such as
-`https://epnexo.example.com`: left unset the app serves plain HTTP on the local network and its session cookie works
-there; set to an `https` origin the cookie becomes `Secure`. It must be a bare origin, with no path. `web:start` and `web:dev` refuse to start without `EPNEXO_MASTER_KEY` and say so in one
+`https://modunexo.example.com`: left unset the app serves plain HTTP on the local network and its session cookie works
+there; set to an `https` origin the cookie becomes `Secure`. It must be a bare origin, with no path. `web:start` and `web:dev` refuse to start without `MODUNEXO_MASTER_KEY` and say so in one
 line. Installing, disabling or uninstalling a module changes the registry: run `web:build` and restart.
 
 ### The shell
@@ -413,7 +423,7 @@ per reason, and how to ask for a sign-in again.
 
 The web server is the platform's own thin Node server (`apps/web/scripts/serve.ts`) in front of Next.js. Next.js
 fills `x-forwarded-for` from the socket only when the client did not send one, so a route could not tell a real
-address from a forged one. The server therefore sets `x-epnexo-client-ip` from the connection on every request and
+address from a forged one. The server therefore sets `x-modunexo-client-ip` from the connection on every request and
 discards any copy a client sent. Whether a request is local is judged on that address and on every address a
 proxy reports (`x-forwarded-for`, `forwarded`, `x-real-ip`, `cf-connecting-ip`, `true-client-ip`, `x-client-ip`):
 one public address anywhere is enough to refuse it. A request that was not stamped has no trusted address and is
@@ -440,10 +450,10 @@ Everything below is stored by the platform in the database; none of it needs an 
 A manifest lists the settings it needs under `settings`: `key`, `label`, `type` (`string`, `number`, `boolean`,
 `select`, `secret`, `path`), and optionally `default`, `required`, `options` and `description`. The platform
 stores the values, validates every change against the declaration, and edits them on the **Settings** screen and
-with `epnexo settings`. A module's server code reads its own settings with the SDK:
+with `modunexo settings`. A module's server code reads its own settings with the SDK:
 
 ```ts
-import { getSetting } from "@epnexo/sdk";
+import { getSetting } from "@modunexo/sdk";
 
 const title = await getSetting("my-module", "report.title"); // stored value, else the default, else null
 ```
@@ -460,7 +470,7 @@ so the module decides what to do without it.
 
 ### Secrets
 
-A `secret` is stored encrypted with AES-256-GCM under a key derived from `EPNEXO_MASTER_KEY`, bound to its module
+A `secret` is stored encrypted with AES-256-GCM under a key derived from `MODUNEXO_MASTER_KEY`, bound to its module
 and key, so a stored value cannot be moved to another setting. It is write-only: the screen, the CLI, the API and
 the audit trail only ever say that one is set. Changing the master key makes the stored secrets unreadable: the
 screen flags them, and each is replaced by typing it again. Nothing else breaks.
@@ -489,7 +499,7 @@ it removes the profile and the logo, never any CRM data, and brings the setup ba
 - **A business** needs a name, a legal representative and a contact email; website, phone, tax id and address are
   optional. **A person** needs a name and may add an email and a photo; without one the shell draws a monogram (initials on a
   color the person picks).
-- The logo or photo replaces `epnexo` in the sidebar, the mobile bar, the sign-in page and the page titles, and a
+- The logo or photo replaces `modunexo` in the sidebar, the mobile bar, the sign-in page and the page titles, and a
   business also gets a footer with its name, website, email and phone.
 - The image is PNG, JPEG or WebP, up to 512 KB, and is checked by its bytes, not its name. SVG is refused because it
   can carry script. It is stored in `core.brand_assets` (migration 0009); the profile text is the setting
@@ -513,13 +523,13 @@ to nothing else. The theme is the visitor's and cannot be overridden per module.
 ### From the command line
 
 ```bash
-npm run epnexo -- settings list                                  # the platform appearance
-npm run epnexo -- settings set appearance.accentHue 140
-npm run epnexo -- settings list --module my-module               # declared settings and the module's appearance
-npm run epnexo -- settings set report.title "Weekly" --module my-module
-npm run epnexo -- settings set api.token --module my-module      # the value is read from standard input
-npm run epnexo -- settings unset report.title --module my-module
-npm run epnexo -- settings set appearance.accentHue 20 --module my-module
+npm run modunexo -- settings list                                  # the platform appearance
+npm run modunexo -- settings set appearance.accentHue 140
+npm run modunexo -- settings list --module my-module               # declared settings and the module's appearance
+npm run modunexo -- settings set report.title "Weekly" --module my-module
+npm run modunexo -- settings set api.token --module my-module      # the value is read from standard input
+npm run modunexo -- settings unset report.title --module my-module
+npm run modunexo -- settings set appearance.accentHue 20 --module my-module
 ```
 
 Platform appearance needs no master key; anything that touches a module's settings does, because a secret may be
@@ -562,9 +572,9 @@ sign-in limit and one person mistyping a password can lock the others out. List 
 Settings screen (Security) or with the CLI:
 
 ```bash
-npm run epnexo -- settings set security.trustedProxies "10.0.0.2, 192.168.1.0/24"
-npm run epnexo -- settings get security.trustedProxies
-npm run epnexo -- settings unset security.trustedProxies
+npm run modunexo -- settings set security.trustedProxies "10.0.0.2, 192.168.1.0/24"
+npm run modunexo -- settings get security.trustedProxies
+npm run modunexo -- settings unset security.trustedProxies
 ```
 
 Entries are addresses or CIDR ranges, up to 50, with a prefix of /8 or longer: a list of proxies is not a place for
@@ -584,8 +594,8 @@ A module travels as one gzip tarball, like `npm pack` makes: a single top-level 
 the same manifest written as data, so the platform can read what a package is without running any of it.
 
 ```bash
-npm run epnexo -- modules pack ../reports-src --out reports-1.0.0.tgz   # on the author's machine
-npm run epnexo -- modules add reports-1.0.0.tgz --sha256 <hex>          # on the platform
+npm run modunexo -- modules pack ../reports-src --out reports-1.0.0.tgz   # on the author's machine
+npm run modunexo -- modules add reports-1.0.0.tgz --sha256 <hex>          # on the platform
 ```
 
 **`modules pack <folder> [--out <file>]`** evaluates the folder's `manifest.ts` (the author's own code, on the
@@ -611,7 +621,7 @@ What the platform refuses, so a package cannot choose where it writes or what it
   in a path.
 - **The checksum.** The platform computes the SHA-256 itself; with `--sha256` it must equal the one the publisher
   gave. Without it the hash is only recorded, so give it whenever you have one from a channel other than the archive.
-- **The package.** A name in the platform's own `@epnexo` scope or one that collides with an installed package; a
+- **The package.** A name in the platform's own `@modunexo` scope or one that collides with an installed package; a
   `package.json` version that differs from the manifest's; a manifest that does not validate; entries, hooks or
   migrations that are missing or point outside the package; pages under a path the shell reserves; a `platform` range
   this platform does not satisfy.
@@ -626,7 +636,7 @@ package is `modules apply`, below.
 ### Installing a staged package
 
 ```bash
-npm run epnexo -- modules apply <sha256>     # the SHA-256 that `modules add` printed
+npm run modunexo -- modules apply <sha256>     # the SHA-256 that `modules add` printed
 ```
 
 `modules apply` installs a new module or upgrades the installed module of the same id to the package's version
@@ -669,8 +679,8 @@ sharing it corrupted builds), so each install, upgrade, enable, disable or unins
 of machine that is minutes. While the build runs the server's `.next` has been moved aside, so pages that were not yet loaded
 by the running server fail until the build finishes or is rolled back; do an install when that is acceptable.
 Installing is code execution with database access: the module's hooks run inside the platform and its pages are
-compiled into the web app. `modules pack` evaluates the author's `manifest.ts`, so it runs where `@epnexo/sdk` can
-be resolved from the module folder (a project with the SDK installed). `EPNEXO_DATA_DIR` moves `var/`. The pipeline is Linux-only: it uses `/proc/<pid>/cmdline` to recognise the launcher; elsewhere a restart is reported as not requested and the server
+compiled into the web app. `modules pack` evaluates the author's `manifest.ts`, so it runs where `@modunexo/sdk` can
+be resolved from the module folder (a project with the SDK installed). `MODUNEXO_DATA_DIR` moves `var/`. The pipeline is Linux-only: it uses `/proc/<pid>/cmdline` to recognise the launcher; elsewhere a restart is reported as not requested and the server
 must be restarted by hand.
 
 ## Menu rule: one concern at a time
@@ -703,13 +713,13 @@ with `LOG_FORMAT=json`, a line is a JSON object a log collector can parse:
 Otherwise it is a readable `ts level event key=value` line (`LOG_FORMAT=text` forces it). A field named like a secret
 (password, token, cookie, authorization, key, session) is written as `[redacted]`, an error is reduced to its name and
 message, and a long value is cut, so a log can be shipped without scrubbing. Modules can use the same logger:
-`import { log } from "@epnexo/core/log"`.
+`import { log } from "@modunexo/core/log"`.
 
 ### Backup and restore
 
 ```sh
-scripts/backup.sh                       # writes backups/epnexo-backup-<UTC time>/
-scripts/restore.sh backups/epnexo-backup-20261018T120000Z --database-url postgres://...
+scripts/backup.sh                       # writes backups/modunexo-backup-<UTC time>/
+scripts/restore.sh backups/modunexo-backup-20261018T120000Z --database-url postgres://...
 ```
 
 A backup folder holds `database.dump` (PostgreSQL custom format), `modules.tar.gz` (installed modules, without
@@ -718,7 +728,7 @@ owner only: the dump contains every password hash and every encrypted secret. Op
 (default `DATABASE_URL`), `--modules-dir`, `--data-dir`. The scripts use the PostgreSQL client tools from the `PATH` or,
 if they are not installed, run them inside the compose `db` service.
 
-**The master key is not in the backup, on purpose.** Stored secrets are encrypted with `EPNEXO_MASTER_KEY`; keep it (and
+**The master key is not in the backup, on purpose.** Stored secrets are encrypted with `MODUNEXO_MASTER_KEY`; keep it (and
 your `.env`) somewhere else, such as a password manager. A restore without it works, but the stored secrets have to be
 typed again.
 
@@ -730,14 +740,14 @@ before you need one, and copy the backup folders off the machine.
 ### Container and CI
 
 ```sh
-export EPNEXO_MASTER_KEY="$(openssl rand -base64 48)"   # keep it; see Backup and restore
+export MODUNEXO_MASTER_KEY="$(openssl rand -base64 48)"   # keep it; see Backup and restore
 docker compose --profile app up -d --build               # db + web on 127.0.0.1:3000
-docker compose exec web npm run epnexo -- admin create --email you@example.com --name "Your Name"
+docker compose exec web npm run modunexo -- admin create --email you@example.com --name "Your Name"
 ```
 
 The `web` service is behind the `app` profile, so the development flow (`docker compose up -d db`) is unchanged. The
 image runs as a non-root user, applies the migrations on every start, and has a health check on `/api/health`.
-Installed modules and received packages live in the `epnexo-modules` and `epnexo-data` volumes (back them up with
+Installed modules and received packages live in the `modunexo-modules` and `modunexo-data` volumes (back them up with
 `scripts/backup.sh --modules-dir ... --data-dir ...`, or copy the volumes). Set `WEB_PUBLIC_URL` to the public https
 origin when the app sits behind a TLS proxy. The image keeps the dev dependencies on purpose: installing a module
 rebuilds the web app inside the container.
@@ -752,7 +762,7 @@ every push and pull request.
   targets (`apps/web/src/server/security-headers.ts`). It has no `script-src` on purpose: the app has inline scripts.
   `Strict-Transport-Security` is sent only when `WEB_PUBLIC_URL` is https at build time.
 - **Build environment.** `next build` runs with an allowlist of variables (`PATH`, `HOME`, locale, `NEXT_*`,
-  `NODE_OPTIONS`, `WEB_PUBLIC_URL`, ...), never with `EPNEXO_MASTER_KEY` or a database URL.
+  `NODE_OPTIONS`, `WEB_PUBLIC_URL`, ...), never with `MODUNEXO_MASTER_KEY` or a database URL.
 - **Cookies.** Settings > Security warns when sign-in cookies are not `Secure` because `WEB_PUBLIC_URL` is not https.
 - **Installing is a trust decision.** A module runs with full access to the platform and its database. The Apps
   screen asks for an explicit acknowledgement and the API refuses `POST /api/apps/operations` unless the body is

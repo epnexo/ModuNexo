@@ -8,7 +8,7 @@ import { MODULES_DIR, discoverModules, resolveModulesDir } from "../src/discover
 
 let root: string;
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "epnexo-modules-"));
+  root = mkdtempSync(join(tmpdir(), "modunexo-modules-"));
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
@@ -51,7 +51,7 @@ describe("discoverModules", () => {
   });
 
   it("follows a symlinked module folder", async () => {
-    const elsewhere = mkdtempSync(join(tmpdir(), "epnexo-linked-"));
+    const elsewhere = mkdtempSync(join(tmpdir(), "modunexo-linked-"));
     try {
       mkdirSync(join(elsewhere, "linked"));
       writeFileSync(

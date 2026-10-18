@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { SDK_VERSION, type ModuleManifest } from "@epnexo/sdk";
+import { SDK_VERSION, type ModuleManifest } from "@modunexo/sdk";
 import { readPackageName, registrationModulesFor } from "../src/codegen/enabled.ts";
 import { RegistrationError } from "../src/codegen/render.ts";
 import { Registry } from "../src/registry.ts";
@@ -11,7 +11,7 @@ import type { ModuleStatus } from "../src/lifecycle/status.ts";
 
 let dir: string;
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "epnexo-enabled-"));
+  dir = mkdtempSync(join(tmpdir(), "modunexo-enabled-"));
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 

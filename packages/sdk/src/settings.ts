@@ -4,7 +4,7 @@
  * `getSetting` asks it. A symbol and not an import, so the SDK stays free of database code and every copy of it
  * that a bundler produces finds the same reader.
  */
-export const SETTINGS_READER: unique symbol = Symbol.for("epnexo.settings.reader") as never;
+export const SETTINGS_READER: unique symbol = Symbol.for("modunexo.settings.reader") as never;
 
 export type SettingValue = string | number | boolean;
 

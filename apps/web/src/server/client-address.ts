@@ -1,4 +1,4 @@
-import { CLIENT_IP_HEADER, formatIp, parseIp, splitForwarded } from "@epnexo/core/auth";
+import { CLIENT_IP_HEADER, formatIp, parseIp, splitForwarded } from "@modunexo/core/auth";
 
 export { CLIENT_IP_HEADER };
 

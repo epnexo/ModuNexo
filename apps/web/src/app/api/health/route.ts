@@ -1,4 +1,4 @@
-import { log } from "@epnexo/core/log";
+import { log } from "@modunexo/core/log";
 import { checkHealth } from "../../../server/health";
 import { platform } from "../../../server/platform";
 

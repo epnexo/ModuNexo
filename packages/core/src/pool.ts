@@ -25,7 +25,7 @@ export function createPool(connectionString: string, options: pg.PoolConfig = {}
 
 declare global {
   // Kept on globalThis so a dev server that reloads modules does not leak a new pool each time.
-  var __epnexoPool: pg.Pool | undefined;
+  var __modunexoPool: pg.Pool | undefined;
 }
 
 /**
@@ -33,10 +33,10 @@ declare global {
  * Short timeouts keep a page from hanging when the database is down.
  */
 export function getPool(): pg.Pool {
-  globalThis.__epnexoPool ??= createPool(resolveDatabaseUrl(), {
+  globalThis.__modunexoPool ??= createPool(resolveDatabaseUrl(), {
     max: 5,
     connectionTimeoutMillis: 3000,
     statement_timeout: 15000,
   });
-  return globalThis.__epnexoPool;
+  return globalThis.__modunexoPool;
 }

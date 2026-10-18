@@ -7,7 +7,7 @@ const headers = (init: Record<string, string>) => new Headers(init);
 describe("sameOriginRequest", () => {
   it("is true when the Origin names the Host the request was sent to", () => {
     assert.equal(sameOriginRequest(headers({ origin: "http://192.168.1.20:3000", host: "192.168.1.20:3000" })), true);
-    assert.equal(sameOriginRequest(headers({ origin: "https://epnexo.lan", host: "epnexo.lan" })), true);
+    assert.equal(sameOriginRequest(headers({ origin: "https://modunexo.lan", host: "modunexo.lan" })), true);
   });
 
   it("is false for another site, another port, no Origin, or an Origin that is not a URL", () => {

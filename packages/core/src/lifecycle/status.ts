@@ -1,4 +1,4 @@
-import type { ModuleManifest } from "@epnexo/sdk";
+import type { ModuleManifest } from "@modunexo/sdk";
 import { gt } from "semver";
 import { type InstalledModule, type ModuleStatusKind, isValidInstalledVersion } from "./transitions.ts";
 

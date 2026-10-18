@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 import type pg from "pg";
-import type { SettingDeclaration } from "@epnexo/sdk";
+import type { SettingDeclaration } from "@modunexo/sdk";
 import { SecretUnreadableError } from "../src/settings/crypto.ts";
 import { SettingValueError, SettingsError, SettingsService } from "../src/settings/service.ts";
 import { migrate } from "../src/runner.ts";

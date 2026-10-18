@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import type pg from "pg";
-import type { ModuleManifest } from "@epnexo/sdk";
+import type { ModuleManifest } from "@modunexo/sdk";
 import {
   type HookContext,
   type HookLoader,
@@ -484,7 +484,7 @@ describe("LifecycleService: rules run before anything else", () => {
 
   onScratch("the core migrations run for an accepted action, and are reported under their own step when they fail", async (box, db, hooks) => {
     const mod = withData(box.add());
-    const broken = new LifecycleService(db, box.registry(), { loadHooks: hooks.load, lockPollMs: 20, moduleDirs: { core: join(tmpdir(), "epnexo-no-such-core-dir") } });
+    const broken = new LifecycleService(db, box.registry(), { loadHooks: hooks.load, lockPollMs: 20, moduleDirs: { core: join(tmpdir(), "modunexo-no-such-core-dir") } });
     const error = await rejection(broken.install(mod.manifest.id));
     assert.ok(error instanceof LifecycleStepError);
     assert.equal(error.step, "core migrations");
@@ -626,7 +626,7 @@ describe("LifecycleService: list", () => {
 
 describe("fileHookLoader", () => {
   const withModulesDir = async (run: (dir: string) => Promise<void>) => {
-    const dir = mkdtempSync(join(tmpdir(), "epnexo-hooks-"));
+    const dir = mkdtempSync(join(tmpdir(), "modunexo-hooks-"));
     try {
       await run(dir);
     } finally {

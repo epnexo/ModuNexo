@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { SettingDeclaration } from "@epnexo/sdk";
+import type { SettingDeclaration } from "@modunexo/sdk";
 import { moduleAppearanceBody, planModuleSettingsUpdate } from "../src/server/settings-form.ts";
 
 const DECLARATIONS: SettingDeclaration[] = [

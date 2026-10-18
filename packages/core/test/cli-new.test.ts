@@ -10,8 +10,8 @@ const repoNodeModules = join(dirname(fileURLToPath(import.meta.url)), "../../../
 
 let work: string;
 beforeEach(() => {
-  work = mkdtempSync(join(tmpdir(), "epnexo-cli-new-"));
-  // A module folder resolves "@epnexo/sdk" by walking up to a node_modules, as it does under the repository.
+  work = mkdtempSync(join(tmpdir(), "modunexo-cli-new-"));
+  // A module folder resolves "@modunexo/sdk" by walking up to a node_modules, as it does under the repository.
   symlinkSync(repoNodeModules, join(work, "node_modules"));
 });
 afterEach(() => rmSync(work, { recursive: true, force: true }));

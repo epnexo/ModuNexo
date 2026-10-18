@@ -4,7 +4,7 @@ import { servedOverHttpsWithoutPublicUrl } from "../src/server/public-url-warnin
 
 const headers = (init: Record<string, string>) => new Headers(init);
 const unset = { baseURL: undefined, secureCookies: false };
-const https = { baseURL: "https://epnexo.example.com", secureCookies: true };
+const https = { baseURL: "https://modunexo.example.com", secureCookies: true };
 
 describe("servedOverHttpsWithoutPublicUrl", () => {
   it("is true when a proxy says the request was HTTPS and WEB_PUBLIC_URL is not an https origin", () => {
@@ -14,11 +14,11 @@ describe("servedOverHttpsWithoutPublicUrl", () => {
   });
 
   it("is true when the browser's Origin is https and WEB_PUBLIC_URL is not an https origin", () => {
-    assert.equal(servedOverHttpsWithoutPublicUrl(headers({ origin: "https://epnexo.example.com" }), unset), true);
+    assert.equal(servedOverHttpsWithoutPublicUrl(headers({ origin: "https://modunexo.example.com" }), unset), true);
   });
 
   it("is false once WEB_PUBLIC_URL is an https origin", () => {
-    assert.equal(servedOverHttpsWithoutPublicUrl(headers({ "x-forwarded-proto": "https", origin: "https://epnexo.example.com" }), https), false);
+    assert.equal(servedOverHttpsWithoutPublicUrl(headers({ "x-forwarded-proto": "https", origin: "https://modunexo.example.com" }), https), false);
   });
 
   it("is false for plain HTTP, which is the supported local setup", () => {

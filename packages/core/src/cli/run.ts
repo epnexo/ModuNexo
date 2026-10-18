@@ -32,7 +32,7 @@ export interface CliIo {
 
 const consoleIo: CliIo = { out: (line) => console.log(line), err: (line) => console.error(line) };
 
-const USAGE = `usage: epnexo <command> [options]
+const USAGE = `usage: modunexo <command> [options]
 
 commands:
   modules list [--json]            every known module with its state and flags
@@ -425,7 +425,7 @@ const SIGN_IN_DISABLED_NOTICE = [
   "sign-in is now disabled.",
   "Anyone who can reach this server from the local network can use it, including installing modules,",
   "which runs code with access to the database. Requests that carry a public address are refused.",
-  'Switch it back on with "npm run epnexo -- auth require".',
+  'Switch it back on with "npm run modunexo -- auth require".',
 ];
 
 /** The sign-in mode lives in the database and needs no master key, so it can be changed while locked out. */

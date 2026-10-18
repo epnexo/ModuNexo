@@ -1,6 +1,6 @@
 import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
-import { ManifestError, type ModuleManifest, validateManifest } from "@epnexo/sdk";
+import { ManifestError, type ModuleManifest, validateManifest } from "@modunexo/sdk";
 import semver from "semver";
 import { RESERVED_PATHS, isReserved } from "../codegen/render.ts";
 import { readMigrationFiles } from "../migrations.ts";
@@ -41,7 +41,7 @@ export type PackageValidation =
 
 const MAX_JSON_BYTES = 1024 * 1024;
 const PACKAGE_NAME = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/;
-const SDK_PACKAGE = "@epnexo/sdk";
+const SDK_PACKAGE = "@modunexo/sdk";
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -109,7 +109,7 @@ export function validatePackageTree(root: string, context: PackageContext): Pack
       problems.push(`package.json name ${JSON.stringify(name)} is not a valid package name`);
     } else {
       packageName = name;
-      if (name.startsWith("@epnexo/")) problems.push(`package.json name "${name}" is in the platform's own @epnexo scope, which a module may not use`);
+      if (name.startsWith("@modunexo/")) problems.push(`package.json name "${name}" is in the platform's own @modunexo scope, which a module may not use`);
       else if (context.installedVersion(name) !== null && (manifest === undefined || context.modulePackages.get(manifest.id) !== name)) {
         problems.push(`package.json name "${name}" collides with the installed package "${name}"`);
       }

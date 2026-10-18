@@ -59,7 +59,7 @@ export async function serve({ dev, host, port, dir }: ServeOptions): Promise<voi
     server.once("error", reject);
     server.listen(port, host, () => {
       server.off("error", reject);
-      console.log(`epnexo web (${dev ? "development" : "production"}) listening on http://${host.includes(":") ? `[${host}]` : host}:${port}`);
+      console.log(`modunexo web (${dev ? "development" : "production"}) listening on http://${host.includes(":") ? `[${host}]` : host}:${port}`);
       resolve();
     });
   });

@@ -13,11 +13,11 @@ describe("resolvePublicUrl", () => {
   });
 
   it("marks cookies secure for an https origin and drops a trailing slash", () => {
-    assert.deepEqual(resolvePublicUrl({ WEB_PUBLIC_URL: "https://epnexo.example.com/" }), { baseURL: "https://epnexo.example.com", secureCookies: true });
+    assert.deepEqual(resolvePublicUrl({ WEB_PUBLIC_URL: "https://modunexo.example.com/" }), { baseURL: "https://modunexo.example.com", secureCookies: true });
   });
 
   it("refuses anything that is not a bare http or https origin, naming the variable", () => {
-    for (const value of ["epnexo.example.com", "ftp://x", "https://x/app", "https://x?y=1", "https://user:pw@x", "https://", "javascript:alert(1)"]) {
+    for (const value of ["modunexo.example.com", "ftp://x", "https://x/app", "https://x?y=1", "https://user:pw@x", "https://", "javascript:alert(1)"]) {
       assert.throws(
         () => resolvePublicUrl({ WEB_PUBLIC_URL: value }),
         (error: unknown) => error instanceof LaunchError && error.message.includes("WEB_PUBLIC_URL") && !error.message.includes("pw@"),

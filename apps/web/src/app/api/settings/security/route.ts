@@ -1,5 +1,5 @@
-import { setTrustedProxies } from "@epnexo/core/auth";
-import { SettingValueError } from "@epnexo/core/settings";
+import { setTrustedProxies } from "@modunexo/core/auth";
+import { SettingValueError } from "@modunexo/core/settings";
 import { platform } from "../../../../server/platform.ts";
 import { authorizeWrite, json, readJsonBody } from "../../../../server/settings-api.ts";
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { SDK_VERSION, type ModuleManifest, type PageDeclaration } from "@epnexo/sdk";
+import { SDK_VERSION, type ModuleManifest, type PageDeclaration } from "@modunexo/sdk";
 import { GENERATED_HEADER, REGISTRY_FILE, RESERVED_PATHS, RegistrationError, type RegistrationModule, renderRegistration } from "../src/codegen/render.ts";
 
 /** A neutral fixture module; `packageName` defaults to a scoped name derived from the id. */
@@ -54,7 +54,7 @@ describe("renderRegistration: registry file", () => {
     }
     assert.match(GENERATED_HEADER, /GENERATED/);
     assert.match(GENERATED_HEADER, /do not edit/i);
-    assert.match(GENERATED_HEADER, /@epnexo\/core/);
+    assert.match(GENERATED_HEADER, /@modunexo\/core/);
   });
 
   it("imports each manifest through its package and lists them in dependency order", () => {

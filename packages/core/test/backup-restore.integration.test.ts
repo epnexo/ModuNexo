@@ -22,7 +22,7 @@ interface Outcome {
 }
 const run = (script: string, args: string[]): Promise<Outcome> =>
   new Promise((resolve) => {
-    execFile("bash", [script, ...args], { env: { PATH: process.env.PATH, HOME: process.env.HOME, EPNEXO_MASTER_KEY: "m".repeat(40) } }, (error, out, err) => {
+    execFile("bash", [script, ...args], { env: { PATH: process.env.PATH, HOME: process.env.HOME, MODUNEXO_MASTER_KEY: "m".repeat(40) } }, (error, out, err) => {
       resolve({ code: error === null ? 0 : ((error as { code?: number }).code ?? 1), out, err });
     });
   });
@@ -50,10 +50,10 @@ const put = (root: string, path: string, content: string) => {
   mkdirSync(dirname(join(root, path)), { recursive: true });
   writeFileSync(join(root, path), content);
 };
-const backups = (dir: string) => readdirSync(dir).filter((name) => name.startsWith("epnexo-backup-"));
+const backups = (dir: string) => readdirSync(dir).filter((name) => name.startsWith("modunexo-backup-"));
 
 before(async () => {
-  work = mkdtempSync(join(tmpdir(), "epnexo-backup-"));
+  work = mkdtempSync(join(tmpdir(), "modunexo-backup-"));
   if (!(await toolsAvailable())) {
     skipReason = "neither PostgreSQL client tools nor the compose db service are available";
     return;
@@ -95,7 +95,7 @@ describe("backup.sh and restore.sh", () => {
     for (const name of readdirSync(made!)) assert.equal(statSync(join(made!, name)).mode & 0o077, 0, `${name} is private`);
     assert.equal(statSync(made!).mode & 0o077, 0, "the folder is private");
     const info = readFileSync(join(made!, "BACKUP_INFO"), "utf8");
-    assert.match(info, /EPNEXO_MASTER_KEY is not included/);
+    assert.match(info, /MODUNEXO_MASTER_KEY is not included/);
     for (const name of readdirSync(made!)) assert.ok(!readFileSync(join(made!, name)).includes("m".repeat(40)), `${name} holds no master key`);
   });
 

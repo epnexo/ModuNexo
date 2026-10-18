@@ -9,14 +9,14 @@ import { createServer } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, describe, it } from "node:test";
-import { BrandService } from "@epnexo/core/settings";
-import { createAdministrator, createAuth, setSignInMode } from "@epnexo/core/auth";
-import { applyPackage, requestRestart } from "@epnexo/core/install";
-import { buildPackageContext, intakePackage, packFolder } from "@epnexo/core/packages";
-import { createPool } from "@epnexo/core/pool";
-import { scaffoldModule } from "@epnexo/core/scaffold";
-import { Registry, migrate } from "@epnexo/core";
-import { createScratchDatabase } from "@epnexo/core/testing";
+import { BrandService } from "@modunexo/core/settings";
+import { createAdministrator, createAuth, setSignInMode } from "@modunexo/core/auth";
+import { applyPackage, requestRestart } from "@modunexo/core/install";
+import { buildPackageContext, intakePackage, packFolder } from "@modunexo/core/packages";
+import { createPool } from "@modunexo/core/pool";
+import { scaffoldModule } from "@modunexo/core/scaffold";
+import { Registry, migrate } from "@modunexo/core";
+import { createScratchDatabase } from "@modunexo/core/testing";
 import type pg from "pg";
 import { acquireWebLock } from "./helpers/web-lock.ts";
 
@@ -112,7 +112,7 @@ function writeReaderModule(): string {
   writeFileSync(join(folder, "package.json"), JSON.stringify({ name: `@local/${READER}`, version: "0.1.0", private: true, type: "module" }));
   writeFileSync(
     join(folder, "manifest.ts"),
-    `import { SDK_VERSION, defineModule } from "@epnexo/sdk";
+    `import { SDK_VERSION, defineModule } from "@modunexo/sdk";
 export default defineModule({
   id: "${READER}",
   version: "0.1.0",
@@ -129,7 +129,7 @@ export default defineModule({
   writeFileSync(join(folder, "migrations", "0001_init.sql"), "create table marks (id int);\n");
   writeFileSync(
     join(folder, "web", "page.tsx"),
-    `import { getDb } from "@epnexo/sdk";
+    `import { getDb } from "@modunexo/sdk";
 
 export const metadata = { title: "E2E Reader" };
 
@@ -171,12 +171,12 @@ before(async () => {
   await setSignInMode(db, "disabled", "e2e");
   await new BrandService(db).setProfile({ kind: "personal", name: "E2E" }, "e2e");
 
-  // Inside the repository (var/ is not tracked) so the author's manifest.ts can resolve @epnexo/sdk.
+  // Inside the repository (var/ is not tracked) so the author's manifest.ts can resolve @modunexo/sdk.
   mkdirSync(join(REPO_ROOT, "var"), { recursive: true });
   work = mkdtempSync(join(REPO_ROOT, "var", "data-e2e-"));
   dataDir = join(work, "var");
   port = await freePort();
-  appEnv = { DATABASE_URL: scratch.url, EPNEXO_MASTER_KEY: MASTER_KEY, WEB_HOST: "127.0.0.1", WEB_PORT: String(port), NODE_ENV: "production", EPNEXO_DATA_DIR: dataDir };
+  appEnv = { DATABASE_URL: scratch.url, MODUNEXO_MASTER_KEY: MASTER_KEY, WEB_HOST: "127.0.0.1", WEB_PORT: String(port), NODE_ENV: "production", MODUNEXO_DATA_DIR: dataDir };
 
   const generated = await runNode(["--import", "tsx", CLI, "registry:generate"]);
   assert.equal(generated.code, 0, generated.output);

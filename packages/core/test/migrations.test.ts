@@ -7,7 +7,7 @@ import { checksum, planMigrations, readMigrationFiles } from "../src/migrations.
 
 let dir: string;
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "epnexo-migrations-"));
+  dir = mkdtempSync(join(tmpdir(), "modunexo-migrations-"));
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 

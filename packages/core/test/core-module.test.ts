@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
-import { SDK_VERSION, validateManifest } from "@epnexo/sdk";
+import { SDK_VERSION, validateManifest } from "@modunexo/sdk";
 import { CORE_MODULE_ID, CORE_VERSION, coreManifest } from "../src/index.ts";
 
 describe("coreManifest", () => {

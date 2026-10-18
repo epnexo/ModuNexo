@@ -1,7 +1,7 @@
 import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { SDK_VERSION } from "@epnexo/sdk";
+import { SDK_VERSION } from "@modunexo/sdk";
 import type pg from "pg";
 import type { PackageContext } from "./validate.ts";
 

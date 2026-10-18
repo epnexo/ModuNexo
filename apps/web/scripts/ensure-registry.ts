@@ -3,7 +3,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { REGISTRY_FILE, generateRegistration } from "@epnexo/core";
+import { REGISTRY_FILE, generateRegistration } from "@modunexo/core";
 
 export const WEB_ROOT = fileURLToPath(new URL("../", import.meta.url));
 

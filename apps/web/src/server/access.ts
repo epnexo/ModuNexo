@@ -1,4 +1,4 @@
-import type { SignInMode } from "@epnexo/core/auth";
+import type { SignInMode } from "@modunexo/core/auth";
 
 export interface AccessInput {
   /** The request path, without the query string. */

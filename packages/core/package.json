@@ -1,5 +1,5 @@
 {
-  "name": "@epnexo/core",
+  "name": "@modunexo/core",
   "version": "0.1.0",
   "license": "AGPL-3.0-only",
   "private": true,
@@ -22,7 +22,7 @@
     "./log": "./src/log.ts"
   },
   "dependencies": {
-    "@epnexo/sdk": "^0.1.0",
+    "@modunexo/sdk": "^0.1.0",
     "better-auth": "^1.7.7",
     "kysely": "^0.29.6",
     "pg": "^8.23.1",

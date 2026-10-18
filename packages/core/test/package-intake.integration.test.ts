@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SDK_VERSION } from "@epnexo/sdk";
+import { SDK_VERSION } from "@modunexo/sdk";
 import { after, afterEach, before, beforeEach, describe, it } from "node:test";
 import type pg from "pg";
 import { intakePackage } from "../src/packages/intake.ts";
@@ -37,7 +37,7 @@ after(async () => {
 });
 
 beforeEach(() => {
-  work = mkdtempSync(join(tmpdir(), "epnexo-intake-"));
+  work = mkdtempSync(join(tmpdir(), "modunexo-intake-"));
   dataDir = join(work, "var");
 });
 afterEach(() => rmSync(work, { recursive: true, force: true }));

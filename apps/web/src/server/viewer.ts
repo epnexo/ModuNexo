@@ -1,4 +1,4 @@
-import { readSignInMode } from "@epnexo/core/auth";
+import { readSignInMode } from "@modunexo/core/auth";
 import type { Subject } from "./nav.ts";
 import { platform } from "./platform.ts";
 import { sessionIsUsable } from "./session.ts";

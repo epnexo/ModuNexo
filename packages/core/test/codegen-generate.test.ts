@@ -6,7 +6,7 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { SDK_VERSION, type ModuleManifest, type PageDeclaration } from "@epnexo/sdk";
+import { SDK_VERSION, type ModuleManifest, type PageDeclaration } from "@modunexo/sdk";
 import { DEFAULT_WEB_ROOT, OWNERSHIP_FILE, generateRegistration } from "../src/codegen/generate.ts";
 import { GENERATED_HEADER, REGISTRY_FILE, RegistrationError, type RegistrationModule } from "../src/codegen/render.ts";
 
@@ -15,7 +15,7 @@ const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 
 let root: string;
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "epnexo-codegen-"));
+  root = mkdtempSync(join(tmpdir(), "modunexo-codegen-"));
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
@@ -45,7 +45,7 @@ describe("generateRegistration: output", () => {
     const plan = generate([]);
     assert.deepEqual(plan.writes.map((w) => [w.path, w.change]), [[REGISTRY_FILE, "create"], [OWNERSHIP_FILE, "create"]]);
     assert.match(read(REGISTRY_FILE), /export const modules: readonly ModuleManifest\[\] = \[\];/);
-    assert.deepEqual(ownership(), { generator: "@epnexo/core registry:generate", version: 1, packages: [], files: [REGISTRY_FILE] });
+    assert.deepEqual(ownership(), { generator: "@modunexo/core registry:generate", version: 1, packages: [], files: [REGISTRY_FILE] });
   });
 
   it("writes the registry, one route file per declared page, and records them in the ownership manifest", () => {
@@ -54,6 +54,21 @@ describe("generateRegistration: output", () => {
     for (const path of ownership().files) assert.ok(read(path).startsWith(GENERATED_HEADER), path);
     assert.deepEqual(ownership().packages, ["@fixture/alpha", "@fixture/beta"]);
     assert.deepEqual(ownership().files, ["src/app/(shell)/alpha/export/route.ts", "src/app/(shell)/alpha/page.tsx", "src/app/(shell)/beta/[id]/page.tsx", REGISTRY_FILE]);
+  });
+
+  it("takes over a tree written before the project was renamed: the old generator name and header are still its own", () => {
+    generate([fixture("alpha", [page("/alpha")])]);
+    // Rewrite what the previous version left on disk: its generator name and the header of every file it generated.
+    const legacy = (path: string) => put(path, read(path).replaceAll("@modunexo/core", "@epnexo/core"));
+    for (const path of ownership().files) legacy(path);
+    legacy(OWNERSHIP_FILE);
+    assert.match(read(OWNERSHIP_FILE), /@epnexo\/core registry:generate/);
+
+    const plan = generate([fixture("beta", [page("/beta")])]);
+    assert.ok(plan.deletions.includes("src/app/(shell)/alpha/page.tsx"), "the old generated route is its own to delete");
+    assert.equal(existsSync(join(root, "src/app/(shell)/alpha/page.tsx")), false);
+    assert.match(read(OWNERSHIP_FILE), /@modunexo\/core registry:generate/);
+    assert.ok(read(REGISTRY_FILE).startsWith(GENERATED_HEADER), "the registry is rewritten with the new header");
   });
 
   it("is idempotent: a second run changes nothing and reports every file as unchanged", () => {
@@ -159,7 +174,7 @@ describe("generateRegistration: owning its output", () => {
   it("refuses an unreadable ownership manifest instead of guessing what it owns", () => {
     put(OWNERSHIP_FILE, "{ not json");
     assert.throws(() => generate([]), /src\/generated\/\.manifest\.json.*not a valid ownership manifest/);
-    put(OWNERSHIP_FILE, JSON.stringify({ generator: "@epnexo/core registry:generate", version: 1, files: ["../outside.ts"], packages: [] }));
+    put(OWNERSHIP_FILE, JSON.stringify({ generator: "@modunexo/core registry:generate", version: 1, files: ["../outside.ts"], packages: [] }));
     assert.throws(() => generate([]), /not a valid ownership manifest/);
   });
 
@@ -190,7 +205,7 @@ describe("generateRegistration: a run that fails partway", () => {
 
   /** The tree a clean run of `modules` produces in an empty folder, plus any hand-written files in `extra`. */
   function cleanTree(modules: RegistrationModule[], extra: Record<string, string> = {}): string[] {
-    const fresh = mkdtempSync(join(tmpdir(), "epnexo-codegen-clean-"));
+    const fresh = mkdtempSync(join(tmpdir(), "modunexo-codegen-clean-"));
     try {
       for (const [path, content] of Object.entries(extra)) {
         mkdirSync(dirname(join(fresh, path)), { recursive: true });
@@ -268,7 +283,7 @@ describe("the generated registry", () => {
       tsconfig,
       JSON.stringify({
         extends: join(repoRoot, "tsconfig.base.json"),
-        compilerOptions: { typeRoots: [join(repoRoot, "node_modules/@types")], paths: { "@epnexo/sdk": [join(repoRoot, "packages/sdk/src/index.ts")] } },
+        compilerOptions: { typeRoots: [join(repoRoot, "node_modules/@types")], paths: { "@modunexo/sdk": [join(repoRoot, "packages/sdk/src/index.ts")] } },
         files: [join(root, REGISTRY_FILE)],
       }),
     );
@@ -295,7 +310,7 @@ describe("the generated registry", () => {
 });
 
 describe("generateRegistration: the (shell) route group", () => {
-  const LEGACY_MANIFEST = (files: string[]) => JSON.stringify({ generator: "@epnexo/core registry:generate", version: 1, packages: [], files });
+  const LEGACY_MANIFEST = (files: string[]) => JSON.stringify({ generator: "@modunexo/core registry:generate", version: 1, packages: [], files });
   const generatedStub = `${GENERATED_HEADER}\nexport { default } from "@fixture/alpha/web/page.tsx";\n`;
 
   it("refuses a hand-written page outside the group that would serve the same URL, and writes nothing", () => {

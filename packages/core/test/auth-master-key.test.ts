@@ -12,7 +12,7 @@ describe("resolveMasterKey", () => {
   it("refuses a missing key and names the variable", () => {
     assert.throws(
       () => resolveMasterKey({}),
-      (error: unknown) => error instanceof MasterKeyError && error.message.includes("EPNEXO_MASTER_KEY") && error.message.includes("not set"),
+      (error: unknown) => error instanceof MasterKeyError && error.message.includes("MODUNEXO_MASTER_KEY") && error.message.includes("not set"),
     );
   });
 
@@ -55,5 +55,32 @@ describe("deriveSecret", () => {
 
   it("refuses an empty purpose", () => {
     assert.throws(() => deriveSecret(KEY, ""), /purpose/);
+  });
+});
+
+describe("the project rename", () => {
+  it("accepts MODUNEXO_MASTER_KEY, and the old EPNEXO_MASTER_KEY as an alias", () => {
+    assert.equal(resolveMasterKey({ MODUNEXO_MASTER_KEY: KEY }), KEY);
+    assert.equal(resolveMasterKey({ EPNEXO_MASTER_KEY: KEY }), KEY);
+  });
+
+  it("prefers the new name when both are set, and falls back when the new one is blank", () => {
+    const other = "o".repeat(40);
+    assert.equal(resolveMasterKey({ MODUNEXO_MASTER_KEY: KEY, EPNEXO_MASTER_KEY: other }), KEY);
+    assert.equal(resolveMasterKey({ MODUNEXO_MASTER_KEY: "  ", EPNEXO_MASTER_KEY: other }), other);
+  });
+
+  it("names the new variable when the key is missing, and says the old name still works", () => {
+    assert.throws(
+      () => resolveMasterKey({}),
+      (error: unknown) => error instanceof MasterKeyError && error.message.includes("MODUNEXO_MASTER_KEY") && error.message.includes("EPNEXO_MASTER_KEY"),
+    );
+  });
+
+  // Secrets already stored are encrypted under keys derived with these exact inputs: the derivation must never change
+  // with the project's name, or every stored secret stops decrypting and every session ends.
+  it("derives exactly the same secrets as before the rename (stored secrets must still decrypt)", () => {
+    assert.equal(deriveSecret(KEY, "auth"), "79ad81822ce6654ff6fffec3eec281cf947b61b4424f1657e660578b401c44b8");
+    assert.equal(deriveSecret(KEY, "settings"), "5b296b1f3a163d1ce236a0723872a38cd59b87e99ca965fcb40b15321ad1790a");
   });
 });

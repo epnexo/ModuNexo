@@ -7,7 +7,7 @@
 # tables, and a modules folder that already holds modules. It never overwrites. The database must already exist
 # (create it empty first).
 #
-# After a restore on a new machine: copy your .env (with the SAME EPNEXO_MASTER_KEY), then
+# After a restore on a new machine: copy your .env (with the SAME MODUNEXO_MASTER_KEY), then
 #   npm install && npm run registry:generate && npm run web:build
 # so the restored modules are linked and the web app is built with them.
 set -euo pipefail
@@ -23,7 +23,7 @@ usage() {
 backup=""
 url="${DATABASE_URL:-}"
 modules="$PG_ROOT/modules"
-data="${EPNEXO_DATA_DIR:-$PG_ROOT/var}"
+data="${MODUNEXO_DATA_DIR:-${EPNEXO_DATA_DIR:-$PG_ROOT/var}}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --database-url) url="${2:?--database-url needs a value}"; shift 2 ;;
@@ -56,4 +56,4 @@ mkdir -p "$modules" "$data"
 tar -xzf "$backup/modules.tar.gz" -C "$modules"
 tar -xzf "$backup/packages.tar.gz" -C "$data"
 echo "restored $(cat "$backup/BACKUP_INFO" | head -n 1) into $(db_part "$url" name)"
-echo "next: copy your .env (same EPNEXO_MASTER_KEY), then: npm install && npm run registry:generate && npm run web:build"
+echo "next: copy your .env (same MODUNEXO_MASTER_KEY), then: npm install && npm run registry:generate && npm run web:build"

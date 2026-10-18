@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { ManifestError, SDK_VERSION, validateManifest } from "@epnexo/sdk";
+import { ManifestError, SDK_VERSION, validateManifest } from "@modunexo/sdk";
 import { CORE_MODULE_ID } from "../core-module.ts";
 
 /** The generator refused: nothing was written. */
@@ -35,7 +35,7 @@ function templates(id: string, schema: string, name: string): Record<string, str
   const path = `/${id}`;
   return {
     "package.json": `${JSON.stringify({ name: `@local/${id}`, version: "0.1.0", private: true, type: "module" }, null, 2)}\n`,
-    "manifest.ts": `import { SDK_VERSION, defineModule } from "@epnexo/sdk";
+    "manifest.ts": `import { SDK_VERSION, defineModule } from "@modunexo/sdk";
 
 export default defineModule({
   id: ${JSON.stringify(id)},
@@ -58,7 +58,7 @@ create table items (
   created_at timestamptz not null default now()
 );
 `,
-    "web/page.tsx": `import { getDb } from "@epnexo/sdk";
+    "web/page.tsx": `import { getDb } from "@modunexo/sdk";
 import { revalidatePath } from "next/cache";
 
 export const metadata = { title: ${JSON.stringify(name)} };

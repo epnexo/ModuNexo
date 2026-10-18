@@ -1,6 +1,6 @@
 ---
-name: epnexo-module
-description: "Create, extend or upgrade a custom module for the epnexo platform: generate it, give it data, relate it to other modules, pack and install it. Trigger: creating or changing a module under modules-src/, a manifest.ts, a module migration, or a module page."
+name: modunexo-module
+description: "Create, extend or upgrade a custom module for the modunexo platform: generate it, give it data, relate it to other modules, pack and install it. Trigger: creating or changing a module under modules-src/, a manifest.ts, a module migration, or a module page."
 license: Apache-2.0
 metadata:
   version: "1.0"
@@ -16,7 +16,7 @@ The user wants a new module (documents, contacts, anything), a change to one, or
 1. **Decide the shape before generating.** One module is one concern. Pick the `id` (kebab-case, also the folder and
    the URL), what data it owns (its own Postgres schema, named after the id with `_`), and which other modules it must
    read. Ask the user only for what you cannot infer.
-2. **Generate.** `npm run epnexo -- modules new <id> --name "<Name>"` writes `modules-src/<id>/` (manifest, a first
+2. **Generate.** `npm run modunexo -- modules new <id> --name "<Name>"` writes `modules-src/<id>/` (manifest, a first
    migration, a page that lists and adds rows with `getDb`). Edit that folder; do not copy another module.
 3. **Data.** Tables live in `migrations/NNNN_name.sql`, run with `search_path` set to the module's schema, so write
    `create table items (...)` without a schema prefix. **Applied files are append-only**: to change a table add
@@ -24,7 +24,7 @@ The user wants a new module (documents, contacts, anything), a change to one, or
    version does nothing).
 4. **Read and write data** only through the SDK, from a page, a server action or a route, never at import time:
    ```ts
-   import { getDb } from "@epnexo/sdk";
+   import { getDb } from "@modunexo/sdk";
    const { rows } = await getDb("my-module").query<{ id: number }>("select id from items where id = $1", [id]);
    await getDb("my-module").transaction(async (tx) => { await tx.query("..."); await tx.query("..."); });
    ```
@@ -41,16 +41,16 @@ The user wants a new module (documents, contacts, anything), a change to one, or
    `onUpgrade`, `onUninstall`). See the README sections "The module contract" and "Settings and appearance".
 7. **Package and install.**
    ```bash
-   npm run epnexo -- modules pack modules-src/<id> --out <id>.tgz     # prints the SHA-256
-   npm run epnexo -- modules add <id>.tgz --sha256 <hex>              # review only; nothing runs
-   npm run epnexo -- modules apply <hex>                              # place, build, migrate, restart
+   npm run modunexo -- modules pack modules-src/<id> --out <id>.tgz     # prints the SHA-256
+   npm run modunexo -- modules add <id>.tgz --sha256 <hex>              # review only; nothing runs
+   npm run modunexo -- modules apply <hex>                              # place, build, migrate, restart
    ```
    The same flow is on the Apps screen. Open the module's page and add a row to prove the data path.
 
 ## Rules
 
 - A module cannot bring npm packages; it can use what the platform already has (React, Next, the SDK). Its package
-  name is `@local/<id>`; the `@epnexo` scope is the platform's.
+  name is `@local/<id>`; the `@modunexo` scope is the platform's.
 - Every `kind: "page"` file must `export const metadata = { title: "..." }` next to its default export: the generated
   route re-exports both, and a page without it fails the web build.
 - Pages cannot sit under paths the shell reserves; `pack` and `add` list every problem.
@@ -62,5 +62,5 @@ The user wants a new module (documents, contacts, anything), a change to one, or
 
 ## Check before saying it works
 
-`npm run epnexo -- modules pack ...` exits 0, the module installs, its page renders with real data, and a second
+`npm run modunexo -- modules pack ...` exits 0, the module installs, its page renders with real data, and a second
 module that lists the first in `dependsOn` can read it and cannot write to it.

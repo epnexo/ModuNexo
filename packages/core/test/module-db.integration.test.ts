@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import type pg from "pg";
-import { DbAccessError } from "@epnexo/sdk";
+import { DbAccessError } from "@modunexo/sdk";
 import { ModuleDbService } from "../src/data/module-db.ts";
 import { migrate } from "../src/runner.ts";
 import { createPool } from "../src/pool.ts";

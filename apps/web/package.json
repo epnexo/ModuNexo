@@ -1,5 +1,5 @@
 {
-  "name": "@epnexo/web",
+  "name": "@modunexo/web",
   "version": "0.1.0",
   "license": "AGPL-3.0-only",
   "private": true,
@@ -8,8 +8,8 @@
     "typecheck": "node --import tsx scripts/ensure-registry.ts && next typegen && tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@epnexo/core": "^0.1.0",
-    "@epnexo/sdk": "^0.1.0",
+    "@modunexo/core": "^0.1.0",
+    "@modunexo/sdk": "^0.1.0",
     "better-auth": "^1.7.7",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

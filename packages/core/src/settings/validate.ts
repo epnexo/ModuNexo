@@ -1,4 +1,4 @@
-import type { SettingDeclaration } from "@epnexo/sdk";
+import type { SettingDeclaration } from "@modunexo/sdk";
 
 /** What a setting holds once it has been validated. A secret is a string too, and is never shown. */
 export type ParsedValue = string | number | boolean;

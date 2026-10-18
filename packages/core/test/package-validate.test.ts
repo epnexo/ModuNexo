@@ -3,12 +3,12 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { SDK_VERSION } from "@epnexo/sdk";
+import { SDK_VERSION } from "@modunexo/sdk";
 import { type PackageContext, validatePackageTree } from "../src/packages/validate.ts";
 
 let root: string;
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "epnexo-validate-"));
+  root = mkdtempSync(join(tmpdir(), "modunexo-validate-"));
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
@@ -136,8 +136,8 @@ describe("validatePackageTree: files and metadata", () => {
   });
 
   it("a package name in the platform's own scope, or one that is not a valid name", () => {
-    writeGood({ packageJson: { name: "@epnexo/core" } });
-    assert.match(problemsOf(), /@epnexo/);
+    writeGood({ packageJson: { name: "@modunexo/core" } });
+    assert.match(problemsOf(), /@modunexo/);
     writeGood({ packageJson: { name: "Bad Name!" } });
     assert.match(problemsOf(), /not a valid package name/);
   });
@@ -216,10 +216,10 @@ describe("validatePackageTree: dependencies are the platform's", () => {
   });
 
   it("the SDK is checked against the SDK version of this platform", () => {
-    writeGood({ packageJson: { peerDependencies: { "@epnexo/sdk": `^${SDK_VERSION}` } } });
+    writeGood({ packageJson: { peerDependencies: { "@modunexo/sdk": `^${SDK_VERSION}` } } });
     assert.equal(validatePackageTree(root, context()).ok, true);
-    writeGood({ packageJson: { peerDependencies: { "@epnexo/sdk": "^9.0.0" } } });
-    assert.match(problemsOf(), /"@epnexo\/sdk" \^9\.0\.0 is not satisfied by the installed/);
+    writeGood({ packageJson: { peerDependencies: { "@modunexo/sdk": "^9.0.0" } } });
+    assert.match(problemsOf(), /"@modunexo\/sdk" \^9\.0\.0 is not satisfied by the installed/);
   });
 
   it("a dependency name that is a path is refused before anything looks it up", () => {

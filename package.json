@@ -1,5 +1,5 @@
 {
-  "name": "epnexo-platform",
+  "name": "modunexo-platform",
   "private": true,
   "license": "AGPL-3.0-only",
   "type": "module",
@@ -9,9 +9,10 @@
   "workspaces": ["packages/*", "modules/*", "apps/*"],
   "scripts": {
     "test": "node --env-file-if-exists=.env --import tsx --test \"packages/*/test/**/*.test.ts\" \"apps/*/test/**/*.test.ts\"",
-    "typecheck": "tsc --noEmit -p tsconfig.json && npm run typecheck -w @epnexo/web",
+    "typecheck": "tsc --noEmit -p tsconfig.json && npm run typecheck -w @modunexo/web",
     "db:migrate": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/index.ts db:migrate",
-    "epnexo": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/index.ts",
+    "modunexo": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/index.ts",
+    "epnexo": "npm run modunexo --",
     "modules": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/index.ts modules",
     "web:dev": "node --env-file-if-exists=.env --import tsx apps/web/scripts/run.ts dev",
     "web:build": "node --env-file-if-exists=.env --import tsx apps/web/scripts/run.ts build",

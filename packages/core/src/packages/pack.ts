@@ -3,7 +3,7 @@ import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync,
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { ManifestError, type ModuleManifest, validateManifest } from "@epnexo/sdk";
+import { ManifestError, type ModuleManifest, validateManifest } from "@modunexo/sdk";
 import * as tar from "tar";
 import { ARCHIVE_LIMITS, inspectArchive } from "./archive.ts";
 import { type PackageContext, type PackageReview, validatePackageTree } from "./validate.ts";
@@ -91,7 +91,7 @@ export async function packFolder(folder: string, context: PackageContext, out?: 
 
   const manifest = await loadManifest(source);
 
-  const work = mkdtempSync(join(tmpdir(), "epnexo-pack-"));
+  const work = mkdtempSync(join(tmpdir(), "modunexo-pack-"));
   try {
     const staged = join(work, TOP_LEVEL);
     mkdirSync(staged);

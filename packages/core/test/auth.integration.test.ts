@@ -116,7 +116,7 @@ describe("createAdministrator", () => {
  * The web server sets this header from the connection and strips any copy a client sent (task T3). It is the only
  * header the limiter keys on; `x-forwarded-for` and friends are client-controlled and must never matter.
  */
-const TRUSTED_IP_HEADER = "x-epnexo-client-ip";
+const TRUSTED_IP_HEADER = "x-modunexo-client-ip";
 
 describe("sign-in rate limit", () => {
   const attempt = (headers: Record<string, string>) =>
@@ -166,7 +166,7 @@ describe("same-origin check without a configured base URL", () => {
     const response = await open.handler(
       new Request("http://localhost:3000/api/auth/sign-in/email", {
         method: "POST",
-        headers: { "content-type": "application/json", "x-epnexo-client-ip": "192.0.2.77", ...headers },
+        headers: { "content-type": "application/json", "x-modunexo-client-ip": "192.0.2.77", ...headers },
         body: JSON.stringify({ email: "nobody@example.test", password: "wrong password here" }),
       }),
     );
@@ -176,7 +176,7 @@ describe("same-origin check without a configured base URL", () => {
 
   test("trusts an Origin that names the Host the request was sent to", async () => {
     assert.equal(await signIn({ host: "192.168.1.20:4000", origin: "http://192.168.1.20:4000" }), "401 INVALID_EMAIL_OR_PASSWORD");
-    assert.equal(await signIn({ host: "epnexo.lan", origin: "https://epnexo.lan" }), "401 INVALID_EMAIL_OR_PASSWORD");
+    assert.equal(await signIn({ host: "modunexo.lan", origin: "https://modunexo.lan" }), "401 INVALID_EMAIL_OR_PASSWORD");
   });
 
   test("refuses an Origin that names another host", async () => {
@@ -203,7 +203,7 @@ describe("session cookie", () => {
     const response = await configured.handler(
       new Request("http://localhost:3000/api/auth/sign-in/email", {
         method: "POST",
-        headers: { "content-type": "application/json", origin: "http://localhost:3000", "x-epnexo-client-ip": `198.51.100.${Math.floor(Math.random() * 200) + 1}` },
+        headers: { "content-type": "application/json", origin: "http://localhost:3000", "x-modunexo-client-ip": `198.51.100.${Math.floor(Math.random() * 200) + 1}` },
         body: JSON.stringify({ email, password: PASSWORD }),
       }),
     );

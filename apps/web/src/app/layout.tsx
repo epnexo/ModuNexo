@@ -15,7 +15,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 // Runs before the first paint so the page never flashes the wrong theme. The key matches ThemeToggle's.
-const THEME_SCRIPT = `try{var t=localStorage.getItem("epnexo.theme");if(t!=="light"&&t!=="dark"){t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme="light"}`;
+const THEME_SCRIPT = `try{var t=localStorage.getItem("modunexo.theme");if(t!=="light"&&t!=="dark"){t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme="light"}`;
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

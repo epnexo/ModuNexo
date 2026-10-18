@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { SDK_VERSION, type ModuleManifest } from "@epnexo/sdk";
+import { SDK_VERSION, type ModuleManifest } from "@modunexo/sdk";
 import { Registry, compareIds } from "../src/index.ts";
 
 interface Options {
