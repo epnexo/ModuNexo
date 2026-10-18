@@ -1,7 +1,9 @@
 import pg from "pg";
+import { log } from "./log.ts";
 
 type Env = Record<string, string | undefined>;
 type Log = (...args: unknown[]) => void;
+const defaultReport: Log = (...args) => log.error("db.idle_client_error", { message: args.map(String).join(" ") });
 
 /** The connection string from `DATABASE_URL`. Throws a recognisable error when it is not set. */
 export function resolveDatabaseUrl(env: Env = process.env): string {
@@ -15,9 +17,9 @@ export function resolveDatabaseUrl(env: Env = process.env): string {
  * is using it (database restart, network cut); without a listener Node treats that as an uncaught exception.
  * The client is already removed from the pool when this fires, so logging is all that is needed.
  */
-export function createPool(connectionString: string, options: pg.PoolConfig = {}, log: Log = console.error): pg.Pool {
+export function createPool(connectionString: string, options: pg.PoolConfig = {}, report: Log = defaultReport): pg.Pool {
   const pool = new pg.Pool({ connectionString, ...options });
-  pool.on("error", (error) => log("idle database client error:", error.message));
+  pool.on("error", (error) => report("idle database client error:", error.message));
   return pool;
 }
 

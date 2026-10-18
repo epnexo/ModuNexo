@@ -6,8 +6,8 @@ const input = (overrides: Partial<AccessInput>): AccessInput => ({ pathname: "/"
 
 describe("isPublicPath", () => {
   it("is true for the sign-in page and the auth endpoints only", () => {
-    for (const path of ["/login", "/login/", "/api/auth", "/api/auth/sign-in/email", "/api/auth/get-session", "/api/brand/logo"]) assert.equal(isPublicPath(path), true, path);
-    for (const path of ["/", "/apps", "/settings", "/api/authx", "/api/other", "/api/brand/logo/x", "/api/brand", "/api/settings/brand", "/loginx", "/login/extra", "/LOGIN", "/a/login"]) assert.equal(isPublicPath(path), false, path);
+    for (const path of ["/login", "/login/", "/api/auth", "/api/auth/sign-in/email", "/api/auth/get-session", "/api/brand/logo", "/api/health"]) assert.equal(isPublicPath(path), true, path);
+    for (const path of ["/", "/apps", "/settings", "/api/authx", "/api/other", "/api/brand/logo/x", "/api/brand", "/api/health/", "/api/healthz", "/api/health/db", "/api/settings/brand", "/loginx", "/login/extra", "/LOGIN", "/a/login"]) assert.equal(isPublicPath(path), false, path);
   });
 });
 
