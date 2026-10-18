@@ -1,6 +1,7 @@
 {
   "name": "epnexo-platform",
   "private": true,
+  "license": "UNLICENSED",
   "type": "module",
   "engines": {
     "node": ">=22.9.0"

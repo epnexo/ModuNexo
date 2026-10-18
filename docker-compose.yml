@@ -20,5 +20,30 @@ services:
       timeout: 3s
       retries: 20
 
+  # The web app. Not started by a plain `docker compose up -d db` (the development flow): ask for it with
+  #   EPNEXO_MASTER_KEY=... docker compose --profile app up -d --build
+  web:
+    profiles: ["app"]
+    build:
+      context: .
+      args:
+        WEB_PUBLIC_URL: ${WEB_PUBLIC_URL:-}
+    container_name: epnexo-web
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://epnexo:epnexo@db:5432/epnexo
+      EPNEXO_MASTER_KEY: ${EPNEXO_MASTER_KEY:?set EPNEXO_MASTER_KEY (openssl rand -base64 48)}
+      WEB_PUBLIC_URL: ${WEB_PUBLIC_URL:-}
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - epnexo-modules:/app/modules
+      - epnexo-data:/app/var
+
 volumes:
   epnexo-db-data:
+  epnexo-modules:
+  epnexo-data:

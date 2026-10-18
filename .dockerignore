@@ -1,0 +1,16 @@
+.git
+.github
+.claude
+.env
+.env.*
+odd
+backups
+var
+node_modules
+**/node_modules
+**/.next
+**/*.log
+modules/*
+!modules/.gitkeep
+apps/web/src/generated
+apps/web/src/app/(shell)/hello
