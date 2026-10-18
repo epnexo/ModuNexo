@@ -18,10 +18,14 @@ export interface NavGroup {
 /** Who is looking: the local operator (sign-in is off) or a signed-in user with a role. */
 export type Subject = { kind: "operator" } | { kind: "user"; role: string | null | undefined };
 
-/** Whether the subject may see an entry that names a permission. The only role the shell knows is `admin`. */
+/**
+ * Whether the subject may see an entry that names a permission. The local operator (sign-in disabled), an
+ * `admin` and an `operator` hold every module permission; any other role holds none. What only an administrator may
+ * do (apps, settings, identity) is not a module permission: it is checked where it happens (`canWrite`).
+ */
 export function subjectCan(subject: Subject, permission: string | undefined): boolean {
   if (permission === undefined) return true;
-  return subject.kind === "operator" || subject.role === "admin";
+  return subject.kind === "operator" || subject.role === "admin" || subject.role === "operator";
 }
 
 /**

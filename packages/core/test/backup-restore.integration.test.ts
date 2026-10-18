@@ -90,7 +90,7 @@ describe("backup.sh and restore.sh", () => {
     put(dataA(), "staging/abc/ignored.txt", "rebuilt on demand");
     const result = await run(BACKUP, ["--out", join(work, "out"), "--database-url", source!.url, "--modules-dir", modulesA(), "--data-dir", dataA()]);
     assert.equal(result.code, 0, result.err);
-    [made] = backups(join(work, "out")).map((name) => join(work, "out", name));
+    made = backups(join(work, "out")).map((name) => join(work, "out", name))[0]!;
     assert.deepEqual(readdirSync(made!).sort(), ["BACKUP_INFO", "SHA256SUMS", "database.dump", "modules.tar.gz", "packages.tar.gz"]);
     for (const name of readdirSync(made!)) assert.equal(statSync(join(made!, name)).mode & 0o077, 0, `${name} is private`);
     assert.equal(statSync(made!).mode & 0o077, 0, "the folder is private");
