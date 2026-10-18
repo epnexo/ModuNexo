@@ -17,7 +17,8 @@
     "./install": "./src/install/index.ts",
     "./apps": "./src/apps.ts",
     "./data": "./src/data/module-db.ts",
-    "./scaffold": "./src/scaffold/module.ts"
+    "./scaffold": "./src/scaffold/module.ts",
+    "./log": "./src/log.ts"
   },
   "dependencies": {
     "@epnexo/sdk": "^0.1.0",

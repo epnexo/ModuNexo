@@ -7,6 +7,7 @@ import {
   requestIsLocal,
   splitForwarded,
 } from "@epnexo/core/auth";
+import { log } from "@epnexo/core/log";
 import { type NextRequest, NextResponse } from "next/server";
 import { modules } from "./generated/modules.ts";
 import { decideAccess } from "./server/access.ts";
@@ -19,7 +20,7 @@ import { platform } from "./server/platform.ts";
 import { createRefusalLog } from "./server/refusal-log.ts";
 import { sessionIsUsable } from "./server/session.ts";
 
-const refusalLog = createRefusalLog((line) => console.warn(line));
+const refusalLog = createRefusalLog((line) => log.warn("access.refused", { detail: line }));
 
 /** What the manifests of this build say about who may reach which path. Fixed at build time, like the registry. */
 const PERMISSION_RULES = permissionRules(modules);
@@ -85,7 +86,7 @@ export async function proxy(request: NextRequest) {
     }
     return text(decision.message, decision.status);
   } catch (error) {
-    console.error("access check failed:", error instanceof Error ? error.message : error);
+    log.error("access.check_failed", { error });
     return text("Service unavailable", 503);
   }
 }

@@ -1,6 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { log } from "@epnexo/core/log";
 import { exitCodeFor } from "./launch.ts";
 
 /** What the supervisor listens on: `process`, or any emitter of the signal names in tests. */
@@ -50,7 +51,7 @@ export function superviseChild(options: SuperviseOptions): Promise<number> {
       const next = spawn(process.execPath, options.args, { cwd: options.cwd, stdio: "inherit" });
       child = next;
       next.on("error", (error) => {
-        console.error(`error: could not start ${options.args[1] ?? "the web app"}: ${error.message}`);
+        log.error("web.start_failed", { message: `could not start : ` });
         cleanup();
         resolve(1);
       });
@@ -65,7 +66,7 @@ export function superviseChild(options: SuperviseOptions): Promise<number> {
           }
           return;
         }
-        if (signal !== null && signal !== stopping) console.error(`error: the web app process was killed by ${signal}`);
+        if (signal !== null && signal !== stopping) log.error("web.killed", { signal });
         cleanup();
         resolve(exitCodeFor(code, signal, stopping));
       });

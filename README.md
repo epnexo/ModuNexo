@@ -659,6 +659,30 @@ tabs), and anything occasional (adding an app, resetting the identity) opens on 
 page. Settings has the tabs Profile, Appearance, Security and Modules; Apps has Apps and History. New screens and
 module pages follow the same rule.
 
+## Operations
+
+### Health
+
+`GET /api/health` answers `200 {"status":"ok","database":"ok"}` when the database answers and
+`503 {"status":"degraded","database":"unreachable"}` when it does not (or does not answer within 2 s). It needs no
+session, so a load balancer or an orchestrator can probe it, and it says nothing about why it failed: the reason is in
+the log. With sign-in disabled it is served to the local network only, like every other path. If the database is down
+the access gate itself answers 503 before the probe runs, which a probe reads the same way.
+
+### Logs
+
+The web app writes one line per event to standard output (errors and warnings to standard error). In production, or
+with `LOG_FORMAT=json`, a line is a JSON object a log collector can parse:
+
+```json
+{"ts":"2026-10-18T12:52:55.874Z","level":"warn","event":"access.refused","detail":"refused GET /api/health: ..."}
+```
+
+Otherwise it is a readable `ts level event key=value` line (`LOG_FORMAT=text` forces it). A field named like a secret
+(password, token, cookie, authorization, key, session) is written as `[redacted]`, an error is reduced to its name and
+message, and a long value is cut, so a log can be shipped without scrubbing. Modules can use the same logger:
+`import { log } from "@epnexo/core/log"`.
+
 ## Hardening
 
 - **Headers.** Every response carries `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`,
