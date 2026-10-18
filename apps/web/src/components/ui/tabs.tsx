@@ -78,13 +78,12 @@ export function Tabs({ tabs, label, actions, value, onValueChange }: { tabs: Tab
         </div>
         {actions !== undefined ? <div className="mb-2">{actions}</div> : null}
       </div>
-      {tabs.map((tab) =>
-        current === tab.id ? (
-          <div key={tab.id} id={`panel-${tab.id}`} role="tabpanel" aria-labelledby={`tab-${tab.id}`} tabIndex={0} className="flex flex-col gap-6 outline-none">
-            {tab.content}
-          </div>
-        ) : null,
-      )}
+      {/* Every panel stays mounted and only the current one is shown, so what was typed in a form survives a change of tab. */}
+      {tabs.map((tab) => (
+        <div key={tab.id} id={`panel-${tab.id}`} role="tabpanel" aria-labelledby={`tab-${tab.id}`} tabIndex={0} hidden={current !== tab.id} className="flex flex-col gap-6 outline-none">
+          {tab.content}
+        </div>
+      ))}
     </div>
   );
 }
