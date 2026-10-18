@@ -1,7 +1,8 @@
 import { type Auth, createAuth, resolveMasterKey } from "@epnexo/core/auth";
 import { createPool, resolveDatabaseUrl } from "@epnexo/core/pool";
 import { SettingsService } from "@epnexo/core/settings";
-import { SETTINGS_READER, type SettingsReader } from "@epnexo/sdk";
+import { ModuleDbService } from "@epnexo/core/data";
+import { DB_READER, SETTINGS_READER, type DbReader, type SettingsReader } from "@epnexo/sdk";
 import type pg from "pg";
 import { resolvePublicUrl } from "./launch.ts";
 import { CLOSED, STORE, closePlatform, holder, reopenPlatform } from "./platform-lifecycle.ts";
@@ -46,3 +47,12 @@ const settingsReader: SettingsReader = {
   get: (moduleId, key) => new SettingsService(platform().pool, webRegistry(), { masterKey: resolveMasterKey() }).get(moduleId, key),
 };
 (globalThis as typeof globalThis & { [SETTINGS_READER]?: SettingsReader })[SETTINGS_READER] = settingsReader;
+
+/**
+ * What `getDb` in the SDK calls, registered the same way and for the same reason as the settings reader. The handle
+ * a module gets is built per call from the build's registry; the pool is only touched when a statement runs.
+ */
+const dbReader: DbReader = {
+  forModule: (moduleId) => new ModuleDbService(platform().pool, webRegistry()).forModule(moduleId),
+};
+(globalThis as typeof globalThis & { [DB_READER]?: DbReader })[DB_READER] = dbReader;
