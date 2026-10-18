@@ -4,11 +4,13 @@ import type pg from "pg";
 import { DbAccessError } from "@epnexo/sdk";
 import { ModuleDbService } from "../src/data/module-db.ts";
 import { migrate } from "../src/runner.ts";
-import { openTestPool } from "../src/testing.ts";
+import { createPool } from "../src/pool.ts";
+import { createScratchDatabase } from "../src/testing.ts";
 import { Sandbox } from "./sandbox.ts";
 
 let pool: pg.Pool | undefined;
 let skipReason: string | undefined;
+let drop: (() => Promise<void>) | undefined;
 let box: Sandbox;
 let docs: string;
 let notes: string;
@@ -21,8 +23,14 @@ async function setState(id: string, state: "enabled" | "disabled" | "absent"): P
 }
 
 before(async () => {
-  ({ pool, skipReason } = await openTestPool());
-  if (!pool) return;
+  // A database of its own: this file flips rows in core.modules, which other files count in the shared one.
+  const scratch = await createScratchDatabase();
+  if (scratch.url === undefined) {
+    skipReason = scratch.skipReason;
+    return;
+  }
+  drop = scratch.drop;
+  pool = createPool(scratch.url);
   box = new Sandbox(pool);
   const first = box.add();
   const second = box.add({ [first.manifest.id]: "^1.0.0" });
@@ -41,6 +49,7 @@ after(async () => {
     await box.cleanup();
     await pool.end();
   }
+  await drop?.();
 });
 
 const guard = (name: string, run: () => Promise<void>) =>
