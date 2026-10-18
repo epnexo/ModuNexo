@@ -128,17 +128,19 @@ A module reaches its own tables through the SDK, from a page, a server action or
 import { getDb } from "@epnexo/sdk";
 
 const db = getDb("field-notes");
-const { rows } = await db.query<{ id: number; title: string }>("select id, title from items where id = ", [id]);
+const { rows } = await db.query<{ id: number; title: string }>("select id, title from items where id = $1", [id]);
 await db.transaction(async (tx) => {
-  await tx.query("insert into items (title) values ()", ["a"]);
-  await tx.query("insert into items (title) values ()", ["b"]);   // both commit, or neither
+  await tx.query("insert into items (title) values ($1)", ["a"]);
+  await tx.query("insert into items (title) values ($1)", ["b"]);   // both commit, or neither
 });
 ```
 
 - Every call runs in its own transaction with `search_path` fixed to the module schema for that transaction only, so
   `items` means `field_notes.items` and nothing leaks to the next user of the connection. Statements time out after
   30 s.
-- One statement per `query`: the extended protocol refuses `a; b`, so SQL cannot end its own transaction.
+- One statement per `query`: the extended protocol refuses `a; b`, so a string cannot smuggle a second statement in.
+  A lone `commit` or `reset` is still a statement the database accepts; a module that sends one gives up its own
+  atomicity and its timeout. Another reason this is a contract and not a sandbox.
 - A module that is not installed and enabled gets `DbAccessError` (`not-enabled`). Outside the running platform
   (a script, a test) `getDb` throws `DbUnavailableError`, like `getSetting`.
 
