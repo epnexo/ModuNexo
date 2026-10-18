@@ -15,7 +15,8 @@
     "./packages": "./src/packages/index.ts",
     "./operations": "./src/operations/index.ts",
     "./install": "./src/install/index.ts",
-    "./apps": "./src/apps.ts"
+    "./apps": "./src/apps.ts",
+    "./data": "./src/data/module-db.ts"
   },
   "dependencies": {
     "@epnexo/sdk": "^0.1.0",
