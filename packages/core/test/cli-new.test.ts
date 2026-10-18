@@ -72,6 +72,17 @@ describe("modules new", () => {
     assert.deepEqual(files(join(work, "field-notes")), ["keep.txt"]);
   });
 
+  it("refuses, naming the place, when --dir is a file or the target is a dangling symlink", async () => {
+    writeFileSync(join(work, "a-file"), "x");
+    const onFile = await cli("modules", "new", "field-notes", "--dir", join(work, "a-file"));
+    assert.equal(onFile.code, 3, onFile.err);
+    assert.match(onFile.err, /cannot write to .*a-file/);
+    symlinkSync(join(work, "gone"), join(work, "field-notes"));
+    const dangling = await cli("modules", "new", "field-notes", "--dir", work);
+    assert.equal(dangling.code, 3, dangling.err);
+    assert.deepEqual(readdirSync(work).filter((name) => name.startsWith(".")), [], "no staging folder left behind");
+  });
+
   it("is a usage error without an id or with extra arguments, and its help is listed", async () => {
     assert.equal((await cli("modules", "new")).code, 2);
     assert.equal((await cli("modules", "new", "a", "b")).code, 2);

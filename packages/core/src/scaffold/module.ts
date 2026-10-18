@@ -145,8 +145,13 @@ export async function scaffoldModule(input: ScaffoldInput): Promise<ScaffoldResu
   const folder = join(input.parentDir, id);
   if (existsSync(folder)) throw new ScaffoldRefusedError(`${folder} already exists; nothing was written`);
 
-  await mkdir(input.parentDir, { recursive: true });
-  const staging = await mkdtemp(join(input.parentDir, `.${id}-new-`));
+  let staging: string;
+  try {
+    await mkdir(input.parentDir, { recursive: true });
+    staging = await mkdtemp(join(input.parentDir, `.${id}-new-`));
+  } catch (error) {
+    throw writeRefusal(error, input.parentDir);
+  }
   try {
     for (const [relative, content] of Object.entries(files)) {
       await mkdir(dirname(join(staging, relative)), { recursive: true });
@@ -155,7 +160,16 @@ export async function scaffoldModule(input: ScaffoldInput): Promise<ScaffoldResu
     await rename(staging, folder);
   } catch (error) {
     await rm(staging, { recursive: true, force: true });
-    throw error;
+    throw writeRefusal(error, folder);
   }
   return { folder, files: Object.keys(files).sort() };
+}
+
+/** Where the folder cannot be written (a file in the way, no permission) is a refusal that names the place, not a raw errno. */
+function writeRefusal(error: unknown, where: string): unknown {
+  const code = (error as { code?: unknown } | null)?.code;
+  if (typeof code === "string" && ["EEXIST", "ENOTDIR", "EACCES", "EPERM", "ENOTEMPTY", "EROFS"].includes(code)) {
+    return new ScaffoldRefusedError(`cannot write to ${where} (${code}); nothing was written`);
+  }
+  return error;
 }
