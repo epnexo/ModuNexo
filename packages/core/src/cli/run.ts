@@ -13,6 +13,7 @@ import { Registry } from "../registry.ts";
 import { MigrationRunError, migrate, pendingMigrations } from "../runner.ts";
 import { SettingValueError, SettingsError } from "../settings/service.ts";
 import { DATA_DIR } from "../packages/paths.ts";
+import { runNewCommand } from "./new.ts";
 import { runAddCommand, runApplyCommand, runChangeCommand, runPackCommand } from "./packages.ts";
 import { readPassword } from "./password.ts";
 import { runSettingsCommand } from "./settings.ts";
@@ -42,6 +43,9 @@ commands:
   modules upgrade <id>             apply the package's newer version
   modules uninstall <id> --keep    leave the module's schema and migration history
   modules uninstall <id> --purge   drop the schema and the migration history
+  modules new <id> [--name <text>] [--dir <parent>]
+                                   write a working module folder (manifest, migration, page using getDb) to edit;
+                                   default parent: modules-src/ at the repository root
   modules pack <folder> [--out <file>]
                                    build the archive of a module folder (writes manifest.json from manifest.ts)
   modules add <archive> [--sha256 <hex>] [--data-dir <path>] [--json]
@@ -85,6 +89,7 @@ const OPTIONS = {
   purge: { type: "boolean" },
   "dry-run": { type: "boolean" },
   out: { type: "string" },
+  dir: { type: "string" },
   email: { type: "string" },
   name: { type: "string" },
   module: { type: "string" },
@@ -101,6 +106,7 @@ const COMMAND_OPTIONS: Record<string, readonly string[]> = {
   "modules disable": ["rebuild", "actor", "data-dir"],
   "modules upgrade": [],
   "modules uninstall": ["keep", "purge", "rebuild", "actor", "data-dir"],
+  "modules new": ["name", "dir"],
   "modules pack": ["out"],
   "modules add": ["json", "sha256", "data-dir"],
   "modules apply": ["json", "data-dir", "actor"],
@@ -142,7 +148,7 @@ function parse(argv: string[]): Parsed | "help" {
   let ids: string[];
   if (first === "modules") {
     if (second === undefined) throw new UsageError("no modules command given");
-    if (second !== "list" && second !== "pack" && second !== "add" && second !== "apply" && !ACTION_COMMANDS.includes(second as ActionCommand)) throw new UsageError(`unknown modules command "${second}"`);
+    if (second !== "list" && second !== "new" && second !== "pack" && second !== "add" && second !== "apply" && !ACTION_COMMANDS.includes(second as ActionCommand)) throw new UsageError(`unknown modules command "${second}"`);
     command = `modules ${second}`;
     ids = rest;
   } else if (first === "settings") {
@@ -433,6 +439,13 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
           modulesDir: changeModulesDir,
         },
         pool,
+        io,
+      );
+      return EXIT_OK;
+    }
+    if (parsed.command === "modules new") {
+      await runNewCommand(
+        { id: parsed.ids[0]!, ...(typeof parsed.values.name === "string" ? { name: parsed.values.name } : {}), ...(typeof parsed.values.dir === "string" ? { dir: parsed.values.dir } : {}) },
         io,
       );
       return EXIT_OK;

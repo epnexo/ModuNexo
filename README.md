@@ -11,6 +11,8 @@ repository holds the SDK modules compile against and the core. The feature plan 
 | `packages/sdk` | `@epnexo/sdk`: manifest v2 types, `defineModule`, `validateManifest`. No database access. |
 | `packages/core` | `@epnexo/core`: the registry, migration runner, lifecycle, registration codegen and CLI. |
 | `modules/` | Installed module packages, one folder per module, linked by the npm workspace glob. Not tracked in git. |
+| `modules-src/` | Sources of the modules you write, made by `modules new`. Tracked in git. |
+| `.claude/skills/epnexo-module/` | The skill that walks an author (or an agent) through building a module. |
 | `apps/` | Applications built on the core. Empty today; the web shell is a later feature. |
 | `odd/tasks/` | Feature documents. |
 
@@ -104,6 +106,58 @@ The plan for a module (directory, file names, duplicate numbers, history guards)
 created, so a refused plan leaves nothing behind. `discoverModules(dir)` loads `<dir>/<id>/manifest.ts` and
 returns `{ modules, warnings }`; a symlink whose target is gone is skipped with a warning.
 
+## Building a module
+
+```bash
+npm run epnexo -- modules new field-notes --name "Field Notes"   # writes modules-src/field-notes/
+npm run epnexo -- modules pack modules-src/field-notes --out field-notes.tgz
+npm run epnexo -- modules add field-notes.tgz --sha256 <hex>     # review
+npm run epnexo -- modules apply <hex>                            # install, rebuild, restart
+```
+
+`modules new` writes a module that already works: a manifest with one permission, nav entry and page, a first
+migration and a page that lists and adds rows. It refuses an id that is not kebab-case or would give a reserved
+schema, and never touches a folder that exists. The skill `.claude/skills/epnexo-module/SKILL.md` carries the full
+procedure for an agent or a person.
+
+### Data: `getDb`
+
+A module reaches its own tables through the SDK, from a page, a server action or a route (never at import time):
+
+```ts
+import { getDb } from "@epnexo/sdk";
+
+const db = getDb("field-notes");
+const { rows } = await db.query<{ id: number; title: string }>("select id, title from items where id = ", [id]);
+await db.transaction(async (tx) => {
+  await tx.query("insert into items (title) values ()", ["a"]);
+  await tx.query("insert into items (title) values ()", ["b"]);   // both commit, or neither
+});
+```
+
+- Every call runs in its own transaction with `search_path` fixed to the module schema for that transaction only, so
+  `items` means `field_notes.items` and nothing leaks to the next user of the connection. Statements time out after
+  30 s.
+- One statement per `query`: the extended protocol refuses `a; b`, so SQL cannot end its own transaction.
+- A module that is not installed and enabled gets `DbAccessError` (`not-enabled`). Outside the running platform
+  (a script, a test) `getDb` throws `DbUnavailableError`, like `getSetting`.
+
+### Relating modules: `reader`
+
+A module may **read** another module's data when it lists that module in `dependsOn` (which install already requires
+to be present and in range):
+
+```ts
+const people = await getDb("field-notes").reader("contacts").query("select id, name from people");
+```
+
+The handle is `READ ONLY` in Postgres, so a write through it fails in the database with `25006`, not by convention.
+A module that is not in `dependsOn` is refused by name (`not-a-dependency`), and `dependsOn` is one-way. There are no
+cross-module writes: the other module exposes its own page or route, and you link by id.
+
+This is the platform's contract for well-behaved modules, not a sandbox. Module code runs in the platform's process
+with its database credentials, so a module that wants to can still reach around it. Install only what you trust.
+
 ## Module lifecycle
 
 A module is `available` (its package is on disk and nothing is installed; no row), `enabled` or `disabled` (rows
@@ -167,6 +221,7 @@ npm run modules -- enable <id>
 npm run modules -- disable <id>
 npm run modules -- upgrade <id>
 npm run modules -- uninstall <id> --keep  # or --purge; no flag is refused, both is a usage error
+npm run epnexo -- modules new <id> [--name <text>] [--dir <parent>]   # a working module folder, default modules-src/<id>
 npm run epnexo -- modules pack <folder> [--out <file>]
 npm run epnexo -- modules add <archive> [--sha256 <hex>] [--json]
 npm run epnexo -- modules apply <sha256> [--json]
