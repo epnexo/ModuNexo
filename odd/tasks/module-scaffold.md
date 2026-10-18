@@ -15,7 +15,7 @@ Branch: feat/module-scaffold (stacked on feat/security-hardening). Delivery: ask
 - T2 S2 S3 inline — core `ModuleDbService` (scoped query/transaction, read-only reader, dependsOn + enabled checks) + Postgres integration tests — done (12 integration tests incl. read-only refusal 25006, one statement per call)
 - T3 S2 inline — web registers the reader in `platform.ts` — done (reader registered in platform.ts; typecheck clean)
 - T4 S4 inline — `modules new` generator + templates + tests (output validates and packs) — done (RED 5/6 failing, GREEN 6/6; CLI suites 58/58)
-- T5 S2 S3 S4 inline — end-to-end: scaffold → pack → add → apply, the page serves data from its own schema; a second module reads the first through `reader`
+- T5 S2 S3 S4 inline — end-to-end: scaffold → pack → add → apply, the page serves data from its own schema; a second module reads the first through `reader` — done (e2e 2/2: generated module installs, lists, adds a row through its server action; a dependent module reads it and a write is refused with 25006)
 - T6 S5 S6 inline — skill + README + help text — done (skill + README sections; help text lists modules new)
 
 ## Log
@@ -23,3 +23,4 @@ Branch: feat/module-scaffold (stacked on feat/security-hardening). Delivery: ask
 - L2 (2026-10-18, owner): "la idea inicial es crear la base y de hay dar los pasos o skill para crear los modulos y de hay que sea personalizado"
 - L3 (2026-10-18, owner, answering "¿Agrego `getDb` al SDK…?"): "si agrégalo, que sea estructurada profesional si se puede leer o dar permisos a que el modulo pueda tener relacion con otro sin complicar tanto"
 - L4: finding before writing: the SDK header says "a module never reaches the database", so modules had no way to read or write their own tables; `getSetting` is the pattern to copy (global symbol reader registered in apps/web/src/server/platform.ts).
+- L5: e2e found a platform rule the docs did not say: every `kind: "page"` file must export `metadata` (the generated route re-exports it). Documented in README and the skill; the scaffold already complies.
