@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, describe, it } from "node:test";
 import { createAdministrator, createAuth, setSignInMode, setTrustedProxies } from "@epnexo/core/auth";
+import { BrandService } from "@epnexo/core/settings";
 import { createPool } from "@epnexo/core/pool";
 import { Registry, migrate } from "@epnexo/core";
 import { createScratchDatabase } from "@epnexo/core/testing";
@@ -131,6 +132,8 @@ before(async () => {
   registry.registerCore();
   await migrate(db, registry);
   await createAdministrator(createAuth({ pool: db, masterKey: MASTER_KEY, baseURL: "http://localhost", validateSchema: false }), { email: EMAIL, name: "E2E", password: PASSWORD });
+  // The shell sends a visitor to /setup until a profile exists, so the pages these tests fetch need one.
+  await new BrandService(db).setProfile({ kind: "personal", name: "E2E" }, "e2e");
 
   port = await freePort();
   appEnv = { DATABASE_URL: scratchUrl, EPNEXO_MASTER_KEY: MASTER_KEY, WEB_HOST: "127.0.0.1", WEB_PORT: String(port), NODE_ENV: "production" };
@@ -309,6 +312,8 @@ describe("web app: limits and failure", () => {
     await db!.query(`insert into core.platform_settings (key, value, updated_by) values ('auth.signIn', '"off"'::jsonb, 'test')`);
     assert.equal(location(await call("GET", "/")), "/login");
     await db!.query("delete from core.platform_settings");
+    // The profile lives in the same table: without it the shell sends everyone to /setup.
+    await new BrandService(db!).setProfile({ kind: "personal", name: "E2E" }, "test");
   });
 
   test("warns once, not once per request, when requests arrive over HTTPS without WEB_PUBLIC_URL", async () => {
