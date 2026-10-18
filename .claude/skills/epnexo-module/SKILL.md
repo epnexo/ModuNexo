@@ -51,6 +51,8 @@ The user wants a new module (documents, contacts, anything), a change to one, or
 
 - A module cannot bring npm packages; it can use what the platform already has (React, Next, the SDK). Its package
   name is `@local/<id>`; the `@epnexo` scope is the platform's.
+- Every `kind: "page"` file must `export const metadata = { title: "..." }` next to its default export: the generated
+  route re-exports both, and a page without it fails the web build.
 - Pages cannot sit under paths the shell reserves; `pack` and `add` list every problem.
 - UI: reuse the shell's tokens and classes (`bg-surface`, `border-border`, `text-muted`, `bg-accent`), English copy,
   one concern per screen (tabs or on-demand panels, not a stack of sections).

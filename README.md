@@ -76,7 +76,7 @@ Required: `id`, `version`, `name`, `platform`, `dependsOn`, `schema`, `migration
 
 - `nav` entries carry `group`, `order` and the `permission` that must be held to see them.
 - `pages` declare routes. Paths are absolute and normalised (no `..`, query, fragment or doubled slashes);
-  `[id]`, `[...slug]` and `[[...slug]]` are allowed, with balanced brackets and nothing around them (`[id]]` is rejected). `kind: "page"` renders UI, `kind: "route"` is an HTTP
+  `[id]`, `[...slug]` and `[[...slug]]` are allowed, with balanced brackets and nothing around them (`[id]]` is rejected). `kind: "page"` renders UI (the file must `export const metadata` beside its default export, because the generated route re-exports both), `kind: "route"` is an HTTP
   handler and may list the `methods` it exports (default `["GET"]`). `dynamic` is the Next.js segment config
   (`auto`, `force-dynamic`, `force-static`, `error`), which Next.js only reads from the route file itself.
 - `settings` have a `key`, `label`, `type` (`string`, `number`, `boolean`, `select`, `secret`, `path`),
