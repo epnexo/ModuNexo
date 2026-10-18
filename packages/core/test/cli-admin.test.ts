@@ -32,7 +32,7 @@ async function inScratchDatabase(t: TestContext, work: (db: pg.Pool, cli: Cli, u
   if (!scratch.url) return t.skip(scratch.skipReason);
   const url = scratch.url;
   const db = createPool(url);
-  const cli: Cli = (args, options = {}) => spawn(args, options.env ?? { DATABASE_URL: url, EPNEXO_MASTER_KEY: MASTER_KEY }, options.stdin);
+  const cli: Cli = (args, options = {}) => spawn(args, options.env ?? { DATABASE_URL: url, MODUNEXO_MASTER_KEY: MASTER_KEY }, options.stdin);
   try {
     if (migrated) assert.equal((await cli(["db:migrate"])).code, 0);
     await work(db, cli, url);
@@ -107,11 +107,11 @@ describe("cli: admin create", () => {
 
   it("fails with exit code 1, naming the variable, when the master key is missing or short", async (t) => {
     await inScratchDatabase(t, async (db, cli, url) => {
-      const environments: Record<string, string>[] = [{ DATABASE_URL: url }, { DATABASE_URL: url, EPNEXO_MASTER_KEY: "too-short" }];
+      const environments: Record<string, string>[] = [{ DATABASE_URL: url }, { DATABASE_URL: url, MODUNEXO_MASTER_KEY: "too-short" }];
       for (const env of environments) {
         const result = await cli(CREATE, { stdin: PASSWORD, env });
         assert.equal(result.code, 1);
-        assert.match(result.stderr, /EPNEXO_MASTER_KEY/);
+        assert.match(result.stderr, /MODUNEXO_MASTER_KEY/);
         assert.ok(!result.stderr.includes("too-short"));
       }
       assert.deepEqual(await users(db), []);
@@ -134,6 +134,6 @@ describe("cli: admin create", () => {
     const result = await spawn(["--help"], {});
     assert.equal(result.code, 0);
     assert.match(result.stdout, /admin create --email <email> --name <name>/);
-    assert.match(result.stdout, /EPNEXO_MASTER_KEY/);
+    assert.match(result.stdout, /MODUNEXO_MASTER_KEY/);
   });
 });

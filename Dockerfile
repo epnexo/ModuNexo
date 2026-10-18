@@ -1,4 +1,4 @@
-# The epnexo web app. Build: docker build -t epnexo-web .   Run it through docker-compose.yml (it needs the database).
+# The modunexo web app. Build: docker build -t modunexo-web .   Run it through docker-compose.yml (it needs the database).
 #
 # The image keeps the whole workspace and its dev dependencies on purpose: installing a module from the Apps screen
 # rebuilds the web app inside the running container. Modules and received packages live in volumes, not in the image.
@@ -6,7 +6,7 @@ FROM node:22-bookworm-slim
 
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
-    EPNEXO_DATA_DIR=/app/var \
+    MODUNEXO_DATA_DIR=/app/var \
     WEB_HOST=0.0.0.0
 
 WORKDIR /app

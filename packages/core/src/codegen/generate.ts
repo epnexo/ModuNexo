@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, r
 import { basename, dirname, isAbsolute, join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { compareIds } from "../registry.ts";
-import { GENERATED_HEADER, ROUTES_DIR, RegistrationError, type RegistrationModule, type RenderedFile, renderRegistration } from "./render.ts";
+import { GENERATED_HEADER, LEGACY_GENERATED_HEADER, ROUTES_DIR, RegistrationError, type RegistrationModule, type RenderedFile, renderRegistration } from "./render.ts";
 
 /** The web app the registration is generated for; it is built by a later feature, so tests inject their own root. */
 export const DEFAULT_WEB_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../apps/web");
@@ -10,7 +10,9 @@ export const DEFAULT_WEB_ROOT = resolve(dirname(fileURLToPath(import.meta.url)),
 /** The generator's record of what it wrote, relative to the web app root. */
 export const OWNERSHIP_FILE = "src/generated/.manifest.json";
 
-const GENERATOR = "@epnexo/core registry:generate";
+const GENERATOR = "@modunexo/core registry:generate";
+/** What older versions wrote in the ownership manifest before the rename; still accepted when reading. */
+const LEGACY_GENERATOR = "@epnexo/core registry:generate";
 const ROUTE_FILE_NAMES = ["page.tsx", "page.ts", "page.jsx", "page.js", "page.mdx", "route.ts", "route.tsx", "route.js", "route.jsx"];
 
 export interface PlannedWrite {
@@ -45,7 +47,7 @@ const ownershipContent = (packages: string[], files: string[]): string =>
   `${JSON.stringify({ generator: GENERATOR, version: 1, packages, files }, null, 2)}\n`;
 
 /** The text of a generated source file starts with the header; that is how the generator recognises its own files. */
-const isGenerated = (content: string): boolean => content.startsWith(GENERATED_HEADER);
+const isGenerated = (content: string): boolean => content.startsWith(GENERATED_HEADER) || content.startsWith(LEGACY_GENERATED_HEADER);
 
 /** Read a file when there is one; `undefined` when absent. A directory is reported, not read. */
 function readIfPresent(root: string, path: string, problems: string[]): string | undefined {
@@ -71,7 +73,7 @@ function readOwnership(root: string): string[] | undefined {
   const record = parsed as { generator?: unknown; files?: unknown } | null;
   const files = record?.files;
   const safe = (file: unknown): file is string => typeof file === "string" && file !== "" && !isAbsolute(file) && !file.includes("\\") && !file.split("/").some((s) => s === ".." || s === "." || s === "");
-  if (record?.generator !== GENERATOR || !Array.isArray(files) || !files.every(safe)) throw invalid;
+  if ((record?.generator !== GENERATOR && record?.generator !== LEGACY_GENERATOR) || !Array.isArray(files) || !files.every(safe)) throw invalid;
   return files as string[];
 }
 

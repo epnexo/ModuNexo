@@ -7,7 +7,7 @@ import { LAUNCHER_MARKER, pidFilePath, requestRestart } from "../src/install/res
 
 let dataDir: string;
 beforeEach(() => {
-  dataDir = mkdtempSync(join(tmpdir(), "epnexo-restart-"));
+  dataDir = mkdtempSync(join(tmpdir(), "modunexo-restart-"));
 });
 afterEach(() => rmSync(dataDir, { recursive: true, force: true }));
 

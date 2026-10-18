@@ -1,4 +1,4 @@
-import { SDK_VERSION } from "@epnexo/sdk";
+import { SDK_VERSION } from "@modunexo/sdk";
 import type { TarEntry } from "./tarball.ts";
 
 export interface PackageOptions {

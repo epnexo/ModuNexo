@@ -125,15 +125,15 @@ describe("appearanceCss", () => {
 
 describe("themeInitScript", () => {
   it("falls back to the system preference when the default is system, and to the given theme otherwise", () => {
-    assert.match(themeInitScript("system", "epnexo.theme"), /prefers-color-scheme: dark/);
-    const dark = themeInitScript("dark", "epnexo.theme");
+    assert.match(themeInitScript("system", "modunexo.theme"), /prefers-color-scheme: dark/);
+    const dark = themeInitScript("dark", "modunexo.theme");
     assert.match(dark, /"dark"/);
     assert.doesNotMatch(dark, /matchMedia/);
   });
 
   it("reads the saved choice from the given storage key and survives blocked storage", () => {
-    const script = themeInitScript("light", "epnexo.theme");
-    assert.match(script, /localStorage\.getItem\("epnexo\.theme"\)/);
+    const script = themeInitScript("light", "modunexo.theme");
+    assert.match(script, /localStorage\.getItem\("modunexo\.theme"\)/);
     assert.match(script, /catch/);
   });
 });

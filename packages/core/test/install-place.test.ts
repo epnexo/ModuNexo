@@ -17,7 +17,7 @@ const put = (base: string, path: string, content: string) => {
 };
 
 beforeEach(() => {
-  root = realpathSync(mkdtempSync(join(tmpdir(), "epnexo-place-")));
+  root = realpathSync(mkdtempSync(join(tmpdir(), "modunexo-place-")));
   mkdirSync(modulesDir());
   mkdirSync(nodeModules());
   staging = join(root, "var", "staging", "a".repeat(64));

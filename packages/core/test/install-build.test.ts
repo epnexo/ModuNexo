@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { SDK_VERSION, type ModuleManifest } from "@epnexo/sdk";
+import { SDK_VERSION, type ModuleManifest } from "@modunexo/sdk";
 import { REGISTRY_FILE, type RegistrationModule } from "../src/codegen/render.ts";
 import { generateRegistration } from "../src/codegen/generate.ts";
 import { BuildFailedError, type BuildRunner, buildWithRollback } from "../src/install/build.ts";
@@ -23,7 +23,7 @@ const before = [module_("alpha")];
 const after = [module_("alpha"), module_("beta")];
 
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "epnexo-build-"));
+  root = mkdtempSync(join(tmpdir(), "modunexo-build-"));
   generateRegistration(before, { outDir: root });
   put(".next/BUILD_ID", "old");
   put(".next/cache/turbo", "warm");

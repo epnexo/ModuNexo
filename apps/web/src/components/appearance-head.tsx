@@ -1,4 +1,4 @@
-import { appearanceCss, readAppearance, themeInitScript } from "@epnexo/core/settings";
+import { appearanceCss, readAppearance, themeInitScript } from "@modunexo/core/settings";
 import { THEME_STORAGE_KEY } from "../lib/theme";
 import { platform } from "../server/platform";
 

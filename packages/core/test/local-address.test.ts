@@ -85,13 +85,13 @@ describe("isLocalHostName", () => {
   });
 
   it("accepts localhost, single-label names and the private-use suffixes", () => {
-    for (const host of ["localhost", "localhost:3000", "app.localhost", "raspberrypi", "raspberrypi:3000", "epnexo.local", "pi.lan:3000", "box.home.arpa", "svc.internal", "nas.localdomain", "EPNEXO.LOCAL"]) {
+    for (const host of ["localhost", "localhost:3000", "app.localhost", "raspberrypi", "raspberrypi:3000", "modunexo.local", "pi.lan:3000", "box.home.arpa", "svc.internal", "nas.localdomain", "MODUNEXO.LOCAL"]) {
       assert.equal(isLocalHostName(host), true, host);
     }
   });
 
   it("refuses a public name: a DNS rebinding page or a public proxy sends one", () => {
-    for (const host of ["evil.example", "evil.example:3000", "epnexo.dev", "epnexo.example.com", "a.b.c.com", "local.evil.example", "lan.com", "notlocalhost.com", "localhost.evil.example"]) {
+    for (const host of ["evil.example", "evil.example:3000", "modunexo.dev", "modunexo.example.com", "a.b.c.com", "local.evil.example", "lan.com", "notlocalhost.com", "localhost.evil.example"]) {
       assert.equal(isLocalHostName(host), false, host);
     }
   });

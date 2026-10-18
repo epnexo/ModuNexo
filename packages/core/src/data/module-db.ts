@@ -1,4 +1,4 @@
-import { DbAccessError, type DbQueryable, type DbReadOnly, type DbReader, type DbResult, type ModuleDb } from "@epnexo/sdk";
+import { DbAccessError, type DbQueryable, type DbReadOnly, type DbReader, type DbResult, type ModuleDb } from "@modunexo/sdk";
 import type pg from "pg";
 import { CORE_MODULE_ID } from "../core-module.ts";
 import type { Registry } from "../registry.ts";

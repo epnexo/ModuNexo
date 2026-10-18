@@ -30,7 +30,7 @@ export const SIGN_IN_WINDOW_SECONDS = 60;
  * address and strips any copy a client sent, so it cannot be forged. The library's default is to trust
  * `x-forwarded-for` and similar headers, which a client controls: rotating one would defeat the limit.
  */
-export const CLIENT_IP_HEADER = "x-epnexo-client-ip";
+export const CLIENT_IP_HEADER = "x-modunexo-client-ip";
 
 /**
  * Trusts a browser request whose `Origin` names the host the request was sent to (the `Host` header). The web app
@@ -52,7 +52,7 @@ function sameOrigin(request?: Request): string[] {
 export interface AuthConfig {
   /** The platform pool. It is shared, never closed by the auth layer. */
   pool: pg.Pool;
-  /** `EPNEXO_MASTER_KEY`; the library's signing secret is derived from it. */
+  /** `MODUNEXO_MASTER_KEY`; the library's signing secret is derived from it. */
   masterKey: string;
   /** The origin the web app is served from. Without it the library infers the origin from each request. */
   baseURL?: string;
@@ -80,7 +80,7 @@ export interface AuthConfig {
  */
 export function createAuth(config: AuthConfig) {
   return betterAuth({
-    appName: "epnexo",
+    appName: "Modunexo",
     secret: deriveSecret(config.masterKey, "auth"),
     ...(config.baseURL === undefined ? {} : { baseURL: config.baseURL }),
     trustedOrigins: async (request) => [...(config.trustedOrigins ?? []), ...sameOrigin(request)],

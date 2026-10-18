@@ -10,11 +10,11 @@ import { createServer } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, describe, it } from "node:test";
-import { createAdministrator, createAuth, setSignInMode, setTrustedProxies } from "@epnexo/core/auth";
-import { BrandService } from "@epnexo/core/settings";
-import { createPool } from "@epnexo/core/pool";
-import { Registry, migrate } from "@epnexo/core";
-import { createScratchDatabase } from "@epnexo/core/testing";
+import { createAdministrator, createAuth, setSignInMode, setTrustedProxies } from "@modunexo/core/auth";
+import { BrandService } from "@modunexo/core/settings";
+import { createPool } from "@modunexo/core/pool";
+import { Registry, migrate } from "@modunexo/core";
+import { createScratchDatabase } from "@modunexo/core/testing";
 import type pg from "pg";
 import { acquireWebLock } from "./helpers/web-lock.ts";
 
@@ -136,7 +136,7 @@ before(async () => {
   await new BrandService(db).setProfile({ kind: "personal", name: "E2E" }, "e2e");
 
   port = await freePort();
-  appEnv = { DATABASE_URL: scratchUrl, EPNEXO_MASTER_KEY: MASTER_KEY, WEB_HOST: "127.0.0.1", WEB_PORT: String(port), NODE_ENV: "production" };
+  appEnv = { DATABASE_URL: scratchUrl, MODUNEXO_MASTER_KEY: MASTER_KEY, WEB_HOST: "127.0.0.1", WEB_PORT: String(port), NODE_ENV: "production" };
   await buildApp();
   await startServer();
 });
@@ -272,7 +272,7 @@ describe("web app: sign-in disabled", () => {
   });
 
   test("refuses a local connection that names a public host: DNS rebinding", async () => {
-    for (const host of ["evil.example", `evil.example:${port}`, "epnexo.dev"]) {
+    for (const host of ["evil.example", `evil.example:${port}`, "modunexo.dev"]) {
       const reply = await call("GET", "/", { host });
       assert.equal(reply.status, 403, host);
       assert.equal(reply.body, "Forbidden");
@@ -282,8 +282,8 @@ describe("web app: sign-in disabled", () => {
   });
 
   test("believes the connection, not a client-written trusted header", async () => {
-    assert.equal((await call("GET", "/", { "x-epnexo-client-ip": "8.8.8.8" })).status, 200);
-    assert.equal((await call("GET", "/", { "x-epnexo-client-ip": "127.0.0.1", "x-forwarded-for": "8.8.8.8" })).status, 403);
+    assert.equal((await call("GET", "/", { "x-modunexo-client-ip": "8.8.8.8" })).status, 200);
+    assert.equal((await call("GET", "/", { "x-modunexo-client-ip": "127.0.0.1", "x-forwarded-for": "8.8.8.8" })).status, 403);
     assert.equal((await call("GET", "/", { "x-forwarded-for": "192.168.1.5" })).status, 200);
   });
 });
@@ -346,7 +346,7 @@ function writeFixture(): void {
   writeFileSync(join(FIXTURE_DIR, "package.json"), JSON.stringify({ name: "@e2e/fixture", version: "1.0.0", private: true, type: "module" }));
   writeFileSync(
     join(FIXTURE_DIR, "manifest.ts"),
-    `import { SDK_VERSION, defineModule } from "@epnexo/sdk";
+    `import { SDK_VERSION, defineModule } from "@modunexo/sdk";
 export default defineModule({
   id: "${FIXTURE_ID}",
   version: "1.0.0",
@@ -380,7 +380,7 @@ export default defineModule({
   writeFileSync(join(FIXTURE_DIR, "migrations", "0001_init.sql"), "create table items (id int);");
   writeFileSync(
     join(FIXTURE_DIR, "web", "page.tsx"),
-    `import { getSetting } from "@epnexo/sdk";
+    `import { getSetting } from "@modunexo/sdk";
 export const metadata = { title: "Fixture" };
 export default async function Page() {
   const title = await getSetting("${FIXTURE_ID}", "site.title");

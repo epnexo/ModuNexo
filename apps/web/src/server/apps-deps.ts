@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { ARCHIVE_LIMITS, buildPackageContext, closeStaleOperations, launchApply, launchChange, listIntakes, listOperations, liveOperation, receiveUpload, stagingPath } from "@epnexo/core/apps";
+import { ARCHIVE_LIMITS, buildPackageContext, closeStaleOperations, launchApply, launchChange, listIntakes, listOperations, liveOperation, receiveUpload, stagingPath } from "@modunexo/core/apps";
 import { type AppsDeps, plainActor } from "./apps-api.ts";
 import { platform } from "./platform.ts";
 import { resolveViewer } from "./viewer.ts";
@@ -17,7 +17,7 @@ function repoRoot(): string {
   return root;
 }
 
-const dataDir = (root: string): string => (process.env.EPNEXO_DATA_DIR ? resolve(process.env.EPNEXO_DATA_DIR) : join(root, "var"));
+const dataDir = (root: string): string => (process.env.MODUNEXO_DATA_DIR ? resolve(process.env.MODUNEXO_DATA_DIR) : join(root, "var"));
 
 const iso = (value: unknown) => (value instanceof Date ? value.toISOString() : value);
 

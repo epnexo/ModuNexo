@@ -12,7 +12,7 @@
  * This is the platform's contract for well-behaved modules, not a sandbox: module code runs in the platform's own
  * process with the platform's database credentials, so a module that wants to can still reach around it.
  */
-export const DB_READER: unique symbol = Symbol.for("epnexo.db.reader") as never;
+export const DB_READER: unique symbol = Symbol.for("modunexo.db.reader") as never;
 
 /** One statement's outcome. Rows are plain objects keyed by column name. */
 export interface DbResult<Row extends Record<string, unknown> = Record<string, unknown>> {

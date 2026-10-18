@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type TestContext, afterEach, beforeEach, describe, it } from "node:test";
-import { SDK_VERSION } from "@epnexo/sdk";
+import { SDK_VERSION } from "@modunexo/sdk";
 import type pg from "pg";
 import { createPool } from "../src/pool.ts";
 import { createScratchDatabase } from "../src/testing.ts";
@@ -29,7 +29,7 @@ const spawn = (args: string[], env: Record<string, string>, cwd?: string): Promi
 
 let work: string;
 beforeEach(() => {
-  work = mkdtempSync(join(tmpdir(), "epnexo-cli-packages-"));
+  work = mkdtempSync(join(tmpdir(), "modunexo-cli-packages-"));
 });
 afterEach(() => rmSync(work, { recursive: true, force: true }));
 

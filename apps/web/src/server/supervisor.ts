@@ -1,7 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { log } from "@epnexo/core/log";
+import { log } from "@modunexo/core/log";
 import { exitCodeFor } from "./launch.ts";
 
 /** What the supervisor listens on: `process`, or any emitter of the signal names in tests. */

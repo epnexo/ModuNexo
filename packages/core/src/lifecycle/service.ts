@@ -1,5 +1,5 @@
 import type pg from "pg";
-import type { ModuleManifest } from "@epnexo/sdk";
+import type { ModuleManifest } from "@modunexo/sdk";
 import { CORE_MODULE_ID } from "../core-module.ts";
 import { MODULES_DIR } from "../discovery.ts";
 import { purgeModuleInTransaction } from "../purge.ts";

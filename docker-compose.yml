@@ -21,14 +21,14 @@ services:
       retries: 20
 
   # The web app. Not started by a plain `docker compose up -d db` (the development flow): ask for it with
-  #   EPNEXO_MASTER_KEY=... docker compose --profile app up -d --build
+  #   MODUNEXO_MASTER_KEY=... docker compose --profile app up -d --build
   web:
     profiles: ["app"]
     build:
       context: .
       args:
         WEB_PUBLIC_URL: ${WEB_PUBLIC_URL:-}
-    container_name: epnexo-web
+    container_name: modunexo-web
     restart: unless-stopped
     depends_on:
       db:
@@ -37,15 +37,15 @@ services:
       DATABASE_URL: postgres://epnexo:epnexo@db:5432/epnexo
       # Empty when unset: the app then refuses to start naming the variable. A required-variable check here would
       # break every compose command (the database-only development flow included), even for a stopped profile.
-      EPNEXO_MASTER_KEY: ${EPNEXO_MASTER_KEY:-}
+      MODUNEXO_MASTER_KEY: ${MODUNEXO_MASTER_KEY:-}
       WEB_PUBLIC_URL: ${WEB_PUBLIC_URL:-}
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
-      - epnexo-modules:/app/modules
-      - epnexo-data:/app/var
+      - modunexo-modules:/app/modules
+      - modunexo-data:/app/var
 
 volumes:
   epnexo-db-data:
-  epnexo-modules:
-  epnexo-data:
+  modunexo-modules:
+  modunexo-data:

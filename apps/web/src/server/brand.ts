@@ -1,4 +1,4 @@
-import { type BrandState, readBrand } from "@epnexo/core/settings";
+import { type BrandState, readBrand } from "@modunexo/core/settings";
 import { platform } from "./platform.ts";
 
 /** The identity to present, or the default when nothing is set or the database cannot be asked (a page must still render). */

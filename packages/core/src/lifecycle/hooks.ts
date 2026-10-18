@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type pg from "pg";
-import type { ModuleManifest } from "@epnexo/sdk";
+import type { ModuleManifest } from "@modunexo/sdk";
 import type { UninstallMode } from "./transitions.ts";
 
 /**

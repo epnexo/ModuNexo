@@ -39,6 +39,6 @@ describe("getSetting", () => {
   });
 
   it("is the same reader across module copies: it is found through a global symbol, not an import", () => {
-    assert.equal(SETTINGS_READER, Symbol.for("epnexo.settings.reader"));
+    assert.equal(SETTINGS_READER, Symbol.for("modunexo.settings.reader"));
   });
 });

@@ -1,5 +1,5 @@
-import { readTrustedProxyState, resolveMasterKey } from "@epnexo/core/auth";
-import { AppearanceService, SettingsService, readBrand } from "@epnexo/core/settings";
+import { readTrustedProxyState, resolveMasterKey } from "@modunexo/core/auth";
+import { AppearanceService, SettingsService, readBrand } from "@modunexo/core/settings";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -90,7 +90,7 @@ export default async function SettingsPage() {
           <p role="note" className="max-w-xl rounded-md bg-warning-soft px-3 py-2 text-sm">
             Session cookies are not marked Secure because <code className="font-mono">WEB_PUBLIC_URL</code> is not an https address. That is fine on a trusted
             local network. If you reach this app over HTTPS, set <code className="font-mono">WEB_PUBLIC_URL</code> (for example{" "}
-            <code className="font-mono">https://epnexo.example.com</code>) and restart, so the cookie is never sent over plain HTTP.
+            <code className="font-mono">https://modunexo.example.com</code>) and restart, so the cookie is never sent over plain HTTP.
           </p>
         )}
         <SecurityForm initial={trustedProxies.list} invalidStored={trustedProxies.invalid} canWrite={viewer.canWrite} />

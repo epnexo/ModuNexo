@@ -1,4 +1,4 @@
-import type { SettingDeclaration } from "@epnexo/sdk";
+import type { SettingDeclaration } from "@modunexo/sdk";
 import type pg from "pg";
 import type { Registry } from "../registry.ts";
 import { decryptSecret, encryptSecret } from "./crypto.ts";
@@ -29,7 +29,7 @@ export interface SettingEntry {
 export type SettingOperation = { op: "set"; key: string; value: unknown } | { op: "unset"; key: string };
 
 export interface SettingsServiceOptions {
-  /** `EPNEXO_MASTER_KEY`. Secrets are encrypted under a key derived from it. */
+  /** `MODUNEXO_MASTER_KEY`. Secrets are encrypted under a key derived from it. */
   masterKey: string;
 }
 

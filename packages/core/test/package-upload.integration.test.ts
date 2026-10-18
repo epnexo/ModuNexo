@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SDK_VERSION } from "@epnexo/sdk";
+import { SDK_VERSION } from "@modunexo/sdk";
 import { after, afterEach, before, beforeEach, describe, it } from "node:test";
 import type pg from "pg";
 import { UploadTooLargeError, receiveUpload } from "../src/packages/upload.ts";
@@ -33,7 +33,7 @@ after(async () => {
   }
 });
 beforeEach(() => {
-  work = mkdtempSync(join(tmpdir(), "epnexo-upload-"));
+  work = mkdtempSync(join(tmpdir(), "modunexo-upload-"));
 });
 afterEach(() => rmSync(work, { recursive: true, force: true }));
 

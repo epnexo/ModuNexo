@@ -78,7 +78,7 @@ describe("handleUpload", () => {
     const response = await handleUpload(post("/api/apps/packages", { body: "x" }), refused.deps);
     assert.equal(response.status, 422);
     assert.deepEqual((await read(response)).problems, ["a is wrong", "b is wrong"]);
-    const { UploadTooLargeError } = await import("@epnexo/core/apps");
+    const { UploadTooLargeError } = await import("@modunexo/core/apps");
     const over = deps({ receive: async () => { throw new UploadTooLargeError(1000); } });
     assert.equal((await handleUpload(post("/api/apps/packages", { body: "x" }), over.deps)).status, 413);
   });
@@ -119,7 +119,7 @@ describe("handleStart", () => {
   });
 
   it("answers 422 with what the process printed when it ended at once", async () => {
-    const { LaunchFailedError } = await import("@epnexo/core/apps");
+    const { LaunchFailedError } = await import("@modunexo/core/apps");
     const failed = deps({
       launch: async () => {
         throw new LaunchFailedError(3, "refused: reports 1.0.0 is not newer than the installed 1.0.0");
@@ -139,7 +139,7 @@ describe("handleStart", () => {
   it("is refused for a visitor who may not write, and with 409 while a run is alive", async () => {
     const plain = deps({ viewer: async () => USER });
     assert.equal((await handleStart(json({ sha256: SHA, acknowledge: true }), plain.deps)).status, 403);
-    const { LaunchBusyError } = await import("@epnexo/core/apps");
+    const { LaunchBusyError } = await import("@modunexo/core/apps");
     const busy = deps({
       launch: async () => {
         throw new LaunchBusyError({ moduleId: "x", version: "1", sha256: SHA, kind: "install", status: "running", step: "build", detail: null, actor: "a", pid: 1, startedAt: new Date(), finishedAt: null, id: 1 });
@@ -201,7 +201,7 @@ describe("handleChange", () => {
     const cross = new Request("http://h/api/apps/modules/reports", { method: "POST", headers: { origin: "http://evil", host: "h" }, body: JSON.stringify({ action: "enable" }) });
     assert.equal((await handleChange(cross, d, "reports")).status, 403);
     assert.equal((await handleChange(change("reports", { action: "enable" }), deps({ viewer: async () => USER }).deps, "reports")).status, 403);
-    const { LaunchBusyError, LaunchFailedError } = await import("@epnexo/core/apps");
+    const { LaunchBusyError, LaunchFailedError } = await import("@modunexo/core/apps");
     const busy = deps({
       launchChange: async () => {
         throw new LaunchBusyError({ moduleId: "x", version: "1", sha256: null, kind: "install", status: "running", step: "build", detail: null, actor: "a", pid: 1, startedAt: new Date(), finishedAt: null, id: 1 });

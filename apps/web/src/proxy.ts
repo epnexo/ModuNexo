@@ -6,8 +6,8 @@ import {
   readTrustedProxies,
   requestIsLocal,
   splitForwarded,
-} from "@epnexo/core/auth";
-import { log } from "@epnexo/core/log";
+} from "@modunexo/core/auth";
+import { log } from "@modunexo/core/log";
 import { type NextRequest, NextResponse } from "next/server";
 import { modules } from "./generated/modules.ts";
 import { HEALTH_PATH, decideAccess } from "./server/access.ts";
@@ -83,7 +83,7 @@ export async function proxy(request: NextRequest) {
     if (mode === "disabled" && decision.status === 403) {
       // The client gets nothing; the operator gets the reason and the way out.
       const why = !local ? `a request address is not local (${addresses.join(", ") || "none was stamped"})` : `the Host header is not a local name (${request.headers.get("host") ?? "missing"})`;
-      refusalLog(!local ? "not-local" : "bad-host", `refused ${request.method} ${pathname}: ${why}. Sign-in is disabled, so only local requests are served; run "npm run epnexo -- auth require" to ask for a sign-in instead.`);
+      refusalLog(!local ? "not-local" : "bad-host", `refused ${request.method} ${pathname}: ${why}. Sign-in is disabled, so only local requests are served; run "npm run modunexo -- auth require" to ask for a sign-in instead.`);
     }
     return text(decision.message, decision.status);
   } catch (error) {

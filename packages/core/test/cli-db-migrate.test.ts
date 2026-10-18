@@ -17,7 +17,7 @@ const run = (args: string[], env: Record<string, string>) =>
 
 let modulesDir: string;
 beforeEach(() => {
-  modulesDir = mkdtempSync(join(tmpdir(), "epnexo-cli-modules-"));
+  modulesDir = mkdtempSync(join(tmpdir(), "modunexo-cli-modules-"));
 });
 afterEach(() => rmSync(modulesDir, { recursive: true, force: true }));
 

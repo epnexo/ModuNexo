@@ -1,4 +1,4 @@
-import type { BrandProfile } from "@epnexo/core/brand";
+import type { BrandProfile } from "@modunexo/core/brand";
 
 /** Name, and for a business its public contact details; nothing at all while no identity is configured. */
 export function BrandFooter({ profile }: { profile: BrandProfile | null }) {

@@ -30,7 +30,7 @@ async function inScratchDatabase(t: TestContext, work: (db: pg.Pool, cli: Cli) =
   const scratch = await createScratchDatabase();
   if (!scratch.url) return t.skip(scratch.skipReason);
   const db = createPool(scratch.url);
-  const cli: Cli = (args, stdin) => spawn(args, { DATABASE_URL: scratch.url!, EPNEXO_MASTER_KEY: MASTER_KEY }, stdin);
+  const cli: Cli = (args, stdin) => spawn(args, { DATABASE_URL: scratch.url!, MODUNEXO_MASTER_KEY: MASTER_KEY }, stdin);
   try {
     assert.equal((await cli(["db:migrate"])).code, 0);
     await work(db, cli);

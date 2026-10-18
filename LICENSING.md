@@ -28,7 +28,7 @@ A **Module** is a work that:
 
 1. is packaged as the platform's module contract describes (a `manifest.ts`, optional migrations, optional pages,
    routes and hooks, as documented in the README under "The module contract");
-2. uses the platform only through that contract and through the exports of `@epnexo/sdk` (`defineModule`, `getDb`,
+2. uses the platform only through that contract and through the exports of `@modunexo/sdk` (`defineModule`, `getDb`,
    `getSetting` and the rest of the package); and
 3. contains no file of the platform (`apps/web`, `packages/core`) and does not modify one.
 

@@ -1,4 +1,4 @@
-import { AppearanceService, SettingValueError, validateAppearanceValue } from "@epnexo/core/settings";
+import { AppearanceService, SettingValueError, validateAppearanceValue } from "@modunexo/core/settings";
 import { platform } from "../../../../../../server/platform.ts";
 import { enabledModuleIds, webRegistry } from "../../../../../../server/registry.ts";
 import { authorizeWrite, json, readJsonBody } from "../../../../../../server/settings-api.ts";

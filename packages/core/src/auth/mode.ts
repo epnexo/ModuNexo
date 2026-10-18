@@ -54,7 +54,7 @@ export async function setSignInMode(pool: pg.Pool, mode: SignInMode, actor: stri
     if (mode === "required") {
       const admins = await client.query(`select count(*)::int as n from core.auth_user where "role" = 'admin' and coalesce("banned", false) = false`);
       if (admins.rows[0].n === 0) {
-        throw new ModeRefusedError('no administrator exists, so requiring sign-in would lock you out: create one first with "npm run epnexo -- admin create"');
+        throw new ModeRefusedError('no administrator exists, so requiring sign-in would lock you out: create one first with "npm run modunexo -- admin create"');
       }
     }
     await client.query(

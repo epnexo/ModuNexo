@@ -1,4 +1,4 @@
-import { BrandKindLockedError, BrandService, SettingValueError, readBrand } from "@epnexo/core/settings";
+import { BrandKindLockedError, BrandService, SettingValueError, readBrand } from "@modunexo/core/settings";
 import { platform } from "../../../../server/platform.ts";
 import { authorizeWrite, json, readJsonBody } from "../../../../server/settings-api.ts";
 

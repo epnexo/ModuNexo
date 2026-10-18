@@ -1,7 +1,7 @@
 import { isAbsolute, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import type pg from "pg";
-import type { ModuleManifest } from "@epnexo/sdk";
+import type { ModuleManifest } from "@modunexo/sdk";
 import { CORE_MODULE_DIR, CORE_MODULE_ID } from "./core-module.ts";
 import { type MigrationFile, planMigrations, readMigrationFiles } from "./migrations.ts";
 import type { Registry } from "./registry.ts";

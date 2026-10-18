@@ -5,8 +5,8 @@ import type pg from "pg";
  * because `scripts/serve.ts` is run by Node's own TypeScript support, which only strips types: it cannot load the
  * core's services (they use parameter properties). Keep this file to syntax Node can strip and to type-only imports.
  */
-export const STORE = Symbol.for("epnexo.web.platform");
-export const CLOSED = Symbol.for("epnexo.web.platform.closed");
+export const STORE = Symbol.for("modunexo.web.platform");
+export const CLOSED = Symbol.for("modunexo.web.platform.closed");
 
 export interface PlatformHolder {
   [STORE]?: { pool: pg.Pool };

@@ -1,4 +1,4 @@
-import { SDK_VERSION, type ModuleManifest, validateManifest } from "@epnexo/sdk";
+import { SDK_VERSION, type ModuleManifest, validateManifest } from "@modunexo/sdk";
 import { satisfies } from "semver";
 import { CORE_MODULE_ID, coreManifest } from "./core-module.ts";
 

@@ -1,5 +1,5 @@
-import { resolveMasterKey } from "@epnexo/core/auth";
-import { SettingsService, validateSetting } from "@epnexo/core/settings";
+import { resolveMasterKey } from "@modunexo/core/auth";
+import { SettingsService, validateSetting } from "@modunexo/core/settings";
 import { platform } from "../../../../../server/platform.ts";
 import { enabledModuleIds, webRegistry } from "../../../../../server/registry.ts";
 import { authorizeWrite, json, readJsonBody } from "../../../../../server/settings-api.ts";

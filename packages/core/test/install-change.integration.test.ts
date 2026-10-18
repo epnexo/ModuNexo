@@ -28,7 +28,7 @@ let skipReason: string | undefined;
 const paths = () => ({ repoRoot: work, modulesDir: join(work, "modules"), webRoot: join(work, "web"), dataDir: join(work, "var") });
 
 beforeEach(async () => {
-  work = mkdtempSync(join(tmpdir(), "epnexo-change-"));
+  work = mkdtempSync(join(tmpdir(), "modunexo-change-"));
   for (const dir of ["modules", "node_modules", "web"]) mkdirSync(join(work, dir));
   generateRegistration([], { outDir: join(work, "web") });
   mkdirSync(join(work, "web", ".next"));

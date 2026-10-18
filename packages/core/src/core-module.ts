@@ -1,6 +1,6 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type ModuleManifest, SDK_VERSION } from "@epnexo/sdk";
+import { type ModuleManifest, SDK_VERSION } from "@modunexo/sdk";
 import { CORE_VERSION } from "./version.ts";
 
 export const CORE_MODULE_ID = "core";

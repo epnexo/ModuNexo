@@ -39,7 +39,7 @@ describe("resolveListen", () => {
 
 describe("planLaunch", () => {
   it("start serves where the environment says through the platform's own server and needs the master key", () => {
-    assert.deepEqual(planLaunch("start", { EPNEXO_MASTER_KEY: KEY, WEB_HOST: "0.0.0.0", WEB_PORT: "4000" }), {
+    assert.deepEqual(planLaunch("start", { MODUNEXO_MASTER_KEY: KEY, WEB_HOST: "0.0.0.0", WEB_PORT: "4000" }), {
       kind: "serve",
       dev: false,
       host: "0.0.0.0",
@@ -49,7 +49,7 @@ describe("planLaunch", () => {
   });
 
   it("dev serves the same way and creates the registry only when it is missing", () => {
-    assert.deepEqual(planLaunch("dev", { EPNEXO_MASTER_KEY: KEY }), { kind: "serve", dev: true, host: "127.0.0.1", port: 3000, registry: "ensure" });
+    assert.deepEqual(planLaunch("dev", { MODUNEXO_MASTER_KEY: KEY }), { kind: "serve", dev: true, host: "127.0.0.1", port: 3000, registry: "ensure" });
   });
 
   it("build runs next build, regenerates the registry from the database and needs no master key", () => {
@@ -58,20 +58,20 @@ describe("planLaunch", () => {
 
   it("start and dev refuse without a master key, naming the variable", () => {
     for (const command of ["start", "dev"]) {
-      assert.throws(() => planLaunch(command, {}), (error: unknown) => error instanceof LaunchError && error.message.includes("EPNEXO_MASTER_KEY"), command);
-      assert.throws(() => planLaunch(command, { EPNEXO_MASTER_KEY: "short" }), (error: unknown) => error instanceof LaunchError && !error.message.includes("short"), command);
+      assert.throws(() => planLaunch(command, {}), (error: unknown) => error instanceof LaunchError && error.message.includes("MODUNEXO_MASTER_KEY"), command);
+      assert.throws(() => planLaunch(command, { MODUNEXO_MASTER_KEY: "short" }), (error: unknown) => error instanceof LaunchError && !error.message.includes("short"), command);
     }
   });
 
   it("start and dev refuse a malformed WEB_PUBLIC_URL before anything listens", () => {
     for (const command of ["start", "dev"]) {
-      assert.throws(() => planLaunch(command, { EPNEXO_MASTER_KEY: KEY, WEB_PUBLIC_URL: "not a url" }), (error: unknown) => error instanceof LaunchError && error.message.includes("WEB_PUBLIC_URL"), command);
+      assert.throws(() => planLaunch(command, { MODUNEXO_MASTER_KEY: KEY, WEB_PUBLIC_URL: "not a url" }), (error: unknown) => error instanceof LaunchError && error.message.includes("WEB_PUBLIC_URL"), command);
     }
   });
 
   it("refuses an unknown or missing command", () => {
-    assert.throws(() => planLaunch("deploy", { EPNEXO_MASTER_KEY: KEY }), /unknown command "deploy"/);
-    assert.throws(() => planLaunch(undefined, { EPNEXO_MASTER_KEY: KEY }), /dev, build or start/);
+    assert.throws(() => planLaunch("deploy", { MODUNEXO_MASTER_KEY: KEY }), /unknown command "deploy"/);
+    assert.throws(() => planLaunch(undefined, { MODUNEXO_MASTER_KEY: KEY }), /dev, build or start/);
   });
 });
 
@@ -130,14 +130,14 @@ describe("the launcher script", () => {
   it("exits with 1 before starting anything when the master key is missing", async () => {
     const result = await run(["start"], {});
     assert.equal(result.code, 1);
-    assert.match(result.stderr, /^error: EPNEXO_MASTER_KEY is not set/);
+    assert.match(result.stderr, /^error: MODUNEXO_MASTER_KEY is not set/);
   });
 
   it("exits with 1 on a bad port and with 2 on an unknown command", async () => {
-    const badPort = await run(["start"], { EPNEXO_MASTER_KEY: KEY, WEB_PORT: "seventy" });
+    const badPort = await run(["start"], { MODUNEXO_MASTER_KEY: KEY, WEB_PORT: "seventy" });
     assert.equal(badPort.code, 1);
     assert.match(badPort.stderr, /WEB_PORT/);
-    const unknown = await run(["deploy"], { EPNEXO_MASTER_KEY: KEY });
+    const unknown = await run(["deploy"], { MODUNEXO_MASTER_KEY: KEY });
     assert.equal(unknown.code, 2);
   });
 });

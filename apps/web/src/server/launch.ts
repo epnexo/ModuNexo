@@ -1,4 +1,4 @@
-import { MasterKeyError, resolveMasterKey } from "@epnexo/core/auth";
+import { MasterKeyError, resolveMasterKey } from "@modunexo/core/auth";
 
 type Env = Record<string, string | undefined>;
 
@@ -24,7 +24,7 @@ export interface PublicUrl {
 }
 
 /**
- * `WEB_PUBLIC_URL`: where the app is reached from outside, such as `https://epnexo.example.com`. It is infrastructure
+ * `WEB_PUBLIC_URL`: where the app is reached from outside, such as `https://modunexo.example.com`. It is infrastructure
  * (it describes the proxy or tunnel in front), so it lives in the environment. Left unset the app serves plain HTTP
  * on the local network and its cookies work there; set to an https origin the cookies become Secure. The value is
  * never echoed in an error: it may have been written with credentials in it.
@@ -32,7 +32,7 @@ export interface PublicUrl {
 export function resolvePublicUrl(env: Env = process.env): PublicUrl {
   const raw = env.WEB_PUBLIC_URL?.trim();
   if (raw === undefined || raw === "") return { baseURL: undefined, secureCookies: false };
-  const refuse = () => new LaunchError("WEB_PUBLIC_URL must be a bare http or https origin such as https://epnexo.example.com");
+  const refuse = () => new LaunchError("WEB_PUBLIC_URL must be a bare http or https origin such as https://modunexo.example.com");
   let url: URL;
   try {
     url = new URL(raw);

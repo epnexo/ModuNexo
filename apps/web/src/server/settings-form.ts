@@ -1,4 +1,4 @@
-import type { SettingDeclaration } from "@epnexo/sdk";
+import type { SettingDeclaration } from "@modunexo/sdk";
 
 export type FormOperation = { op: "set"; key: string; value: string | number | boolean } | { op: "unset"; key: string };
 

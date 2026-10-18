@@ -9,7 +9,7 @@ import { type TarEntry, tarBytes, tgz } from "./helpers/tarball.ts";
 
 let dir: string;
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "epnexo-archive-"));
+  dir = mkdtempSync(join(tmpdir(), "modunexo-archive-"));
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 

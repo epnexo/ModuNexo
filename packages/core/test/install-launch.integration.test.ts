@@ -31,7 +31,7 @@ after(async () => {
   }
 });
 beforeEach(() => {
-  work = mkdtempSync(join(tmpdir(), "epnexo-launch-"));
+  work = mkdtempSync(join(tmpdir(), "modunexo-launch-"));
 });
 afterEach(() => rmSync(work, { recursive: true, force: true }));
 

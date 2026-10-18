@@ -1,4 +1,4 @@
-import { type ModuleManifest, SDK_VERSION } from "@epnexo/sdk";
+import { type ModuleManifest, SDK_VERSION } from "@modunexo/sdk";
 import { gt, lt, satisfies, valid } from "semver";
 import { CORE_MODULE_ID } from "../core-module.ts";
 import { type Registry, compareIds } from "../registry.ts";

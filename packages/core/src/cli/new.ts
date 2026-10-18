@@ -4,7 +4,7 @@ import { ScaffoldRefusedError, scaffoldModule } from "../scaffold/module.ts";
 import { Refusal } from "./errors.ts";
 import type { CliIo } from "./run.ts";
 
-/** Where new module sources go when `--dir` is not given: `modules-src/` beside `modules/`, inside the repository so `@epnexo/sdk` resolves. */
+/** Where new module sources go when `--dir` is not given: `modules-src/` beside `modules/`, inside the repository so `@modunexo/sdk` resolves. */
 export const SOURCES_DIR = resolve(dirname(MODULES_DIR), "modules-src");
 
 /** `modules new <id> [--name <text>] [--dir <parent>]`: writes a working module folder. Needs no database. */

@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SDK_VERSION } from "@epnexo/sdk";
+import { SDK_VERSION } from "@modunexo/sdk";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import type pg from "pg";
 import { REGISTRY_FILE } from "../src/codegen/render.ts";
@@ -31,7 +31,7 @@ let skipReason: string | undefined;
 const paths = () => ({ repoRoot: work, modulesDir: join(work, "modules"), webRoot: join(work, "web"), dataDir: join(work, "var") });
 
 beforeEach(async () => {
-  work = mkdtempSync(join(tmpdir(), "epnexo-apply-"));
+  work = mkdtempSync(join(tmpdir(), "modunexo-apply-"));
   mkdirSync(join(work, "modules"));
   mkdirSync(join(work, "node_modules"));
   mkdirSync(join(work, "web"));

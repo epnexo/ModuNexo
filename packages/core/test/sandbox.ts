@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type pg from "pg";
-import { SDK_VERSION, type ModuleManifest } from "@epnexo/sdk";
+import { SDK_VERSION, type ModuleManifest } from "@modunexo/sdk";
 import { Registry, type RegistryOptions } from "../src/registry.ts";
 
 export interface Throwaway {
@@ -20,7 +20,7 @@ export class Sandbox {
 
   add(dependsOn: Record<string, string> = {}): Throwaway {
     const suffix = randomBytes(4).toString("hex");
-    const dir = mkdtempSync(join(tmpdir(), "epnexo-runner-"));
+    const dir = mkdtempSync(join(tmpdir(), "modunexo-runner-"));
     const manifest: ModuleManifest = {
       id: `t-${suffix}`,
       version: "1.0.0",

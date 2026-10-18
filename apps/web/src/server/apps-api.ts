@@ -1,4 +1,4 @@
-import { type IntakeResult, LaunchBusyError, LaunchFailedError, UploadTooLargeError } from "@epnexo/core/apps";
+import { type IntakeResult, LaunchBusyError, LaunchFailedError, UploadTooLargeError } from "@modunexo/core/apps";
 import { json, parseJsonBody, readBodyText, sameOriginRequest } from "./settings-api.ts";
 
 const SHA256 = /^[0-9a-f]{64}$/;

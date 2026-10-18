@@ -3,7 +3,7 @@ import { createReadStream, createWriteStream, existsSync, lstatSync, mkdirSync, 
 import { join } from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import type { ModuleManifest } from "@epnexo/sdk";
+import type { ModuleManifest } from "@modunexo/sdk";
 import type pg from "pg";
 import semver from "semver";
 import { ARCHIVE_LIMITS, type ArchiveLimits, stageArchive } from "./archive.ts";

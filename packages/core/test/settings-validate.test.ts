@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { SettingDeclaration } from "@epnexo/sdk";
+import type { SettingDeclaration } from "@modunexo/sdk";
 import { validateSetting } from "../src/settings/validate.ts";
 
 const decl = (overrides: Partial<SettingDeclaration>): SettingDeclaration => ({ key: "some.key", label: "Some key", type: "string", ...overrides });
@@ -71,7 +71,7 @@ describe("validateSetting: select", () => {
 describe("validateSetting: path", () => {
   const d = decl({ type: "path" });
   it("accepts an absolute path and trims it", () => {
-    assert.equal(ok(d, "/var/lib/epnexo"), "/var/lib/epnexo");
+    assert.equal(ok(d, "/var/lib/modunexo"), "/var/lib/modunexo");
     assert.equal(ok(d, "  /srv/data  "), "/srv/data");
   });
   it("refuses a relative path, parent segments, a NUL and a very long one", () => {

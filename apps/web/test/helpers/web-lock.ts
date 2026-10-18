@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const LOCK = join(tmpdir(), "epnexo-web-build.lock");
+const LOCK = join(tmpdir(), "modunexo-web-build.lock");
 
 const alive = (pid: number): boolean => {
   try {

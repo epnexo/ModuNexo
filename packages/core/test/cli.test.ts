@@ -28,8 +28,8 @@ const spawn = (args: string[], env: Record<string, string>): Promise<Outcome> =>
 let modulesDir: string;
 let outDir: string;
 beforeEach(() => {
-  modulesDir = mkdtempSync(join(tmpdir(), "epnexo-cli-modules-"));
-  outDir = join(mkdtempSync(join(tmpdir(), "epnexo-cli-out-")), "web");
+  modulesDir = mkdtempSync(join(tmpdir(), "modunexo-cli-modules-"));
+  outDir = join(mkdtempSync(join(tmpdir(), "modunexo-cli-out-")), "web");
 });
 afterEach(() => {
   rmSync(modulesDir, { recursive: true, force: true });

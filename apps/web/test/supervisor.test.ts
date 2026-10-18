@@ -8,7 +8,7 @@ import { superviseChild } from "../src/server/supervisor.ts";
 
 let dir: string;
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "epnexo-supervisor-"));
+  dir = mkdtempSync(join(tmpdir(), "modunexo-supervisor-"));
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
