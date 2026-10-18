@@ -46,11 +46,24 @@ const BACKUP = ".next.rollback";
 const OUTPUT_TAIL = 6000;
 const BUILD_TIMEOUT_MS = 30 * 60 * 1000;
 
-/** `next build` as the launcher runs it, in `webRoot`, with the environment of this process. */
+/** What a build may see of the environment: tools, locale and Next's own settings. Never the master key or a database URL. */
+const BUILD_ENV_KEYS = ["PATH", "HOME", "USER", "LANG", "LANGUAGE", "TZ", "TMPDIR", "NODE_OPTIONS", "NODE_ENV", "CI", "WEB_PUBLIC_URL"];
+const BUILD_ENV_PREFIXES = ["LC_", "NEXT_", "TURBOPACK"];
+
+export function buildEnvironment(env: Record<string, string | undefined>): NodeJS.ProcessEnv {
+  const kept = {} as NodeJS.ProcessEnv;
+  for (const [key, value] of Object.entries(env)) {
+    if (value === undefined) continue;
+    if (BUILD_ENV_KEYS.includes(key) || BUILD_ENV_PREFIXES.some((prefix) => key.startsWith(prefix))) kept[key] = value;
+  }
+  return kept;
+}
+
+/** `next build` as the launcher runs it, in `webRoot`, with a minimal environment (see `buildEnvironment`). */
 export const nextBuildRunner: BuildRunner = (webRoot, signal) =>
   new Promise((resolve) => {
     const next = createRequire(import.meta.url).resolve("next/dist/bin/next");
-    const child = spawn(process.execPath, [next, "build"], { cwd: webRoot, env: process.env, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(process.execPath, [next, "build"], { cwd: webRoot, env: buildEnvironment(process.env), stdio: ["ignore", "pipe", "pipe"] });
     let output = "";
     const keep = (chunk: Buffer) => {
       output = (output + chunk.toString("utf8")).slice(-OUTPUT_TAIL);

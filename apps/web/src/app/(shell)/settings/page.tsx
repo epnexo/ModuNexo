@@ -10,12 +10,22 @@ import { ResetIdentity } from "../../../components/settings/reset-identity";
 import { ModuleSettings } from "../../../components/settings/module-settings";
 import { SecurityForm } from "../../../components/settings/security-form";
 import { modules } from "../../../generated/modules";
+import { resolvePublicUrl } from "../../../server/launch";
 import { platform } from "../../../server/platform";
 import { enabledModuleIds, webRegistry } from "../../../server/registry";
 import { resolveViewer } from "../../../server/viewer";
 
 export const metadata: Metadata = { title: "Settings" };
 export const dynamic = "force-dynamic";
+
+/** Whether session cookies are marked Secure. A malformed `WEB_PUBLIC_URL` is reported as not secure, never thrown. */
+function cookiesAreSecure(): boolean {
+  try {
+    return resolvePublicUrl().secureCookies;
+  } catch {
+    return false;
+  }
+}
 
 export default async function SettingsPage() {
   const viewer = await resolveViewer(await headers());
@@ -76,6 +86,13 @@ export default async function SettingsPage() {
         <h2 id="security-heading" className="text-lg font-semibold tracking-tight">
           Security
         </h2>
+        {cookiesAreSecure() ? null : (
+          <p role="note" className="max-w-xl rounded-md bg-warning-soft px-3 py-2 text-sm">
+            Session cookies are not marked Secure because <code className="font-mono">WEB_PUBLIC_URL</code> is not an https address. That is fine on a trusted
+            local network. If you reach this app over HTTPS, set <code className="font-mono">WEB_PUBLIC_URL</code> (for example{" "}
+            <code className="font-mono">https://epnexo.example.com</code>) and restart, so the cookie is never sent over plain HTTP.
+          </p>
+        )}
         <SecurityForm initial={trustedProxies.list} invalidStored={trustedProxies.invalid} canWrite={viewer.canWrite} />
       </section>
 

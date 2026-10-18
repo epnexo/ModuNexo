@@ -602,6 +602,19 @@ tabs), and anything occasional (adding an app, resetting the identity) opens on 
 page. Settings has the tabs Profile, Appearance, Security and Modules; Apps has Apps and History. New screens and
 module pages follow the same rule.
 
+## Hardening
+
+- **Headers.** Every response carries `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`,
+  `Permissions-Policy` and a content policy that forbids framing, plugins, a changed `<base>` and foreign form
+  targets (`apps/web/src/server/security-headers.ts`). It has no `script-src` on purpose: the app has inline scripts.
+  `Strict-Transport-Security` is sent only when `WEB_PUBLIC_URL` is https at build time.
+- **Build environment.** `next build` runs with an allowlist of variables (`PATH`, `HOME`, locale, `NEXT_*`,
+  `NODE_OPTIONS`, `WEB_PUBLIC_URL`, ...), never with `EPNEXO_MASTER_KEY` or a database URL.
+- **Cookies.** Settings > Security warns when sign-in cookies are not `Secure` because `WEB_PUBLIC_URL` is not https.
+- **Installing is a trust decision.** A module runs with full access to the platform and its database. The Apps
+  screen asks for an explicit acknowledgement and the API refuses `POST /api/apps/operations` unless the body is
+  `{ sha256, acknowledge: true }`. The SHA-256 proves the file did not change, not who made it.
+
 ## The Apps screen
 
 `/apps` has two tabs, **Apps** (the installed modules, the default) and **History**, so the page stays quiet. The
