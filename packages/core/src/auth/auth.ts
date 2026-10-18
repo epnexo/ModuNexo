@@ -8,8 +8,13 @@ import { deriveSecret } from "./master-key.ts";
 export const PASSWORD_MIN_LENGTH = 12;
 /** The library's own ceiling: longer input is refused before hashing. */
 export const PASSWORD_MAX_LENGTH = 128;
-/** The role that holds every permission. The only role this version of the shell knows. */
+/** The role that holds every permission and may change the platform. */
 export const ADMIN_ROLE = "admin";
+/** The role that uses the modules (holds every module permission) but cannot change the platform. */
+export const OPERATOR_ROLE = "operator";
+/** The roles a user can be given. Any other stored role (the library's default "user") holds nothing. */
+export const ROLES = [ADMIN_ROLE, OPERATOR_ROLE] as const;
+export type Role = (typeof ROLES)[number];
 
 /** Failed sign-ins allowed per client address in `SIGN_IN_WINDOW_SECONDS` before the endpoint answers 429. */
 export const SIGN_IN_MAX_ATTEMPTS = 5;

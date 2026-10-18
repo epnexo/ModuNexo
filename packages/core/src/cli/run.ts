@@ -2,7 +2,8 @@ import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import type pg from "pg";
 import { AdminRefusedError, createAdministrator } from "../auth/admin.ts";
-import { createAuth } from "../auth/auth.ts";
+import { ROLES, type Role, createAuth } from "../auth/auth.ts";
+import { createUser, isRole, listUsers, setUserRole } from "../auth/users.ts";
 import { MASTER_KEY_ENV, resolveMasterKey } from "../auth/master-key.ts";
 import { ModeRefusedError, readSignInMode, setSignInMode } from "../auth/mode.ts";
 import { DEFAULT_WEB_ROOT, RegistrationError, generateRegistration, registrationModulesFor } from "../codegen/index.ts";
@@ -59,6 +60,13 @@ commands:
   admin create --email <email> --name <name>
                                    create an administrator; the password is read from standard input
                                    (a hidden prompt on a terminal), never from an argument
+  user create --email <email> --name <name> --role admin|operator
+                                   create a user; the password is read like "admin create". An admin can do
+                                   everything; an operator uses the modules but cannot change the platform
+                                   (apps, settings, identity, sign-in)
+  user list [--json]               every user with the role
+  user role --email <email> --role admin|operator
+                                   change a role; the last active administrator cannot be demoted
   settings list [--module <id>] [--json]
                                    platform appearance, or a module's declared settings (and its appearance)
   settings get <key> [--module <id>]
@@ -75,7 +83,7 @@ options for every command:
   --data-dir <path>                where received packages are kept (modules add, apply; default: var/ at the repository root)
   --help                           print this text
 
-environment: DATABASE_URL (and TEST_DATABASE_URL for the tests); admin create and module settings also need ${MASTER_KEY_ENV}
+environment: DATABASE_URL (and TEST_DATABASE_URL for the tests); admin create, user create and module settings also need ${MASTER_KEY_ENV}
 exit codes: 0 done, 1 error, 2 usage error, 3 refused by a rule (lifecycle, registration conflict, administrator or sign-in mode)`;
 
 import { Refusal, UsageError } from "./errors.ts";
@@ -92,6 +100,7 @@ const OPTIONS = {
   dir: { type: "string" },
   email: { type: "string" },
   name: { type: "string" },
+  role: { type: "string" },
   module: { type: "string" },
   actor: { type: "string" },
   rebuild: { type: "boolean" },
@@ -113,6 +122,9 @@ const COMMAND_OPTIONS: Record<string, readonly string[]> = {
   "db:migrate": [],
   "registry:generate": ["dry-run", "out"],
   "admin create": ["email", "name"],
+  "user create": ["email", "name", "role"],
+  "user list": ["json"],
+  "user role": ["email", "role"],
   "settings list": ["module", "json"],
   "settings get": ["module"],
   "settings set": ["module"],
@@ -167,6 +179,10 @@ function parse(argv: string[]): Parsed | "help" {
     if (second !== "create") throw new UsageError(second === undefined ? "no admin command given" : `unknown admin command "${second}"`);
     command = "admin create";
     ids = rest;
+  } else if (first === "user") {
+    if (second !== "create" && second !== "list" && second !== "role") throw new UsageError(second === undefined ? "no user command given" : `unknown user command "${second}"`);
+    command = `user ${second}`;
+    ids = rest;
   } else {
     command = first;
     ids = [...(second === undefined ? [] : [second]), ...rest];
@@ -207,6 +223,13 @@ function parse(argv: string[]): Parsed | "help" {
     for (const option of ["email", "name"] as const) {
       if (typeof parsed.values[option] !== "string" || parsed.values[option].trim() === "") throw new UsageError(`admin create needs --${option}`);
     }
+  }
+  if (command === "user create" || command === "user role") {
+    const needed = command === "user create" ? (["email", "name", "role"] as const) : (["email", "role"] as const);
+    for (const option of needed) {
+      if (typeof parsed.values[option] !== "string" || parsed.values[option].trim() === "") throw new UsageError(`${command} needs --${option}`);
+    }
+    if (!isRole(parsed.values.role)) throw new UsageError(`--role takes ${ROLES.join(" or ")}`);
   }
   return { command, ids, values: parsed.values };
 }
@@ -364,6 +387,40 @@ async function adminCreateCommand(parsed: Parsed, pool: pg.Pool, io: CliIo): Pro
   io.out(`created administrator "${user.email}"`);
 }
 
+/** The CLI serves no request, so the origin is never used; the background schema check would race the pool closing. */
+const cliAuth = (pool: pg.Pool) => createAuth({ pool, masterKey: resolveMasterKey(), baseURL: "http://localhost", validateSchema: false });
+
+async function requireAuthTables(pool: pg.Pool): Promise<void> {
+  const migrated = await pool.query("select to_regclass('core.auth_user') is not null as present");
+  if (!migrated.rows[0].present) throw new Error('the authentication tables do not exist yet: run "npm run db:migrate" first');
+}
+
+/** Users and their roles. Only `create` needs the master key (it hashes a password); the others work while locked out. */
+async function userCommand(parsed: Parsed, pool: pg.Pool, io: CliIo): Promise<void> {
+  const action = parsed.command.slice("user ".length);
+  await requireAuthTables(pool);
+  if (action === "list") {
+    const all = await listUsers(pool);
+    if (parsed.values.json === true) {
+      io.out(JSON.stringify(all, null, 2));
+      return;
+    }
+    if (all.length === 0) io.out("no users yet");
+    for (const user of all) io.out(`${cell(user.email, 36)} ${cell(user.role, 10)} ${user.banned ? "banned" : ""}`.trimEnd());
+    return;
+  }
+  const role = parsed.values.role as Role;
+  if (action === "create") {
+    const auth = cliAuth(pool);
+    const password = await readPassword();
+    const user = await createUser(auth, { email: parsed.values.email as string, name: parsed.values.name as string, password, role });
+    io.out(`created ${user.role} "${user.email}"`);
+    return;
+  }
+  const change = await setUserRole(pool, parsed.values.email as string, role);
+  io.out(change.changed ? `"${change.email}" is now ${change.role}` : `"${change.email}" already is ${change.role}`);
+}
+
 const SIGN_IN_DISABLED_NOTICE = [
   "sign-in is now disabled.",
   "Anyone who can reach this server from the local network can use it, including installing modules,",
@@ -497,6 +554,11 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
     if (parsed.command === "admin create") {
       pool = createPool(resolveDatabaseUrl(), { connectionTimeoutMillis: 5000 });
       await adminCreateCommand(parsed, pool, io);
+      return EXIT_OK;
+    }
+    if (parsed.command.startsWith("user ")) {
+      pool = createPool(resolveDatabaseUrl(), { connectionTimeoutMillis: 5000 });
+      await userCommand(parsed, pool, io);
       return EXIT_OK;
     }
     let modulesDir: string;

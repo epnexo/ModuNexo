@@ -31,6 +31,11 @@ describe("subjectCan", () => {
     assert.equal(subjectCan({ kind: "user", role: "admin" }, "reports.read"), true);
   });
 
+  it("gives the operator role every module permission", () => {
+    assert.equal(subjectCan({ kind: "user", role: "operator" }, "reports.read"), true);
+    assert.equal(subjectCan({ kind: "user", role: "Operator" }, "reports.read"), false);
+  });
+
   it("gives any other role none of the named permissions", () => {
     assert.equal(subjectCan({ kind: "user", role: "user" }, "reports.read"), false);
     assert.equal(subjectCan({ kind: "user", role: null }, "reports.read"), false);

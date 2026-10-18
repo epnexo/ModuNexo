@@ -417,6 +417,7 @@ const html = (reply: Reply) => reply.body.replace(/<!-- -->/g, "");
 describe("web app: with a module installed", () => {
   let cookie = "";
   let userCookie = "";
+  let operatorCookie = "";
 
   before(async () => {
     if (db === undefined) return;
@@ -440,6 +441,12 @@ describe("web app: with a module installed", () => {
     const viewer = await call("POST", "/api/auth/sign-in/email", { origin: origin() }, { email: "viewer@example.test", password: PASSWORD });
     assert.equal(viewer.status, 200, viewer.body);
     userCookie = cookieOf(viewer);
+
+    await auth.api.createUser({ body: { email: "operator@example.test", name: "Operator", password: PASSWORD, role: "operator" as never } });
+    await db.query("delete from core.auth_rate_limit");
+    const operator = await call("POST", "/api/auth/sign-in/email", { origin: origin() }, { email: "operator@example.test", password: PASSWORD });
+    assert.equal(operator.status, 200, operator.body);
+    operatorCookie = cookieOf(operator);
   });
 
   test("the sidebar lists the module's entry under its group, with its icon, and the page is inside the shell", async () => {
@@ -523,6 +530,27 @@ describe("web app: with a module installed", () => {
     assert.match(userHome, /href="\/e2e-fixture"/);
     assert.ok(!userHome.includes('href="/e2e-fixture/area"'), "the user is not shown the restricted link");
     assert.match(html(await call("GET", "/", { cookie })), /href="\/e2e-fixture\/area"/, "the administrator is");
+  });
+
+  test("an operator uses the module's restricted paths and sees its links, but cannot change the platform", async () => {
+    for (const path of ["/e2e-fixture/restricted", "/e2e-fixture/area/5", "/e2e-fixture/data"]) {
+      assert.equal((await call("GET", path, { cookie: operatorCookie })).status, 200, `operator ${path}`);
+    }
+    assert.match(html(await call("GET", "/", { cookie: operatorCookie })), /href="\/e2e-fixture\/area"/);
+
+    // The platform's own writes stay with the administrator.
+    assert.equal((await put("/api/settings/security", { trustedProxies: "10.0.0.2" }, { cookie: operatorCookie })).status, 403);
+    assert.equal((await put(`/api/settings/modules/${FIXTURE_ID}`, { values: {} }, { cookie: operatorCookie })).status, 403);
+    assert.equal((await call("GET", "/api/apps", { cookie: operatorCookie })).status, 403);
+    assert.equal((await call("POST", "/api/apps/operations", { cookie: operatorCookie, origin: origin() }, {})).status, 403);
+    const settings = html(await call("GET", "/settings", { cookie: operatorCookie }));
+    assert.match(settings, /Only an administrator can view or change settings/);
+    assert.match(html(await call("GET", "/apps", { cookie: operatorCookie })), /Only an administrator can add, enable, disable or uninstall modules/);
+
+    // Nor can it use the library's own administrator endpoints to make itself one.
+    const promote = await call("POST", "/api/auth/admin/set-role", { cookie: operatorCookie, origin: origin() }, { userId: "x", role: "admin" });
+    assert.ok(promote.status === 401 || promote.status === 403, `set-role answered ${promote.status}`);
+    assert.equal((await db!.query(`select "role" from core.auth_user where "email" = 'operator@example.test'`)).rows[0].role, "operator");
   });
 
   test("asks for a session before it talks about permissions", async () => {

@@ -269,6 +269,27 @@ printf '%s\n' "$PASSWORD" | npm run epnexo -- admin create --email ada@example.c
 A password shorter than 12 characters and an email that already exists are refused with exit code `3`, and nothing
 is created. The command needs `EPNEXO_MASTER_KEY` and a migrated database, and reads no module.
 
+### Users and roles
+
+More than one person can sign in. Every user has a role:
+
+| Role | Can do |
+|---|---|
+| `admin` | everything: use the modules, add/enable/disable/uninstall apps, change settings, identity and sign-in |
+| `operator` | use the modules (holds every module permission); cannot change the platform |
+
+Any other stored role (the library's default `user`) signs in but holds no module permission. Users are managed from the
+command line, so there is no screen to attack:
+
+```bash
+npm run epnexo -- user create --email bo@example.com --name "Bo" --role operator   # password from stdin, like admin create
+npm run epnexo -- user list [--json]
+npm run epnexo -- user role --email bo@example.com --role admin
+```
+
+`user role` refuses to demote the last active (not banned) administrator, so the platform cannot be left without one.
+`admin create` still works and is `user create --role admin`.
+
 The authentication tables (`core.auth_user`, `core.auth_session`, `core.auth_account`, `core.auth_verification`,
 `core.auth_rate_limit`) are created by the core migration `0003_auth.sql`. The library's own migrate command is
 never run. A test compares that migration with the plan the installed library version computes, so upgrading the
@@ -358,7 +379,7 @@ Every page sits in the `(shell)` route group, whose layout draws the sidebar and
 routes are written into that same group (`src/app/(shell)/<path>`), so a module's pages get the shell without
 knowing about it; only `/login` stands outside. The sidebar is the shell's own entries (Home, Apps, Settings) and
 then the enabled modules' `nav` entries, grouped and ordered as their manifests declare. An entry that names a
-`permission` is shown to the local operator and to an administrator only, and the gate enforces the same rule on
+`permission` is shown to the local operator, to an `admin` and to an `operator`, and the gate enforces the same rule on
 the route (see "Permissions" below), so a link that is hidden cannot be reached by typing its address.
 
 A manifest `nav.icon` names one of: `app`, `home`, `apps`, `settings`, `dashboard`, `documents`, `chart`,
@@ -528,10 +549,11 @@ pages: [
 
 The gate (`src/proxy.ts`) enforces this on every request, after the sign-in and local-only checks: a visitor who
 does not hold a permission gets `403 Forbidden`, and one without a session is sent to sign in first (a module route
-is not under `/api`, so it redirects instead of answering `401`). Today the local operator and an administrator hold
-every permission and nobody else holds any, so a protected path is theirs alone. Granting a permission to another
-user is a users-and-roles feature that does not exist yet; until then this fails closed. A module should still not
-trust the URL alone for anything sensitive it computes.
+is not under `/api`, so it redirects instead of answering `401`). The local operator (sign-in disabled), an `admin` and an
+`operator` hold every module permission; any other role holds none, so a protected path fails closed for it. There is
+no per-permission grant yet: the operator role is "all of the modules, none of the platform". What only an
+administrator may do (apps, settings, identity) is not a module permission; those routes check the role themselves.
+A module should still not trust the URL alone for anything sensitive it computes.
 
 ### Trusted proxies
 
