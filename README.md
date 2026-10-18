@@ -8,7 +8,8 @@ repository holds the SDK modules compile against and the core. The feature plan 
 
 | Path | What it is |
 | --- | --- |
-| `packages/sdk` | `@modunexo/sdk`: manifest v2 types, `defineModule`, `validateManifest`. No database access. |
+| `packages/sdk` | `@modunexo/sdk`: manifest v2 types, `defineModule`, `validateManifest`, `getDb`, `getSetting`. |
+| `packages/sdk-legacy-alias` | `@epnexo/sdk`, the pre-rename name, re-exporting the SDK for old modules. To be removed. |
 | `packages/core` | `@modunexo/core`: the registry, migration runner, lifecycle, registration codegen and CLI. |
 | `modules/` | Installed module packages, one folder per module, linked by the npm workspace glob. Not tracked in git. |
 | `modules-src/` | Sources of the modules you write, made by `modules new`. Tracked in git. |
@@ -47,8 +48,10 @@ The project was called epnexo before it was renamed. `EPNEXO_MASTER_KEY` and `EP
 scripts keep working. A few internal identifiers deliberately keep the old name for compatibility:
 
 - the key-derivation context (`epnexo:<purpose>`), which must never change or stored secrets stop decrypting;
-- the Postgres lock names, and the database, user and compose names (`epnexo`, `epnexo-shell-core`), so an existing
-  data volume is reused;
+- the Postgres lock names, and the database, user and compose names (`epnexo`, `epnexo-shell-core`, and the
+  `epnexo-*` volumes), so existing data volumes are reused;
+- the package name `@epnexo/sdk`, kept as a thin alias of `@modunexo/sdk` (`packages/sdk-legacy-alias`) so modules
+  written before the rename still build and pack; new modules import `@modunexo/sdk`, and the alias will be removed;
 - the marker the code generator recognises, which still accepts the files an older version wrote.
 
 No server answering, or neither variable set, **skips** the integration tests with the reason printed; a server

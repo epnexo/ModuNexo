@@ -17,12 +17,14 @@ export class MasterKeyError extends Error {
 }
 
 export function resolveMasterKey(env: Env = process.env): string {
-  const key = env[MASTER_KEY_ENV]?.trim() || env[LEGACY_MASTER_KEY_ENV]?.trim() || "";
+  const fromNew = env[MASTER_KEY_ENV]?.trim() ?? "";
+  const key = fromNew || env[LEGACY_MASTER_KEY_ENV]?.trim() || "";
+  const variable = fromNew ? MASTER_KEY_ENV : LEGACY_MASTER_KEY_ENV;
   if (key === "") {
     throw new MasterKeyError(`${MASTER_KEY_ENV} is not set (${LEGACY_MASTER_KEY_ENV}, its old name, is also accepted). Generate one with "openssl rand -base64 48" and add it to .env.`);
   }
   if (key.length < MASTER_KEY_MIN_LENGTH) {
-    throw new MasterKeyError(`${MASTER_KEY_ENV} must be at least ${MASTER_KEY_MIN_LENGTH} characters; it has ${key.length}.`);
+    throw new MasterKeyError(`${variable} must be at least ${MASTER_KEY_MIN_LENGTH} characters; it has ${key.length}.`);
   }
   return key;
 }

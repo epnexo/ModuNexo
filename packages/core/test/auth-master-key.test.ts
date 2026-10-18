@@ -77,6 +77,11 @@ describe("the project rename", () => {
     );
   });
 
+  it("names the variable that supplied a too-short key, the old one included", () => {
+    assert.throws(() => resolveMasterKey({ EPNEXO_MASTER_KEY: "short" }), /^MasterKeyError: EPNEXO_MASTER_KEY must be at least 32/);
+    assert.throws(() => resolveMasterKey({ MODUNEXO_MASTER_KEY: "short" }), /^MasterKeyError: MODUNEXO_MASTER_KEY must be at least 32/);
+  });
+
   // Secrets already stored are encrypted under keys derived with these exact inputs: the derivation must never change
   // with the project's name, or every stored secret stops decrypting and every session ends.
   it("derives exactly the same secrets as before the rename (stored secrets must still decrypt)", () => {
