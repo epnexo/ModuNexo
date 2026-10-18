@@ -1,0 +1,22 @@
+# Rename the project to Modunexo and audit the git history for secrets
+Branch: feat/modunexo-rename (from feat/open-source-license). Delivery: ask-on-risk (no push; the owner decides the remote). Runner: `node --import tsx --test`, TEST_DATABASE_URL on 127.0.0.1:5436, `npm run typecheck`.
+
+## Specs
+- S1. Product-facing names become Modunexo: npm scope `@epnexo/*` -> `@modunexo/*`, the CLI script `epnexo` -> `modunexo` (the old script name stays as an alias), documentation and UI copy, the skill folder, the container and volume names of the web service, the backup folder prefix, the custom header and theme storage key.
+- S2. Environment: `MODUNEXO_MASTER_KEY` and `MODUNEXO_DATA_DIR` are the documented names; `EPNEXO_MASTER_KEY` and `EPNEXO_DATA_DIR` keep working as aliases ("para no romper tu `.env` actual"); when both are set the new name wins; the error messages name the new one.
+- S3. Nothing persisted or protocol-level changes: the HKDF info string `epnexo:${purpose}` (secrets already stored must still decrypt and sessions stay valid), the Postgres advisory-lock names, the database/user/password `epnexo`, the compose project `epnexo-shell-core`, the containers and volumes of the database. They stay and are documented as legacy identifiers.
+- S4. A scan of the whole git history (all branches, all commits) for committed secrets: private keys, `.env` files, master keys, passwords, tokens. The result is reported with evidence; a finding is never printed with its secret value.
+- S5. `SECURITY.md` names a private reporting route without publishing the owner's personal data (GitHub private vulnerability reporting).
+- Out of scope: creating the remote, pushing, trademark registration, buying domains.
+
+## Tasks
+- T1 S1 S2 S3 inline — mechanical rename with protected identifiers, env alias with tests — done (fa915f5; RED: alias + data-dir + legacy-tree tests failing; GREEN; golden vectors pin the key derivation; suite 965/966 then the one failure fixed, a test that did not clear the alias)
+- T2 S1 S3 S5 inline — lockfile and relink, skill folder, docs, naming note, SECURITY.md — done (in fa915f5: npm install relinked @modunexo/*, lock has no epnexo, skill folder moved, README alias and legacy-identifier notes, SECURITY uses GitHub private reporting)
+- T3 S4 inline — history scan — done (see L4)
+- T4 all — full suite, typecheck, web build, image build, independent verifier (touches secrets derivation, env and contracts)
+
+## Log
+- L1 (2026-10-19, owner): "dejemoslo modunexo eso se puede cambiar en el futuro como soy dueno?" then "si lo dejo y coloco el github y despues coloco la licencia?" then, answering "¿Hago ahora el renombre a Modunexo y la revisión del historial en busca de secretos, antes de que subas nada?": "si, hacelo ahora".
+- L2: mapping found 144 tracked files and ~355 uses of the bare word. The key-derivation string `epnexo:${purpose}` (packages/core/src/auth/master-key.ts) must not change: renaming it would make every stored secret undecryptable.
+- L3: two on-disk markers needed a compatibility path, found by running the real upgrade: the code generator's ownership manifest (`generator` field) and the header of every generated file carried the old package name, so the new generator called them hand-written. Both old values are still recognised (test: takes over a tree written before the rename). The live preview needed no action beyond rebuilding; its `.env` still uses EPNEXO_MASTER_KEY and starts fine through the alias.
+- L4 (history scan, 135 commits, 15 branches, no tags): no private keys, cloud or GitHub tokens, JWTs or master-key values; no .env, key or dump file ever committed. Matches were test fixtures (`tok_live_..`, `u:p`, `user:pw`) and the local development database password `epnexo:epnexo`, public by design. Personal data that would be published with the repo: every commit carries the author email, and odd/HANDOFF.md named an SSH user and a private LAN address (replaced by placeholders at HEAD; still in older commits). Rewriting history to remove either is destructive and was NOT done: the owner decides.
