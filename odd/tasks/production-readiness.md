@@ -11,10 +11,11 @@ Branch: feat/production-readiness (stacked on feat/module-scaffold). Delivery: a
 
 ## Tasks
 - T1 S1 S2 inline — health endpoint + structured logger + wiring — done (RED: 3 files failing; GREEN 29/29; real server: 200 ok no-store, foreign Host 403, JSON refusal line)
-- T2 S3 inline — backup/restore scripts, tested restore into a scratch database, README
+- T2 S3 inline — backup/restore scripts, tested restore into a scratch database, README — done (6/6 round trip, private perms, no master key, never overwrites, tamper refused, failed backup leaves no folder)
 - T3 S4 inline — CI workflow, Dockerfile, compose service, LICENSE and SECURITY.md
 - T4 S5 inline — users and roles (design question first)
 
 ## Log
 - L1 (2026-10-18, owner): "si, arranca con el lote en ese orden" (after: "primero confirmar que la base esta muy bien que se pueda utilizar en hambiente profesional"; the order proposed: health and logs, backup and restore, CI and Dockerfile, users and roles last).
+- L3: T2 tests found two real script bugs: the mode probe drained stdin (restore read an empty dump) and `fail` exits so an ERR trap never cleaned a half-written backup; fixed with a cached mode and an EXIT trap. Docker briefly disappeared from the host mid-task; the owner restored it and the 6 tests passed.
 - L2: audit evidence before starting: no CI config, no app Dockerfile (compose has only the database), no health endpoint, no backup procedure, only an administrator account, no LICENSE/SECURITY.md.

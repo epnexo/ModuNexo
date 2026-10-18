@@ -683,6 +683,28 @@ Otherwise it is a readable `ts level event key=value` line (`LOG_FORMAT=text` fo
 message, and a long value is cut, so a log can be shipped without scrubbing. Modules can use the same logger:
 `import { log } from "@epnexo/core/log"`.
 
+### Backup and restore
+
+```sh
+scripts/backup.sh                       # writes backups/epnexo-backup-<UTC time>/
+scripts/restore.sh backups/epnexo-backup-20261018T120000Z --database-url postgres://...
+```
+
+A backup folder holds `database.dump` (PostgreSQL custom format), `modules.tar.gz` (installed modules, without
+`node_modules` or `.next`), `packages.tar.gz` (received packages), `BACKUP_INFO` and `SHA256SUMS`. It is readable by its
+owner only: the dump contains every password hash and every encrypted secret. Options: `--out`, `--database-url`
+(default `DATABASE_URL`), `--modules-dir`, `--data-dir`. The scripts use the PostgreSQL client tools from the `PATH` or,
+if they are not installed, run them inside the compose `db` service.
+
+**The master key is not in the backup, on purpose.** Stored secrets are encrypted with `EPNEXO_MASTER_KEY`; keep it (and
+your `.env`) somewhere else, such as a password manager. A restore without it works, but the stored secrets have to be
+typed again.
+
+Restore never overwrites: it checks `SHA256SUMS` first and refuses a database that already has tables or folders that
+already hold modules or packages, changing nothing. Create an empty database, restore, copy your `.env` with the same
+master key, then `npm install && npm run registry:generate && npm run web:build`. Test a restore on a scratch database
+before you need one, and copy the backup folders off the machine.
+
 ## Hardening
 
 - **Headers.** Every response carries `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`,
