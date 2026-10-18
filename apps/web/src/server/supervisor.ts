@@ -51,7 +51,7 @@ export function superviseChild(options: SuperviseOptions): Promise<number> {
       const next = spawn(process.execPath, options.args, { cwd: options.cwd, stdio: "inherit" });
       child = next;
       next.on("error", (error) => {
-        log.error("web.start_failed", { message: `could not start : ` });
+        log.error("web.start_failed", { script: options.args[1] ?? "the web app", error });
         cleanup();
         resolve(1);
       });

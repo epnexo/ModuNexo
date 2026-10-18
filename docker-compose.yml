@@ -35,7 +35,9 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgres://epnexo:epnexo@db:5432/epnexo
-      EPNEXO_MASTER_KEY: ${EPNEXO_MASTER_KEY:?set EPNEXO_MASTER_KEY (openssl rand -base64 48)}
+      # Empty when unset: the app then refuses to start naming the variable. A required-variable check here would
+      # break every compose command (the database-only development flow included), even for a stopped profile.
+      EPNEXO_MASTER_KEY: ${EPNEXO_MASTER_KEY:-}
       WEB_PUBLIC_URL: ${WEB_PUBLIC_URL:-}
     ports:
       - "127.0.0.1:3000:3000"

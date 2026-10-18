@@ -3,6 +3,9 @@ export interface HealthReply {
   body: { status: "ok"; database: "ok" } | { status: "degraded"; database: "unreachable" };
 }
 
+/** The reply for "cannot serve". The access gate answers with it too when it cannot even reach the database. */
+export const DEGRADED_BODY = { status: "degraded", database: "unreachable" } as const;
+
 export interface HealthOptions {
   /** Longest the probe waits for the database. Default 2 s. */
   timeoutMs?: number;
@@ -27,7 +30,7 @@ export async function checkHealth(ping: () => Promise<unknown>, options: HealthO
     return { status: 200, body: { status: "ok", database: "ok" } };
   } catch (error) {
     options.onFailure?.(error);
-    return { status: 503, body: { status: "degraded", database: "unreachable" } };
+    return { status: 503, body: DEGRADED_BODY };
   } finally {
     clearTimeout(timer);
   }

@@ -10,8 +10,9 @@ import {
 import { log } from "@epnexo/core/log";
 import { type NextRequest, NextResponse } from "next/server";
 import { modules } from "./generated/modules.ts";
-import { decideAccess } from "./server/access.ts";
+import { HEALTH_PATH, decideAccess } from "./server/access.ts";
 import { requestAddresses } from "./server/client-address.ts";
+import { DEGRADED_BODY } from "./server/health.ts";
 import { type Subject, subjectCan } from "./server/nav.ts";
 import { permissionRules, requiredPermissions } from "./server/route-permissions.ts";
 import { resolvePublicUrl } from "./server/launch.ts";
@@ -87,6 +88,8 @@ export async function proxy(request: NextRequest) {
     return text(decision.message, decision.status);
   } catch (error) {
     log.error("access.check_failed", { error });
+    // A probe expects its own body even when the gate cannot reach the database to let it through.
+    if (pathname === HEALTH_PATH) return NextResponse.json(DEGRADED_BODY, { status: 503, headers: { "cache-control": "no-store" } });
     return text("Service unavailable", 503);
   }
 }

@@ -40,7 +40,7 @@ done
 
 # Every check first; nothing is touched until all of them pass.
 (cd "$backup" && sha256sum --quiet -c SHA256SUMS) || fail "the backup does not match its SHA256SUMS: it is damaged or was edited"
-tables="$(pg_scalar "$url" "select count(*) from information_schema.tables where table_schema not in ('pg_catalog','information_schema')")" ||
+tables="$(pg_scalar "$url" "select (select count(*) from information_schema.tables where table_schema not in ('pg_catalog','information_schema')) + (select count(*) from pg_namespace where nspname not like 'pg\\_%' and nspname not in ('information_schema','public'))")" ||
   fail "cannot reach the database $(db_part "$url" name); create it empty first"
 [ "$tables" = 0 ] || fail "the database $(db_part "$url" name) already has $tables tables; restore only into an empty one"
 if [ -d "$modules" ] && [ -n "$(find "$modules" -mindepth 1 -maxdepth 1 ! -name .gitkeep -print -quit)" ]; then

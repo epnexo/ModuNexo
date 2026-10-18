@@ -20,9 +20,9 @@ describe("createLogger: json", () => {
 
   it("never lets a secret reach the output, whatever the field is called", () => {
     const { log, lines } = capture("json");
-    log.info("sign-in", { password: "hunter2", Cookie: "session=abc", authorization: "Bearer x", api_token: "t", masterKey: "k", clientSecret: "s", user: "ana" });
+    log.info("sign-in", { password: "hunter2", Cookie: "session=abc", authorization: "Bearer x", api_token: "t", masterKey: "k", clientSecret: "s", accessKey: "a", key: "b", pwd: "c", user: "ana" });
     const parsed = JSON.parse(lines[0]!.line);
-    for (const key of ["password", "Cookie", "authorization", "api_token", "masterKey", "clientSecret"]) assert.equal(parsed[key], "[redacted]", key);
+    for (const key of ["password", "Cookie", "authorization", "api_token", "masterKey", "clientSecret", "accessKey", "key", "pwd"]) assert.equal(parsed[key], "[redacted]", key);
     assert.equal(parsed.user, "ana");
     assert.ok(!/hunter2|session=abc|Bearer x/.test(lines[0]!.line));
   });
