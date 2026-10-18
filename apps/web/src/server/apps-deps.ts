@@ -17,7 +17,11 @@ function repoRoot(): string {
   return root;
 }
 
-const dataDir = (root: string): string => (process.env.MODUNEXO_DATA_DIR ? resolve(process.env.MODUNEXO_DATA_DIR) : join(root, "var"));
+/** The folder the CLI uses too: `MODUNEXO_DATA_DIR`, or its old name `EPNEXO_DATA_DIR`, else `var/` at the repository root. */
+export function dataDir(root: string, env: Record<string, string | undefined> = process.env): string {
+  const chosen = env.MODUNEXO_DATA_DIR || env.EPNEXO_DATA_DIR;
+  return chosen ? resolve(chosen) : join(root, "var");
+}
 
 const iso = (value: unknown) => (value instanceof Date ? value.toISOString() : value);
 

@@ -37,15 +37,17 @@ services:
       DATABASE_URL: postgres://epnexo:epnexo@db:5432/epnexo
       # Empty when unset: the app then refuses to start naming the variable. A required-variable check here would
       # break every compose command (the database-only development flow included), even for a stopped profile.
+      # The old name is passed through too, so an existing .env that only sets EPNEXO_MASTER_KEY keeps working.
       MODUNEXO_MASTER_KEY: ${MODUNEXO_MASTER_KEY:-}
+      EPNEXO_MASTER_KEY: ${EPNEXO_MASTER_KEY:-}
       WEB_PUBLIC_URL: ${WEB_PUBLIC_URL:-}
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
-      - modunexo-modules:/app/modules
-      - modunexo-data:/app/var
+      - epnexo-modules:/app/modules
+      - epnexo-data:/app/var
 
 volumes:
   epnexo-db-data:
-  modunexo-modules:
-  modunexo-data:
+  epnexo-modules:
+  epnexo-data:

@@ -1,0 +1,14 @@
+{
+  "name": "@epnexo/sdk",
+  "version": "0.1.0",
+  "license": "MPL-2.0",
+  "private": true,
+  "type": "module",
+  "description": "Compatibility alias: modules written before the rename import @epnexo/sdk. It re-exports @modunexo/sdk and will be removed.",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "dependencies": {
+    "@modunexo/sdk": "^0.1.0"
+  }
+}

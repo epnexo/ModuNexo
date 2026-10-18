@@ -80,7 +80,7 @@ commands:
 
 options for every command:
   --modules-dir <path>             where module packages are unpacked (default: modules/ at the repository root)
-  --data-dir <path>                where received packages are kept (modules add, apply; default: var/ at the repository root)
+  --data-dir <path>                where received packages are kept (modules add, apply; default: MODUNEXO_DATA_DIR, else var/ at the repository root)
   --help                           print this text
 
 environment: DATABASE_URL (and TEST_DATABASE_URL for the tests); admin create, user create and module settings also need ${MASTER_KEY_ENV}
