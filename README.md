@@ -705,6 +705,24 @@ already hold modules or packages, changing nothing. Create an empty database, re
 master key, then `npm install && npm run registry:generate && npm run web:build`. Test a restore on a scratch database
 before you need one, and copy the backup folders off the machine.
 
+### Container and CI
+
+```sh
+export EPNEXO_MASTER_KEY="$(openssl rand -base64 48)"   # keep it; see Backup and restore
+docker compose --profile app up -d --build               # db + web on 127.0.0.1:3000
+docker compose exec web npm run epnexo -- admin create --email you@example.com --name "Your Name"
+```
+
+The `web` service is behind the `app` profile, so the development flow (`docker compose up -d db`) is unchanged. The
+image runs as a non-root user, applies the migrations on every start, and has a health check on `/api/health`.
+Installed modules and received packages live in the `epnexo-modules` and `epnexo-data` volumes (back them up with
+`scripts/backup.sh --modules-dir ... --data-dir ...`, or copy the volumes). Set `WEB_PUBLIC_URL` to the public https
+origin when the app sits behind a TLS proxy. The image keeps the dev dependencies on purpose: installing a module
+rebuilds the web app inside the container.
+
+`.github/workflows/ci.yml` installs with `npm ci`, type-checks and runs the whole suite against a Postgres service on
+every push and pull request.
+
 ## Hardening
 
 - **Headers.** Every response carries `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`,

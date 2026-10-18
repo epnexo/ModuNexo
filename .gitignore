@@ -18,3 +18,6 @@ var/
 
 # Agent tooling state generated on this machine
 .atl/
+
+# Routes written for installed modules (the demo module "hello" included); never part of the platform.
+apps/web/src/app/(shell)/hello/
