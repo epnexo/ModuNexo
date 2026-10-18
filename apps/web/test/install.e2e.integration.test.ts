@@ -9,6 +9,7 @@ import { createServer } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, describe, it } from "node:test";
+import { BrandService } from "@epnexo/core/settings";
 import { createAdministrator, createAuth, setSignInMode } from "@epnexo/core/auth";
 import { ApplyFailedError, applyPackage, requestRestart } from "@epnexo/core/install";
 import { buildPackageContext, intakePackage, packFolder } from "@epnexo/core/packages";
@@ -152,6 +153,8 @@ before(async () => {
   await migrate(db, registry);
   await createAdministrator(createAuth({ pool: db, masterKey: MASTER_KEY, baseURL: "http://localhost", validateSchema: false }), { email: "i@example.test", name: "I", password: "correct horse battery" });
   await setSignInMode(db, "disabled", "e2e");
+  // The shell sends a visitor to /setup until a profile exists, so the pages these tests fetch need one.
+  await new BrandService(db).setProfile({ kind: "personal", name: "E2E" }, "e2e");
 
   // Inside the repository (var/ is not tracked) so the author's manifest.ts can resolve @epnexo/sdk, as it would
   // from a project that has the SDK installed: packing evaluates the manifest where the author works.
@@ -266,7 +269,7 @@ describe("Apps screen API: upload, confirm, follow the run", () => {
     assert.deepEqual({ status: staged.status, sha256: staged.sha256, id: staged.review.id, version: staged.review.version }, { status: "staged", sha256: packed.sha256, id: MODULE_ID, version: "1.3.0" });
     assert.equal((await db!.query("select 1 from core.modules where installed_version = '1.3.0'")).rowCount, 0, "uploading installs nothing");
 
-    const start = await api("POST", "/api/apps/operations", { body: JSON.stringify({ sha256: packed.sha256 }), headers: { "content-type": "application/json" } });
+    const start = await api("POST", "/api/apps/operations", { body: JSON.stringify({ sha256: packed.sha256, acknowledge: true }), headers: { "content-type": "application/json" } });
     assert.equal(start.status, 202, await start.clone().text());
 
     // While it runs a second start is refused.
@@ -281,7 +284,7 @@ describe("Apps screen API: upload, confirm, follow the run", () => {
       await new Promise((resolve) => setTimeout(resolve, 300));
     }
     assert.notEqual(seen?.running, null, "the run showed up as running");
-    const second = await api("POST", "/api/apps/operations", { body: JSON.stringify({ sha256: packed.sha256 }), headers: { "content-type": "application/json" } });
+    const second = await api("POST", "/api/apps/operations", { body: JSON.stringify({ sha256: packed.sha256, acknowledge: true }), headers: { "content-type": "application/json" } });
     assert.equal(second.status, 409);
 
     try {
@@ -301,10 +304,11 @@ describe("Apps screen API: upload, confirm, follow the run", () => {
     assert.deepEqual((await db!.query("select installed_version from core.modules")).rows, [{ installed_version: "1.3.0" }]);
   });
 
-  test("the Apps page shows the add-a-package flow to an administrator", async () => {
+  test("the Apps page offers the add-an-app flow to an administrator, without showing the upload form up front", async () => {
     const page = await pageText("/apps");
-    assert.ok(page !== null && page.includes("Add a package"), page?.slice(0, 300));
+    assert.ok(page !== null && page.includes("Add app"), page?.slice(0, 300));
     assert.ok(page.includes("History"));
+    assert.ok(!page.includes("Add a package"), "the manual upload opens on demand");
   });
 });
 

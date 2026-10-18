@@ -87,9 +87,19 @@ describe("handleUpload", () => {
 describe("handleStart", () => {
   const json = (body: unknown) => post("/api/apps/operations", { body: JSON.stringify(body), headers: { "content-type": "application/json" } });
 
+  it("refuses to start without an explicit acknowledgement that the module runs with full permissions", async () => {
+    for (const body of [{ sha256: SHA }, { sha256: SHA, acknowledge: false }, { sha256: SHA, acknowledge: "yes" }, { sha256: SHA, acknowledge: 1 }]) {
+      const { deps: d, calls } = deps();
+      const response = await handleStart(json(body), d);
+      assert.equal(response.status, 400, JSON.stringify(body));
+      assert.match(((await response.json()) as { error: string }).error, /acknowledge/);
+      assert.deepEqual(calls.launch, [], JSON.stringify(body));
+    }
+  });
+
   it("starts the apply of a staged package as the signed-in user and answers 202", async () => {
     const { deps: d, calls } = deps();
-    const response = await handleStart(json({ sha256: SHA }), d);
+    const response = await handleStart(json({ sha256: SHA, acknowledge: true }), d);
     assert.equal(response.status, 202);
     assert.deepEqual(calls.launch, [{ sha256: SHA, actor: ADMIN.actor }]);
     const body = await read(response);
@@ -98,13 +108,13 @@ describe("handleStart", () => {
     assert.equal("logFile" in body, false);
   });
 
-  it("refuses a body that is not { sha256 } with a 64-hex value, and a package that was never staged", async () => {
+  it("refuses a body that is not { sha256, acknowledge: true } with a 64-hex value, and a package that was never staged", async () => {
     const { deps: d, calls } = deps();
-    for (const body of [{}, { sha256: "nope" }, { sha256: SHA, extra: 1 }, [], "x", { sha256: 5 }]) {
+    for (const body of [{}, { sha256: "nope", acknowledge: true }, { sha256: SHA, acknowledge: true, extra: 1 }, [], "x", { sha256: 5, acknowledge: true }]) {
       assert.equal((await handleStart(json(body), d)).status, 400, JSON.stringify(body));
     }
     const missing = deps({ isStaged: async () => false });
-    assert.equal((await handleStart(json({ sha256: SHA }), missing.deps)).status, 404);
+    assert.equal((await handleStart(json({ sha256: SHA, acknowledge: true }), missing.deps)).status, 404);
     assert.deepEqual([calls.launch, missing.calls.launch], [[], []]);
   });
 
@@ -115,27 +125,27 @@ describe("handleStart", () => {
         throw new LaunchFailedError(3, "refused: reports 1.0.0 is not newer than the installed 1.0.0");
       },
     });
-    const response = await handleStart(json({ sha256: SHA }), failed.deps);
+    const response = await handleStart(json({ sha256: SHA, acknowledge: true }), failed.deps);
     assert.equal(response.status, 422);
     assert.match(String((await read(response)).error), /not newer than the installed/);
   });
 
   it("accepts the SHA-256 in upper case, as the command line does", async () => {
     const { deps: d, calls } = deps();
-    assert.equal((await handleStart(json({ sha256: SHA.toUpperCase() }), d)).status, 202);
+    assert.equal((await handleStart(json({ sha256: SHA.toUpperCase(), acknowledge: true }), d)).status, 202);
     assert.deepEqual(calls.launch, [{ sha256: SHA, actor: ADMIN.actor }]);
   });
 
   it("is refused for a visitor who may not write, and with 409 while a run is alive", async () => {
     const plain = deps({ viewer: async () => USER });
-    assert.equal((await handleStart(json({ sha256: SHA }), plain.deps)).status, 403);
+    assert.equal((await handleStart(json({ sha256: SHA, acknowledge: true }), plain.deps)).status, 403);
     const { LaunchBusyError } = await import("@epnexo/core/apps");
     const busy = deps({
       launch: async () => {
         throw new LaunchBusyError({ moduleId: "x", version: "1", sha256: SHA, kind: "install", status: "running", step: "build", detail: null, actor: "a", pid: 1, startedAt: new Date(), finishedAt: null, id: 1 });
       },
     });
-    const response = await handleStart(json({ sha256: SHA }), busy.deps);
+    const response = await handleStart(json({ sha256: SHA, acknowledge: true }), busy.deps);
     assert.equal(response.status, 409);
     assert.match(String((await read(response)).error), /another operation/);
   });

@@ -52,7 +52,7 @@ export async function handleUpload(request: Request, deps: AppsDeps): Promise<Re
   }
 }
 
-/** `POST /api/apps/operations` `{ sha256 }`: starts the install or upgrade of a staged package. Answers at once. */
+/** `POST /api/apps/operations` `{ sha256, acknowledge: true }`: starts the install or upgrade of a staged package. Answers at once. */
 export async function handleStart(request: Request, deps: AppsDeps): Promise<Response> {
   const authorized = await authorize(request, deps, { write: true });
   if (authorized instanceof Response) return authorized;
@@ -64,9 +64,12 @@ export async function handleStart(request: Request, deps: AppsDeps): Promise<Res
   const body = parsed.body;
   if (typeof body !== "object" || body === null || Array.isArray(body)) return json({ error: "the request body must be an object" }, 400);
   const keys = Object.keys(body);
+  // Installing runs the package's code with the platform's permissions: the screen shows that and the server
+  // insists it was acknowledged, so a script or a forged request cannot skip the warning by accident.
+  if ((body as { acknowledge?: unknown }).acknowledge !== true) return json({ error: "send acknowledge: true to confirm the module runs with full access to the platform and its database" }, 400);
   const rawSha = (body as { sha256?: unknown }).sha256;
   const sha256 = typeof rawSha === "string" ? rawSha.toLowerCase() : rawSha;
-  if (keys.length !== 1 || typeof sha256 !== "string" || !SHA256.test(sha256)) return json({ error: "send { sha256 }: the 64 lowercase hexadecimal characters of a staged package" }, 400);
+  if (keys.length !== 2 || typeof sha256 !== "string" || !SHA256.test(sha256)) return json({ error: "send { sha256, acknowledge: true }: the 64 lowercase hexadecimal characters of a staged package" }, 400);
   if (!(await deps.isStaged(sha256))) return json({ error: "no staged package has that SHA-256; upload it first" }, 404);
 
   try {

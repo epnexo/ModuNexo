@@ -75,6 +75,7 @@ export function AppsManager({ initial, installed, modules }: { initial: AppsStat
   const [problems, setProblems] = useState<string[] | null>(null);
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [starting, setStarting] = useState(false);
+  const [acknowledged, setAcknowledged] = useState(false);
   const [pending, setPending] = useState<Pending | null>(null);
   const [typedId, setTypedId] = useState("");
   const wasRunning = useRef(initial.running !== null);
@@ -156,10 +157,11 @@ export function AppsManager({ initial, installed, modules }: { initial: AppsStat
     setStarting(true);
     setMessage(null);
     try {
-      const response = await fetch("/api/apps/operations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sha256 }) });
+      const response = await fetch("/api/apps/operations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sha256, acknowledge: true }) });
       const data = (await response.json().catch(() => ({}))) as { error?: string };
       if (response.ok) {
         setStaged(null);
+        setAcknowledged(false);
         setAdding(false);
         setFile(null);
         setExpected("");
@@ -364,11 +366,17 @@ export function AppsManager({ initial, installed, modules }: { initial: AppsStat
                 {action.blocked}
               </p>
             ) : null}
+            <label className="flex max-w-xl items-start gap-2 text-sm">
+              <input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} className="mt-1 size-4 accent-[var(--accent)]" />
+              <span>
+                I trust the source of this package. It runs with full access to the platform and its database, and a package from an unknown source can read or change everything stored here.
+              </span>
+            </label>
             <div>
               <button
                 type="button"
                 onClick={() => void start(staged.sha256)}
-                disabled={action.blocked !== null || starting || busy}
+                disabled={action.blocked !== null || starting || busy || !acknowledged}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-accent px-4 font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {starting ? <LoaderCircle aria-hidden className="size-4 animate-spin motion-reduce:animate-none" /> : null}
