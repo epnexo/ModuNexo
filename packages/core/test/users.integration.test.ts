@@ -86,6 +86,28 @@ describe("users and roles", () => {
     await pool!.query(`update core.auth_user set "banned" = false where "email" = 'boss@example.test'`);
   });
 
+  test("the library's own admin endpoints cannot take the last active administrator away either", async () => {
+    await setUserRole(pool!, "ana@example.test", "operator");
+    const admins = (await listUsers(pool!)).filter((u) => u.role === "admin" && !u.banned);
+    assert.equal(admins.length, 1);
+    const sole = admins[0]!;
+    const response = await auth.api.signInEmail({ body: { email: sole.email, password: PASSWORD }, asResponse: true });
+    const headers = new Headers({ cookie: (response.headers.getSetCookie?.() ?? []).map((c) => c.split(";")[0]).join("; ") });
+    const id = (await pool!.query('select "id" from core.auth_user where "email" = $1', [sole.email])).rows[0].id as string;
+    await assert.rejects(auth.api.setRole({ body: { userId: id, role: "operator" as never }, headers }), /last active administrator/);
+    await assert.rejects(auth.api.banUser({ body: { userId: id }, headers }), /last active administrator|yourself/i);
+    assert.equal(await roleOf(sole.email), "admin");
+    // Keeping the admin role is not a demotion.
+    await auth.api.setRole({ body: { userId: id, role: "admin" }, headers });
+    // With another administrator the same call goes through.
+    await setUserRole(pool!, "ana@example.test", "admin");
+    await auth.api.setRole({ body: { userId: id, role: "operator" as never }, headers });
+    assert.equal(await roleOf(sole.email), "operator");
+    // Back to two administrators for the next test.
+    await setUserRole(pool!, sole.email, "admin");
+    await setUserRole(pool!, "ana@example.test", "admin");
+  });
+
   test("two concurrent demotions cannot both succeed when only two administrators exist", async () => {
     // boss and ana are administrators now.
     const results = await Promise.allSettled([setUserRole(pool!, "boss@example.test", "operator"), setUserRole(pool!, "ana@example.test", "operator")]);

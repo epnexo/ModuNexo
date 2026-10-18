@@ -21,7 +21,7 @@ export type AccessDecision =
 const LOGIN_PATH = "/login";
 const AUTH_API_PREFIX = "/api/auth";
 const LOGO_PATH = "/api/brand/logo";
-const HEALTH_PATH = "/api/health";
+export const HEALTH_PATH = "/api/health";
 
 /** The sign-in page, the library's endpoints, the brand logo (the sign-in page shows it) and the health probe, which a visitor without a session has to reach. */
 export function isPublicPath(pathname: string): boolean {

@@ -1,7 +1,9 @@
 import { type BetterAuthPlugin, betterAuth } from "better-auth";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { admin } from "better-auth/plugins/admin";
 import { PostgresDialect } from "kysely";
 import type pg from "pg";
+import { isLastActiveAdmin } from "./last-admin.ts";
 import { deriveSecret } from "./master-key.ts";
 
 /** Shortest password the platform accepts. The library's own minimum is lower and is not applied on every path. */
@@ -15,6 +17,9 @@ export const OPERATOR_ROLE = "operator";
 /** The roles a user can be given. Any other stored role (the library's default "user") holds nothing. */
 export const ROLES = [ADMIN_ROLE, OPERATOR_ROLE] as const;
 export type Role = (typeof ROLES)[number];
+
+/** The library endpoints that can take an administrator away. */
+const LAST_ADMIN_GUARDED = new Set(["/admin/set-role", "/admin/ban-user", "/admin/remove-user"]);
 
 /** Failed sign-ins allowed per client address in `SIGN_IN_WINDOW_SECONDS` before the endpoint answers 429. */
 export const SIGN_IN_MAX_ATTEMPTS = 5;
@@ -100,6 +105,20 @@ export function createAuth(config: AuthConfig) {
       ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] },
       useSecureCookies: config.secureCookies ?? false,
       ...(config.validateSchema === undefined ? {} : { database: { validateSchema: config.validateSchema } }),
+    },
+    hooks: {
+      // The library's admin endpoints let an administrator demote, ban or remove users. None of them may take the
+      // last active administrator away, whoever asks (the command line enforces the same rule in `setUserRole`).
+      before: createAuthMiddleware(async (ctx) => {
+        if (!LAST_ADMIN_GUARDED.has(ctx.path)) return;
+        const body = (ctx.body ?? {}) as { userId?: unknown; role?: unknown };
+        if (typeof body.userId !== "string") return;
+        const keepsAdmin = ctx.path === "/admin/set-role" && (body.role === ADMIN_ROLE || (Array.isArray(body.role) && body.role.includes(ADMIN_ROLE)));
+        if (keepsAdmin) return;
+        if (await isLastActiveAdmin(config.pool, body.userId, ADMIN_ROLE)) {
+          throw new APIError("BAD_REQUEST", { message: "This is the last active administrator: make another user an administrator first, so you cannot be locked out." });
+        }
+      }),
     },
     telemetry: { enabled: false },
     plugins: [admin({ defaultRole: "user", adminRoles: [ADMIN_ROLE] }), ...(config.plugins ?? [])],

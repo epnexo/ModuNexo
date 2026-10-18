@@ -689,7 +689,7 @@ module pages follow the same rule.
 `503 {"status":"degraded","database":"unreachable"}` when it does not (or does not answer within 2 s). It needs no
 session, so a load balancer or an orchestrator can probe it, and it says nothing about why it failed: the reason is in
 the log. With sign-in disabled it is served to the local network only, like every other path. If the database is down
-the access gate itself answers 503 before the probe runs, which a probe reads the same way.
+the access gate cannot read the sign-in mode, so it answers the probe itself with the same `503` body.
 
 ### Logs
 

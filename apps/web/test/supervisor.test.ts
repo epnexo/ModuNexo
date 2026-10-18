@@ -46,6 +46,22 @@ describe("superviseChild", () => {
     assert.equal(startsOf(starts), 2);
   });
 
+  it("when the child cannot be started it returns 1 and the log says which script and why", async () => {
+    const lines: string[] = [];
+    const original = console.error;
+    console.error = (line: unknown) => void lines.push(String(line));
+    try {
+      const code = await superviseChild({ args: ["--no-such-flag-for-node", "my-script.ts"], cwd: join(dir, "missing-folder"), pidFile: join(dir, "run", "web.pid"), signals: new EventEmitter() });
+      assert.equal(code, 1);
+    } finally {
+      console.error = original;
+    }
+    const line = lines.find((l) => l.includes("web.start_failed"));
+    assert.ok(line, `no start_failed line in: ${lines.join(" | ")}`);
+    assert.match(line, /my-script\.ts/);
+    assert.match(line, /ENOENT/);
+  });
+
   it("a child that exits by itself is not restarted", async () => {
     const starts = join(dir, "starts");
     const code = await superviseChild({ args: [childScript(starts, 3)], cwd: dir, pidFile: join(dir, "web.pid"), signals: new EventEmitter() });

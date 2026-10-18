@@ -28,7 +28,7 @@ export interface LoggerOptions {
 const MAX_VALUE = 500;
 const MAX_DEPTH = 3;
 const MAX_ITEMS = 20;
-const SECRET_NAME = /pass(word|wd)?|secret|token|cookie|authoriz|credential|api[_-]?key|master|private|session/i;
+const SECRET_NAME = /pass(word|wd)?|secret|token|cookie|authoriz|credential|pwd|key|master|private|session/i;
 
 /** `LOG_FORMAT` when it is `json` or `text`; else json in production, text otherwise. */
 export function resolveLogFormat(env: Record<string, string | undefined> = process.env): LogFormat {
