@@ -797,3 +797,12 @@ reminder to regenerate and rebuild by hand. Add `--rebuild` (optionally `--actor
 and the same change runs through the pipeline: the registry for the state after the change is built into the web
 app first, then the lifecycle runs, then the server is asked to restart. The Apps screen starts exactly that
 command. Uninstall still needs `--keep` or `--purge`.
+
+## License
+
+Copyright (C) 2026 Eduardo Pedraza. The platform (`apps/web`, `packages/core`) is licensed under the
+[GNU AGPL-3.0](LICENSE) with a **module exception**, and the module SDK (`packages/sdk`) under the
+[MPL-2.0](packages/sdk/LICENSE). In short: improvements to the platform must be shared with whoever uses your
+modified version, while **a module you write is yours** and can have any license, proprietary included. The details,
+the exception text and the third-party notices are in [LICENSING.md](LICENSING.md); to contribute, read
+[CONTRIBUTING.md](CONTRIBUTING.md).
