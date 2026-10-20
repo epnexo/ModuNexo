@@ -143,6 +143,21 @@ export interface SubscriptionDeclaration {
   job: string;
 }
 
+/** Default limit for one stored file. */
+export const DEFAULT_FILE_MAX_BYTES = 10 * 1024 * 1024;
+/** No module can store a file larger than this, whatever it declares. */
+export const MAX_FILE_BYTES_CEILING = 50 * 1024 * 1024;
+
+/** Opts the module in to storing files through the SDK. */
+export interface FilesDeclaration {
+  /** Largest single file, in bytes. Default 10 MiB, at most 50 MiB. */
+  maxBytes?: number;
+  /** Content types (`image/png`) or families (`image/*`) the module takes, decided from the bytes. Default: any, up to 20 entries. */
+  accept?: string[];
+  /** A declared permission. A signed-in browser downloads the module's files only if it holds it; without one, no file reaches a browser. */
+  permission?: string;
+}
+
 /** The contract every module declares in its `manifest.ts` (manifest v2). */
 export interface ModuleManifest {
   /** Unique kebab-case identifier. */
@@ -171,6 +186,8 @@ export interface ModuleManifest {
   events?: EventDeclaration[];
   /** Jobs of this module that the platform runs for events of the module itself or of a module in `dependsOn`. */
   subscriptions?: SubscriptionDeclaration[];
+  /** Present: the module may store files with `putFile`. */
+  files?: FilesDeclaration;
   /** Relative path (starting with "./") to a file exporting `onInstall`, `onEnable`, `onDisable`, `onUpgrade`, `onUninstall`. */
   hooks?: string;
 }
@@ -195,7 +212,7 @@ const SCHEMA_NAME = /^[a-z][a-z0-9_]{0,62}$/;
 // "core" belongs to the platform itself.
 const RESERVED_SCHEMAS = new Set(["public", "information_schema", "core"]);
 const KNOWN_FIELDS = new Set([
-  "id", "version", "name", "platform", "dependsOn", "schema", "migrationsDir", "nav", "pages", "settings", "permissions", "scopes", "jobs", "events", "subscriptions", "hooks",
+  "id", "version", "name", "platform", "dependsOn", "schema", "migrationsDir", "nav", "pages", "settings", "permissions", "scopes", "jobs", "events", "subscriptions", "files", "hooks",
 ]);
 const KNOWN_NAV_FIELDS = new Set(["label", "href", "icon", "group", "order", "permission"]);
 const KNOWN_PAGE_FIELDS = new Set(["path", "entry", "kind", "dynamic", "methods", "permission", "public", "scope"]);
@@ -214,6 +231,11 @@ const KNOWN_JOB_FIELDS = new Set(["name", "entry", "every", "timeoutSeconds", "m
 const MAX_EVENT_NAME_CHARS = 100;
 const KNOWN_EVENT_FIELDS = new Set(["name", "permission"]);
 const KNOWN_SUBSCRIPTION_FIELDS = new Set(["event", "job"]);
+const KNOWN_FILES_FIELDS = new Set(["maxBytes", "accept", "permission"]);
+const MAX_ACCEPT_ENTRIES = 20;
+const CONTENT_TOKEN = "[a-z0-9][a-z0-9!#$&^_.+-]*";
+/** `image/png` or the family `image/*`. */
+const ACCEPT_ENTRY = new RegExp(`^${CONTENT_TOKEN}/(?:${CONTENT_TOKEN}|\\*)$`);
 const PAGE_KINDS = ["page", "route"];
 const PAGE_DYNAMIC_MODES = ["auto", "force-dynamic", "force-static", "error"];
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
@@ -569,6 +591,30 @@ function checkEvents(events: unknown, permissionKeys: Set<string>, problems: str
   });
 }
 
+function checkFiles(files: unknown, permissionKeys: Set<string>, problems: string[]): void {
+  if (!isPlainObject(files)) {
+    problems.push("files must be an object");
+    return;
+  }
+  checkUnknownFields(files, KNOWN_FILES_FIELDS, "files", problems);
+  if (files.maxBytes !== undefined && !isIntegerInRange(files.maxBytes, 1, MAX_FILE_BYTES_CEILING)) {
+    problems.push(`files.maxBytes must be an integer from 1 to ${MAX_FILE_BYTES_CEILING}`);
+  }
+  if (files.accept !== undefined) {
+    const accept = files.accept;
+    if (!Array.isArray(accept) || accept.length > MAX_ACCEPT_ENTRIES) {
+      problems.push(`files.accept must be a list of at most ${MAX_ACCEPT_ENTRIES} content types`);
+    } else if (accept.some((entry) => typeof entry !== "string" || !ACCEPT_ENTRY.test(entry))) {
+      problems.push('files.accept entries must be lowercase content types such as "image/png" or families such as "image/*"');
+    } else if (new Set(accept).size !== accept.length) {
+      problems.push("files.accept has a duplicated entry");
+    }
+  }
+  if (files.permission !== undefined && (typeof files.permission !== "string" || !permissionKeys.has(files.permission))) {
+    problems.push("files.permission must be one of the module's declared permissions");
+  }
+}
+
 interface SubscriptionContext {
   moduleId: string | undefined;
   dependsOn: string[];
@@ -653,6 +699,7 @@ export function validateManifest(input: unknown, options: ValidateOptions = {}):
   if (raw.settings !== undefined) checkSettings(raw.settings, problems);
   if (raw.jobs !== undefined) checkJobs(raw.jobs, problems);
   if (raw.events !== undefined) checkEvents(raw.events, permissionKeys, problems);
+  if (raw.files !== undefined) checkFiles(raw.files, permissionKeys, problems);
   if (raw.subscriptions !== undefined) {
     const jobNames = new Set(Array.isArray(raw.jobs) ? raw.jobs.flatMap((job) => (isPlainObject(job) && typeof job.name === "string" ? [job.name] : [])) : []);
     const ctx: SubscriptionContext = {
