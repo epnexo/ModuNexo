@@ -49,6 +49,12 @@ export interface PageDeclaration {
    * cannot be combined with `permission`. The shell verifies the signature before the module handler runs.
    */
   public?: PublicRouteDeclaration;
+  /**
+   * `route` only: Key of a scope declared in `scopes`. The route answers without a session to a request that carries
+   * `Authorization: Bearer <token>` for a service token of this module that holds the scope. It lives under
+   * `/svc/<module-id>/` and cannot be combined with `public` or `permission`.
+   */
+  scope?: string;
 }
 
 /** How the shell authenticates a public route: an HMAC-SHA256 of the raw body, keyed by a `secret` setting. */
@@ -100,6 +106,12 @@ export interface PermissionDeclaration {
   label: string;
 }
 
+/** A scope the module declares; a service token is issued for some of a module's scopes. */
+export interface ScopeDeclaration {
+  key: string;
+  label: string;
+}
+
 /** The contract every module declares in its `manifest.ts` (manifest v2). */
 export interface ModuleManifest {
   /** Unique kebab-case identifier. */
@@ -120,6 +132,8 @@ export interface ModuleManifest {
   pages?: PageDeclaration[];
   settings?: SettingDeclaration[];
   permissions?: PermissionDeclaration[];
+  /** Scopes a service token can hold for this module; a route names the one it requires with `scope`. */
+  scopes?: ScopeDeclaration[];
   /** Relative path (starting with "./") to a file exporting `onInstall`, `onEnable`, `onDisable`, `onUpgrade`, `onUninstall`. */
   hooks?: string;
 }
@@ -144,10 +158,10 @@ const SCHEMA_NAME = /^[a-z][a-z0-9_]{0,62}$/;
 // "core" belongs to the platform itself.
 const RESERVED_SCHEMAS = new Set(["public", "information_schema", "core"]);
 const KNOWN_FIELDS = new Set([
-  "id", "version", "name", "platform", "dependsOn", "schema", "migrationsDir", "nav", "pages", "settings", "permissions", "hooks",
+  "id", "version", "name", "platform", "dependsOn", "schema", "migrationsDir", "nav", "pages", "settings", "permissions", "scopes", "hooks",
 ]);
 const KNOWN_NAV_FIELDS = new Set(["label", "href", "icon", "group", "order", "permission"]);
-const KNOWN_PAGE_FIELDS = new Set(["path", "entry", "kind", "dynamic", "methods", "permission", "public"]);
+const KNOWN_PAGE_FIELDS = new Set(["path", "entry", "kind", "dynamic", "methods", "permission", "public", "scope"]);
 const KNOWN_PUBLIC_FIELDS = new Set(["signature", "ratePerMinute", "maxBodyBytes"]);
 const KNOWN_SIGNATURE_FIELDS = new Set(["secret", "header", "encoding", "prefix", "timestampHeader", "toleranceSeconds"]);
 const SIGNATURE_ENCODINGS = ["hex", "base64"];
@@ -157,6 +171,7 @@ const HEADER_NAME = /^[A-Za-z0-9-]+$/;
 const MAX_BODY_LIMIT = 10 * 1024 * 1024;
 const KNOWN_SETTING_FIELDS = new Set(["key", "label", "type", "default", "required", "options", "description"]);
 const KNOWN_PERMISSION_FIELDS = new Set(["key", "label"]);
+const KNOWN_SCOPE_FIELDS = new Set(["key", "label"]);
 const PAGE_KINDS = ["page", "route"];
 const PAGE_DYNAMIC_MODES = ["auto", "force-dynamic", "force-static", "error"];
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
@@ -323,11 +338,28 @@ function checkPublic(page: Record<string, unknown>, where: string, ctx: PageCont
   }
 }
 
+function checkScopeRoute(page: Record<string, unknown>, where: string, ctx: PageContext, problems: string[]): void {
+  if (typeof page.scope !== "string" || !ctx.scopeKeys.has(page.scope)) {
+    problems.push(`${where}.scope "${String(page.scope)}" is not a declared scope`);
+  }
+  if (page.kind !== "route") problems.push(`${where}.scope is only allowed for kind "route"`);
+  if (page.permission !== undefined) problems.push(`${where}.scope cannot be combined with permission: a scoped route has no session`);
+  if (page.public !== undefined) problems.push(`${where}.scope cannot be combined with public: a route is signed or token-guarded, not both`);
+  if (typeof page.path === "string" && ctx.moduleId !== undefined) {
+    const prefix = `/svc/${ctx.moduleId}/`;
+    if (!page.path.startsWith(prefix) || page.path.length === prefix.length) {
+      problems.push(`${where}.path "${page.path}" must sit under ${prefix} to be scoped`);
+    }
+  }
+}
+
 /** What `checkPages` needs to know about the rest of the manifest. */
 interface PageContext {
   moduleId: string | undefined;
   /** Keys of the settings declared with type "secret". */
   secretKeys: Set<string>;
+  /** Keys of the declared scopes. */
+  scopeKeys: Set<string>;
 }
 
 function secretSettingKeys(settings: unknown): Set<string> {
@@ -370,6 +402,10 @@ function checkPages(pages: unknown, permissionKeys: Set<string>, ctx: PageContex
     if (page.public !== undefined) checkPublic(page, where, ctx, problems);
     else if (typeof page.path === "string" && (page.path === "/hooks" || page.path.startsWith("/hooks/"))) {
       problems.push(`${where}.path "${page.path}" is under /hooks, which is reserved for public routes`);
+    }
+    if (page.scope !== undefined) checkScopeRoute(page, where, ctx, problems);
+    else if (typeof page.path === "string" && (page.path === "/svc" || page.path.startsWith("/svc/"))) {
+      problems.push(`${where}.path "${page.path}" is under /svc, which is reserved for scoped routes`);
     }
   });
 }
@@ -432,6 +468,22 @@ function checkPermissions(permissions: unknown, problems: string[]): Set<string>
   return seen;
 }
 
+function checkScopes(scopes: unknown, problems: string[]): Set<string> {
+  const seen = new Set<string>();
+  eachItem(scopes, "scopes", problems, (scope, where) => {
+    checkUnknownFields(scope, KNOWN_SCOPE_FIELDS, where, problems);
+    if (typeof scope.key !== "string" || !KEY.test(scope.key)) {
+      problems.push(`${where}.key must be a stable identifier (lowercase a-z, 0-9, _ and dot-separated segments)`);
+    } else if (seen.has(scope.key)) {
+      problems.push(`${where}.key "${scope.key}" is duplicated`);
+    } else {
+      seen.add(scope.key);
+    }
+    if (!isNonEmptyString(scope.label)) problems.push(`${where}.label must be a non-empty string`);
+  });
+  return seen;
+}
+
 export interface ValidateOptions {
   /**
    * Admit the schema name "core", which is reserved for the platform, and only for a manifest whose id is
@@ -479,9 +531,10 @@ export function validateManifest(input: unknown, options: ValidateOptions = {}):
   }
 
   const permissionKeys = raw.permissions === undefined ? new Set<string>() : checkPermissions(raw.permissions, problems);
+  const scopeKeys = raw.scopes === undefined ? new Set<string>() : checkScopes(raw.scopes, problems);
   checkNav(raw.nav, permissionKeys, problems);
   if (raw.pages !== undefined) {
-    const ctx: PageContext = { moduleId: typeof raw.id === "string" ? raw.id : undefined, secretKeys: secretSettingKeys(raw.settings) };
+    const ctx: PageContext = { moduleId: typeof raw.id === "string" ? raw.id : undefined, secretKeys: secretSettingKeys(raw.settings), scopeKeys };
     checkPages(raw.pages, permissionKeys, ctx, problems);
   }
   if (raw.settings !== undefined) checkSettings(raw.settings, problems);
