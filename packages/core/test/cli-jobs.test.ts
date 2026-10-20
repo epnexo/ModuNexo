@@ -125,7 +125,7 @@ describe("cli: jobs enqueue, list, cancel and retry", () => {
       assert.match(unknown.stderr, /^refused: module "ghost" is not registered/);
       const undeclared = await cli(["jobs", "enqueue", "alpha", "nope"]);
       assert.equal(undeclared.code, 3);
-      assert.match(undeclared.stderr, /does not declare the job "nope" \(declared: boom, write\)/);
+      assert.match(undeclared.stderr, /does not declare the job "nope" \(declared: boom, hang, write\)/);
       const none = await cli(["jobs", "enqueue", "beta", "write"]);
       assert.equal(none.code, 3);
       const key = await cli(["jobs", "enqueue", "alpha", "write", "--dedupe-key", "~schedule"]);

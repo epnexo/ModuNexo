@@ -67,3 +67,16 @@ Branch: feat/background-jobs (stacked on feat/service-tokens). Delivery strategy
 - L6: Known limits: intervals only (no cron); fixed-delay schedules; handler code is loaded once per worker process, so the worker
   is restarted after installing or upgrading a module; a handler that ignores its signal keeps running after its timeout;
   at-least-once delivery; no per-job concurrency limit, no jobs screen, no worker health endpoint.
+- L7: Independent verifier found three blockers, all fixed in one batch and rechecked by tests that failed first (RED) and
+  now pass, not by a second sweep: (1) the worker process did not exit after the grace period when a job never finished
+  (the job's timeout timer kept it alive up to an hour); it now leaves at once, the lease is recovered by another worker, and
+  `--grace-seconds` (1 to 300) was added; (2) a stop that arrived during a tick waited a whole poll interval (the abort
+  listener never fires on an already aborted signal) and could still claim a batch; (3) `jobs retry` of a dead job
+  whose dedupe key was taken (the next scheduled run) died with a raw pg error; it is now a refusal, exit 3.
+  Also from the advisories: a payload with a NUL character is a `JobError`; the README documents clock sync, cross-module
+  enqueue and the retry refusal; compose runs the worker with node directly (not through npm, so it gets the stop signal) and
+  a 40 s stop period. Left as advisories: clocks come from the workers not the database, jobs of an enabled module without
+  jobs in its manifest stay queued, a broken module folder fails every tick, a finished job wakes the loop only on the next
+  poll when the tick was in progress.
+- L8: The two job integration test files now use a scratch database each: recovering expired leases looks at the whole table
+  and the tests set the clock by hand, so sharing a table made them fail only when run together.
