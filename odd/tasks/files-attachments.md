@@ -42,8 +42,8 @@ Branch: feat/files-attachments (from main). Delivery strategy: ask-on-risk; the 
 
 ## Tasks
 
-- [ ] T1 (S1, S4-S6 SDK side) manifest `files`, `files.ts` (types, symbol, `putFile`/`getFile`/`statFile`/`listFiles`/`deleteFile`). Route: inline.
-- [ ] T2 (S2, S3, S4, S5, S6, S9 purge) migration 0013, `FileStorage`, `DiskStorage`, `FileService`, content sniffing, purge. Route: inline.
+- [x] T1 (S1, S4-S6 SDK side) manifest `files`, `files.ts` (types, symbol, `putFile`/`getFile`/`statFile`/`listFiles`/`deleteFile`). Route: inline. Commit: c5a4d16 (RED observed)
+- [x] T2 (S2, S3, S4, S5, S6, S9 purge) migration 0013, `FileStorage`, `DiskStorage`, `FileService`, content sniffing, purge. Route: inline. Commit: next commit (RED observed)
 - [ ] T3 (S8, S9, S10) register the service in web and worker, orphan sweep, purge of bytes on uninstall, CLI `files`, backup scripts. Route: inline.
 - [ ] T4 (S7) download route, gate, end-to-end. Route: inline.
 - [ ] T5 (S9 review, S11) install review, README, skill, ADR note. Route: inline.
@@ -68,3 +68,6 @@ Branch: feat/files-attachments (from main). Delivery strategy: ask-on-risk; the 
   buffers while `receiveUpload` streams with a cap.
 - L5: Refinement while writing the SDK tests: `putFile` takes no declared content type (a caller's claim is never stored); the
   type is sniffed from the bytes, and `accept` filters on that type.
+- L6: T2 observed: 44 tests of the units and the service on a real database and a real folder (twice green); purge and migration
+  lists updated (35 green). One test was wrong, not the code: it wrote an orphan under a folder that is not the first two
+  characters of its id, which the sweep rightly ignores.
