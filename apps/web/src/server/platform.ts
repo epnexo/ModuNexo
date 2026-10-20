@@ -2,7 +2,8 @@ import { type Auth, createAuth, resolveMasterKey } from "@modunexo/core/auth";
 import { createPool, resolveDatabaseUrl } from "@modunexo/core/pool";
 import { SettingsService } from "@modunexo/core/settings";
 import { ModuleDbService } from "@modunexo/core/data";
-import { DB_READER, SETTINGS_READER, type DbReader, type SettingsReader } from "@modunexo/sdk";
+import { JobService } from "@modunexo/core/jobs";
+import { DB_READER, JOBS_ENQUEUER, SETTINGS_READER, type DbReader, type JobsEnqueuer, type SettingsReader } from "@modunexo/sdk";
 import type pg from "pg";
 import { resolvePublicUrl } from "./launch.ts";
 import { CLOSED, STORE, closePlatform, holder, reopenPlatform } from "./platform-lifecycle.ts";
@@ -56,3 +57,12 @@ const dbReader: DbReader = {
   forModule: (moduleId) => new ModuleDbService(platform().pool, webRegistry()).forModule(moduleId),
 };
 (globalThis as typeof globalThis & { [DB_READER]?: DbReader })[DB_READER] = dbReader;
+
+/**
+ * What `enqueueJob` in the SDK calls, registered the same way. The web app only queues: the jobs run in the worker
+ * process (`modunexo worker`), which shares the database. The build's registry says which jobs a module declared.
+ */
+const jobsEnqueuer: JobsEnqueuer = {
+  enqueue: (moduleId, name, payload, options) => new JobService(platform().pool, webRegistry()).enqueue(moduleId, name, payload, options),
+};
+(globalThis as typeof globalThis & { [JOBS_ENQUEUER]?: JobsEnqueuer })[JOBS_ENQUEUER] = jobsEnqueuer;

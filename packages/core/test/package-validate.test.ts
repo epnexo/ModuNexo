@@ -55,6 +55,35 @@ const problemsOf = (ctx = context()) => {
   return result.ok ? "" : result.problems.join("\n");
 };
 
+describe("validatePackageTree: jobs", () => {
+  it("shows the jobs in the review, with the interval of a repeating one", () => {
+    writeGood({
+      manifest: {
+        jobs: [
+          { name: "sync", entry: "./web/page.tsx" },
+          { name: "cleanup", entry: "./web/page.tsx", every: "1h" },
+        ],
+      },
+    });
+    const result = validatePackageTree(root, context());
+    assert.equal(result.ok, true, result.ok ? "" : result.problems.join("\n"));
+    if (!result.ok) return;
+    assert.deepEqual(result.review.jobs, [{ name: "sync" }, { name: "cleanup", every: "1h" }]);
+  });
+
+  it("refuses a job whose file is not in the package", () => {
+    writeGood({ manifest: { jobs: [{ name: "sync", entry: "./jobs/missing.ts" }] } });
+    assert.match(problemsOf(), /jobs\[0\]\.entry/);
+  });
+
+  it("lists no jobs for a module that declares none", () => {
+    writeGood();
+    const result = validatePackageTree(root, context());
+    assert.equal(result.ok, true);
+    if (result.ok) assert.deepEqual(result.review.jobs, []);
+  });
+});
+
 describe("validatePackageTree: public routes", () => {
   it("shows a public route in the review, so the person who installs sees what opens", () => {
     writeGood({
