@@ -13,9 +13,11 @@ import { createPool, resolveDatabaseUrl } from "../pool.ts";
 import { Registry } from "../registry.ts";
 import { MigrationRunError, migrate, pendingMigrations } from "../runner.ts";
 import { SettingValueError, SettingsError } from "../settings/service.ts";
+import { EventError } from "../events/index.ts";
 import { JOB_STATUSES, JobError, type JobStatus } from "../jobs/index.ts";
 import { TokenError } from "../tokens/errors.ts";
 import { DATA_DIR } from "../packages/paths.ts";
+import { runEventsCommand } from "./events.ts";
 import { runJobsCommand, runWorkerCommand } from "./jobs.ts";
 import { runNewCommand } from "./new.ts";
 import { runAddCommand, runApplyCommand, runChangeCommand, runPackCommand } from "./packages.ts";
@@ -90,6 +92,10 @@ commands:
   jobs enqueue <module> <job> [--payload <json>] [--delay-seconds <n>] [--dedupe-key <key>]
   jobs cancel <id>                 a queued job only
   jobs retry <id>                  a dead job only, from its first attempt
+  events list [<module>] [--type <type>] [--limit <n>] [--json]
+                                   the newest events; the payload only with --json
+  events publish <module> <event> [--payload <json>]
+                                   publish an event the module declared (subscribed jobs are queued)
   auth status                      whether the shell asks for a sign-in
   auth require                     ask for a sign-in (refused while no administrator exists)
   auth disable                     serve local requests without a sign-in
@@ -124,6 +130,8 @@ const OPTIONS = {
   payload: { type: "string" },
   "delay-seconds": { type: "string" },
   "dedupe-key": { type: "string" },
+  type: { type: "string" },
+  limit: { type: "string" },
   "expires-in-days": { type: "string" },
   role: { type: "string" },
   module: { type: "string" },
@@ -162,6 +170,8 @@ const COMMAND_OPTIONS: Record<string, readonly string[]> = {
   "jobs enqueue": ["payload", "delay-seconds", "dedupe-key"],
   "jobs cancel": [],
   "jobs retry": [],
+  "events list": ["type", "limit", "json"],
+  "events publish": ["payload"],
   "auth status": [],
   "auth require": [],
   "auth disable": [],
@@ -237,6 +247,22 @@ function checkJobsArguments(command: string, ids: string[], values: Parsed["valu
   if (!/^[1-9]\d{0,15}$/.test(ids[0]!)) throw new UsageError(`${command} takes a job id: a whole number`);
 }
 
+function checkEventsArguments(command: string, ids: string[], values: Parsed["values"]): void {
+  if (command === "events list") {
+    if (ids.length > 1) throw new UsageError("events list takes at most one module id");
+    if (values.limit !== undefined && wholeNumberIn(values.limit, 1, 500) === null) throw new UsageError("--limit takes a whole number from 1 to 500");
+    return;
+  }
+  if (ids.length !== 2) throw new UsageError("events publish takes a module id and an event name");
+  if (values.payload !== undefined) {
+    try {
+      JSON.parse(values.payload as string);
+    } catch {
+      throw new UsageError("--payload takes JSON");
+    }
+  }
+}
+
 function parse(argv: string[]): Parsed | "help" {
   let parsed;
   try {
@@ -273,6 +299,12 @@ function parse(argv: string[]): Parsed | "help" {
     }
     command = `jobs ${second}`;
     ids = rest;
+  } else if (first === "events") {
+    if (second !== "list" && second !== "publish") {
+      throw new UsageError(second === undefined ? "no events command given" : `unknown events command "${second}"`);
+    }
+    command = `events ${second}`;
+    ids = rest;
   } else if (first === "auth") {
     if (second !== "status" && second !== "require" && second !== "disable") {
       throw new UsageError(second === undefined ? "no auth command given" : `unknown auth command "${second}"`);
@@ -308,9 +340,10 @@ function parse(argv: string[]): Parsed | "help" {
   }
   if (command.startsWith("tokens ")) checkTokensArguments(command, ids, parsed.values);
   if (command.startsWith("jobs ")) checkJobsArguments(command, ids, parsed.values);
+  if (command.startsWith("events ")) checkEventsArguments(command, ids, parsed.values);
   if (command === "worker") checkWorkerOptions(parsed.values);
   const takesId = command !== "modules list" && command.startsWith("modules ");
-  if (!command.startsWith("settings ") && !command.startsWith("tokens ") && !command.startsWith("jobs ")) {
+  if (!command.startsWith("settings ") && !command.startsWith("tokens ") && !command.startsWith("jobs ") && !command.startsWith("events ")) {
     const noun = command === "modules pack" ? "a folder" : command === "modules add" ? "an archive" : command === "modules apply" ? "a package SHA-256" : "a module id";
     if (takesId && ids.length === 0) throw new UsageError(`${command} needs ${noun}`);
     if (takesId ? ids.length !== 1 : ids.length > 0) throw new UsageError(takesId ? `${command} takes exactly one ${noun.slice(2)}` : `${command} takes no arguments`);
@@ -607,7 +640,7 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
       );
       return EXIT_OK;
     }
-    if (parsed.command.startsWith("jobs ") || parsed.command === "worker") {
+    if (parsed.command.startsWith("jobs ") || parsed.command.startsWith("events ") || parsed.command === "worker") {
       let modulesDir: string;
       try {
         modulesDir = resolveModulesDir(typeof parsed.values["modules-dir"] === "string" ? parsed.values["modules-dir"] : undefined);
@@ -644,6 +677,21 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
         return EXIT_OK;
       }
       const context = await loadContext(modulesDir, io);
+      if (parsed.command.startsWith("events ")) {
+        const limit = parsed.values.limit;
+        await runEventsCommand(
+          {
+            action: parsed.command.slice("events ".length) as "publish" | "list",
+            args: parsed.ids,
+            payload: typeof parsed.values.payload === "string" ? JSON.parse(parsed.values.payload) : null,
+            type: typeof parsed.values.type === "string" ? parsed.values.type : undefined,
+            limit: typeof limit === "string" ? Number(limit) : undefined,
+            json: parsed.values.json === true,
+          },
+          { pool, registry: context.registry, io },
+        );
+        return EXIT_OK;
+      }
       const delay = parsed.values["delay-seconds"];
       await runJobsCommand(
         {
@@ -765,7 +813,7 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
       io.err(`${USAGE.split("\n")[0]} (run with --help for the commands)`);
       return EXIT_USAGE;
     }
-    if (error instanceof Refusal || error instanceof LifecycleRefusedError || error instanceof RegistrationError || error instanceof AdminRefusedError || error instanceof ModeRefusedError || error instanceof SettingsError || error instanceof SettingValueError || error instanceof TokenError || error instanceof JobError) {
+    if (error instanceof Refusal || error instanceof LifecycleRefusedError || error instanceof RegistrationError || error instanceof AdminRefusedError || error instanceof ModeRefusedError || error instanceof SettingsError || error instanceof SettingValueError || error instanceof TokenError || error instanceof JobError || error instanceof EventError) {
       io.err(`refused: ${error.message}`);
       return EXIT_REFUSED;
     }

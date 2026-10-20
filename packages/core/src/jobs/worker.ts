@@ -15,6 +15,8 @@ export interface WorkerDeps {
   enabledModules: () => Promise<Map<string, string>>;
   /** The handler of a declared job: the default export of its `entry` file. */
   loadHandler: (moduleId: string, entry: string) => Promise<JobHandler>;
+  /** Old events are deleted on the same schedule as old jobs. Optional: a worker can run without the event log. */
+  events?: { prune(): Promise<number> };
   workerId: string;
   log: WorkerLog;
   /** Jobs running at once. Default 4. */
@@ -88,6 +90,8 @@ export class Worker {
       this.lastPrune = at;
       const pruned = await service.prune();
       if (pruned > 0) this.deps.log.info("worker.jobs_pruned", { count: pruned });
+      const events = (await this.deps.events?.prune()) ?? 0;
+      if (events > 0) this.deps.log.info("worker.events_pruned", { count: events });
     }
 
     // A stop was asked for while this tick was working: leave what is due for the next worker.

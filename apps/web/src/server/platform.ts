@@ -2,8 +2,9 @@ import { type Auth, createAuth, resolveMasterKey } from "@modunexo/core/auth";
 import { createPool, resolveDatabaseUrl } from "@modunexo/core/pool";
 import { SettingsService } from "@modunexo/core/settings";
 import { ModuleDbService } from "@modunexo/core/data";
+import { EventService } from "@modunexo/core/events";
 import { JobService } from "@modunexo/core/jobs";
-import { DB_READER, JOBS_ENQUEUER, SETTINGS_READER, type DbReader, type JobsEnqueuer, type SettingsReader } from "@modunexo/sdk";
+import { DB_READER, EVENTS_PUBLISHER, JOBS_ENQUEUER, SETTINGS_READER, type DbReader, type EventsPublisher, type JobsEnqueuer, type SettingsReader } from "@modunexo/sdk";
 import type pg from "pg";
 import { resolvePublicUrl } from "./launch.ts";
 import { CLOSED, STORE, closePlatform, holder, reopenPlatform } from "./platform-lifecycle.ts";
@@ -66,3 +67,12 @@ const jobsEnqueuer: JobsEnqueuer = {
   enqueue: (moduleId, name, payload, options) => new JobService(platform().pool, webRegistry()).enqueue(moduleId, name, payload, options),
 };
 (globalThis as typeof globalThis & { [JOBS_ENQUEUER]?: JobsEnqueuer })[JOBS_ENQUEUER] = jobsEnqueuer;
+
+/**
+ * What `publishEvent` in the SDK calls. With the caller's transaction the event commits with the caller's data; the web
+ * app's own streams and the worker's jobs hear about it through the database, whichever process published it.
+ */
+const eventsPublisher: EventsPublisher = {
+  publish: (moduleId, name, payload, options) => new EventService(platform().pool, webRegistry()).publish(moduleId, name, payload, options),
+};
+(globalThis as typeof globalThis & { [EVENTS_PUBLISHER]?: EventsPublisher })[EVENTS_PUBLISHER] = eventsPublisher;

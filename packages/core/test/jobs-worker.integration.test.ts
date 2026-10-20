@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import type pg from "pg";
-import { type JobContext, type JobHandler, JOBS_ENQUEUER, type JobsEnqueuer, enqueueJob } from "@modunexo/sdk";
+import { EVENTS_PUBLISHER, type EventsPublisher, type JobContext, type JobHandler, JOBS_ENQUEUER, type JobsEnqueuer, enqueueJob, publishEvent } from "@modunexo/sdk";
+import { EventService } from "../src/events/index.ts";
 import { JobService, Worker, type WorkerDeps, registerModuleRuntime } from "../src/jobs/index.ts";
 import { migrate } from "../src/runner.ts";
 import { createPool } from "../src/pool.ts";
@@ -342,6 +343,17 @@ describe("Worker: dead workers, schedules and tick failures", () => {
     await worker.runOnce();
     assert.equal(await row(id), undefined);
   });
+
+  test("prunes old events on its schedule and keeps recent ones", async () => {
+    const { worker } = makeWorker({ sync: async () => {} }, { events: new EventService(pool!, box.registry(), { now: () => clock }) });
+    const insert = (age: number) => pool!.query("insert into core.events (module_id, type, created_at) values ($1, $2, $3) returning id", [moduleId, `${moduleId}.x`, new Date(clock.getTime() - age * 86_400_000)]);
+    const old = (await insert(8)).rows[0].id;
+    const recent = (await insert(6)).rows[0].id;
+    await worker.runOnce();
+    const left = (await pool!.query("select id from core.events where id = any($1)", [[old, recent]])).rows.map((r) => r.id);
+    assert.deepEqual(left, [recent]);
+    await pool!.query("delete from core.events where id = $1", [recent]);
+  });
 });
 
 describe("Worker.run", () => {
@@ -487,6 +499,23 @@ describe("registerModuleRuntime", () => {
       assert.deepEqual(chained, [{ payload: { from: id }, dedupe_key: "chained", enqueued_by: "module" }]);
     } finally {
       delete (globalThis as typeof globalThis & { [JOBS_ENQUEUER]?: JobsEnqueuer })[JOBS_ENQUEUER];
+    }
+  });
+
+  test("lets a handler publish an event through the SDK", async () => {
+    const manifest = box.modules.find((m) => m.manifest.id === moduleId)!.manifest;
+    manifest.events = [{ name: "synced" }];
+    registerModuleRuntime(pool!, { current: box.registry() });
+    try {
+      const { worker } = makeWorker({ sync: async (ctx) => void (await publishEvent(ctx.moduleId, "synced", { from: ctx.jobId })) });
+      const { id } = await enqueue("sync");
+      await worker.runOnce();
+      const events = (await pool!.query("select module_id, type, payload from core.events where module_id = $1", [moduleId])).rows;
+      assert.deepEqual(events, [{ module_id: moduleId, type: `${moduleId}.synced`, payload: { from: id } }]);
+    } finally {
+      delete manifest.events;
+      delete (globalThis as typeof globalThis & { [EVENTS_PUBLISHER]?: EventsPublisher })[EVENTS_PUBLISHER];
+      await pool!.query("delete from core.events where module_id = $1", [moduleId]);
     }
   });
 });

@@ -12,6 +12,7 @@
     "./cli": "./src/cli/run.ts",
     "./settings": "./src/settings/index.ts",
     "./tokens": "./src/tokens/index.ts",
+    "./events": "./src/events/index.ts",
     "./jobs": "./src/jobs/index.ts",
     "./brand": "./src/settings/brand.ts",
     "./registry": "./src/registry.ts",

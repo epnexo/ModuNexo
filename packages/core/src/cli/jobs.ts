@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import type pg from "pg";
 import type { JobHandler, ModuleManifest } from "@modunexo/sdk";
 import { discoverModules } from "../discovery.ts";
+import { EventService } from "../events/index.ts";
 import { JobService, type JobRecord, type JobStatus, Worker, registerModuleRuntime } from "../jobs/index.ts";
 import { log } from "../log.ts";
 import { Registry } from "../registry.ts";
@@ -104,6 +105,7 @@ export async function runWorkerCommand(command: WorkerCommand, deps: { pool: pg.
 
   const worker = new Worker({
     service: new JobService(pool, holder.current),
+    events: { prune: () => new EventService(pool, holder.current).prune() },
     loadManifests: async () => {
       const { registry, manifests } = await readRegistry(command.modulesDir);
       holder.current = registry;
