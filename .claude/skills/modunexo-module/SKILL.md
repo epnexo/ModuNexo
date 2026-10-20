@@ -62,6 +62,11 @@ The user wants a new module (documents, contacts, anything), a change to one, or
   the key listed in the module's `scopes`. The operator issues tokens with `tokens create`; the shell checks the bearer
   token and scope before your handler runs and reads no body, so cap and validate it yourself. Never combine `scope`
   with `public` or `permission`. See the README section "Service tokens".
+- Work outside a request (syncs, cleanups, retries) is a job: declare `jobs: [{ name, entry, every? }]`, make the default
+  export of `entry` an `async (ctx: JobContext) => void`, and call `enqueueJob(moduleId, name, payload?, { dedupeKey? })`.
+  A worker process runs it with `getDb` and `getSetting`; it can run more than once (at-least-once), so make it
+  idempotent, and honour `ctx.signal`. Keep the job file free of Next.js imports: it does not run inside Next. See
+  the README section "Background jobs".
 - UI: reuse the shell's tokens and classes (`bg-surface`, `border-border`, `text-muted`, `bg-accent`), English copy,
   one concern per screen (tabs or on-demand panels, not a stack of sections).
 - Code, comments, UI text and commits are in English.
