@@ -254,6 +254,8 @@ describe("Worker: concurrency and sharing", () => {
       await new Promise((resolve) => setTimeout(resolve, 5));
       await worker.tick();
     }
+    // A handler is done before its outcome is written: wait for the worker to record the last one.
+    for (let guard = 0; guard < 100 && worker.running > 0; guard++) await new Promise((resolve) => setTimeout(resolve, 5));
     assert.equal(finished, 5);
     assert.equal(peak, 2);
     assert.equal((await pool!.query("select count(*)::int as n from core.jobs where module_id = $1 and status = 'succeeded'", [moduleId])).rows[0].n, 5);
