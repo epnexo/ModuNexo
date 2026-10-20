@@ -40,11 +40,11 @@ Branch: feat/background-jobs (stacked on feat/service-tokens). Delivery strategy
 
 ## Tasks
 
-- [ ] T1 (S1, S3 SDK side) manifest `jobs`, handler types, `enqueueJob` and its registration point in the SDK. Route: inline. Commit: pending
-- [ ] T2 (S2, S3, S6, S7, S10 purge/prune) migration 0011, `JobService`, purge. Route: inline. Commit: pending
-- [ ] T3 (S4, S5, S6, S8) `Worker`: tick, claim, run, timeout, shutdown, readers, handler loading. Route: inline. Commit: pending
-- [ ] T4 (S4, S9) CLI `worker` and `jobs`. Route: inline. Commit: pending
-- [ ] T5 (S3 web side, S10 review, S11) web registers the enqueuer, install review, compose, e2e on the fixture, docs. Route: inline. Commit: pending
+- [x] T1 (S1, S3 SDK side) manifest `jobs`, handler types, `enqueueJob` and its registration point in the SDK. Route: inline. Commit: 5d6ff7c
+- [x] T2 (S2, S3, S6, S7, S10 purge/prune) migration 0011, `JobService`, purge. Route: inline. Commit: aade8c1
+- [x] T3 (S4, S5, S6, S8) `Worker`: tick, claim, run, timeout, shutdown, readers, handler loading. Route: inline. Commit: d413047
+- [x] T4 (S4, S9) CLI `worker` and `jobs`. Route: inline. Commit: 8592330
+- [x] T5 (S3 web side, S10 review, S11) web registers the enqueuer, install review, compose, e2e on the fixture, docs. Route: inline. Commit: ac89413
 - [ ] T6 full suite, independent verifier. Route: inline. Commit: pending
 
 ## Log
@@ -56,3 +56,14 @@ Branch: feat/background-jobs (stacked on feat/service-tokens). Delivery strategy
 - L3: Decisions taken without asking, per the standing instruction (L1 of public-routes): the worker is a separate process that
   loads module code under tsx (the CLI already does this for hooks), Postgres is the queue, intervals not cron,
   fixed-delay schedules, cooperative timeouts.
+- L4: RED observed for T1 (all new SDK tests failing on the missing export). T2, T3 and T4: the tests were written after or
+  together with the code (the job service, the worker and the CLI were designed in one pass), so no RED was observed;
+  the tests were then run until green and several of their first failures were mistakes in the tests, not in the code
+  (a schedule queued during an unrelated test, a negative number swallowed by `parseArgs`, an assertion made one tick too early).
+- L5: Beyond the plan, same feature: install review lists jobs and refuses a package whose job file is missing (e31f88f);
+  end-to-end proof (07cbb8e) on a real production build: a route enqueues through the SDK (dedupe key holds, route stays
+  behind the gate), a separate `worker` process runs the handler from the module folder and writes through `getDb`,
+  SIGTERM exits 0, purge deletes the jobs. `docker compose --profile app config` validates the new `worker` service.
+- L6: Known limits: intervals only (no cron); fixed-delay schedules; handler code is loaded once per worker process, so the worker
+  is restarted after installing or upgrading a module; a handler that ignores its signal keeps running after its timeout;
+  at-least-once delivery; no per-job concurrency limit, no jobs screen, no worker health endpoint.
