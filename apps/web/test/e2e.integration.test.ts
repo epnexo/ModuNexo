@@ -357,7 +357,13 @@ export default defineModule({
   schema: "e2e_fixture",
   migrationsDir: "migrations",
   permissions: [{ key: "reports.read", label: "Read reports" }],
-  jobs: [{ name: "record", entry: "./jobs/record.ts", maxAttempts: 2 }],
+  jobs: [
+    { name: "record", entry: "./jobs/record.ts", maxAttempts: 2 },
+    { name: "emit", entry: "./jobs/emit.ts", maxAttempts: 1 },
+    { name: "on_pinged", entry: "./jobs/on_pinged.ts", maxAttempts: 1 },
+  ],
+  events: [{ name: "pinged", permission: "reports.read" }, { name: "private.note" }],
+  subscriptions: [{ event: "${FIXTURE_ID}.pinged", job: "on_pinged" }],
   scopes: [
     { key: "messages.read", label: "Read messages" },
     { key: "messages.send", label: "Send messages" },
@@ -373,6 +379,7 @@ export default defineModule({
     { path: "/e2e-fixture/data", entry: "./web/data.ts", kind: "route", permission: "reports.read" },
     { path: "/e2e-fixture/open-data", entry: "./web/open-data.ts", kind: "route" },
     { path: "/e2e-fixture/enqueue", entry: "./web/enqueue.ts", kind: "route", methods: ["POST"], permission: "reports.read" },
+    { path: "/e2e-fixture/publish", entry: "./web/publish.ts", kind: "route", methods: ["POST"], permission: "reports.read" },
     {
       path: "/hooks/e2e-fixture/events",
       entry: "./web/hook.ts",
@@ -430,6 +437,34 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     join(FIXTURE_DIR, "web", "enqueue.ts"),
     `import { enqueueJob } from "@modunexo/sdk";\nexport async function POST(request: Request) {\n  const { id } = await request.json();\n  return Response.json(await enqueueJob("${FIXTURE_ID}", "record", { id }, { dedupeKey: "record-" + id }));\n}\n`,
   );
+  writeFileSync(
+    join(FIXTURE_DIR, "jobs", "emit.ts"),
+    `import { publishEvent } from "@modunexo/sdk";\nexport default async function (ctx: { payload: { n: number } }) {\n  await publishEvent("${FIXTURE_ID}", "pinged", { from: "worker", n: ctx.payload.n });\n}\n`,
+  );
+  writeFileSync(
+    join(FIXTURE_DIR, "jobs", "on_pinged.ts"),
+    `import { getDb } from "@modunexo/sdk";\nexport default async function (ctx: { payload: { event: { id: number } } }) {\n  await getDb("${FIXTURE_ID}").query("insert into items (id) values ($1)", [1000 + ctx.payload.event.id]);\n}\n`,
+  );
+  // Writes a row and publishes in one module transaction; `fail` throws after publishing, so both must vanish.
+  writeFileSync(
+    join(FIXTURE_DIR, "web", "publish.ts"),
+    `import { getDb, publishEvent } from "@modunexo/sdk";
+export async function POST(request: Request) {
+  const { name, n, fail } = await request.json();
+  try {
+    const result = await getDb("${FIXTURE_ID}").transaction(async (tx) => {
+      await tx.query("insert into items (id) values ($1)", [n]);
+      const published = await publishEvent("${FIXTURE_ID}", name, { n }, { tx });
+      if (fail) throw new Error("rolled back on purpose");
+      return published;
+    });
+    return Response.json(result);
+  } catch (error) {
+    return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
+  }
+}
+`,
+  );
   writeFileSync(join(FIXTURE_DIR, "web", "items.ts"), `export async function GET() {\n  return Response.json({ items: [1, 2, 3] });\n}\n`);
   writeFileSync(join(FIXTURE_DIR, "web", "send.ts"), `export async function POST(request: Request) {\n  return Response.json({ sent: await request.json() });\n}\n`);
   writeFileSync(join(FIXTURE_DIR, "web", "hook.ts"), `export async function POST(request: Request) {\n  return Response.json({ received: await request.json() });\n}\n`);
@@ -438,6 +473,48 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   mkdirSync(FIXTURE_SCOPE_DIR, { recursive: true });
   symlinkSync("../../modules/e2e-fixture", join(FIXTURE_SCOPE_DIR, "fixture"));
 }
+
+/** An open server-sent-events request: what has arrived so far, and a way to wait for more. */
+function openStream(path: string, headers: Record<string, string>) {
+  let text = "";
+  let status = 0;
+  let contentType: string | string[] | undefined;
+  const req = httpRequest({ host: "127.0.0.1", port, method: "GET", path, headers }, (res) => {
+    status = res.statusCode ?? 0;
+    contentType = res.headers["content-type"];
+    res.setEncoding("utf8");
+    res.on("data", (chunk: string) => (text += chunk));
+    res.on("error", () => undefined);
+  });
+  req.on("error", () => undefined);
+  req.end();
+  return {
+    get text() {
+      return text;
+    },
+    get status() {
+      return status;
+    },
+    get contentType() {
+      return contentType;
+    },
+    async until(done: () => boolean, ms = 15_000): Promise<void> {
+      const deadline = Date.now() + ms;
+      while (!done()) {
+        if (Date.now() > deadline) throw new Error(`timed out waiting for the stream; status ${status}, text so far:\n${text}`);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    },
+    close: () => req.destroy(),
+  };
+}
+
+/** The data frames of a stream's text: its comments and the retry line are left out. */
+const frames = (text: string): Array<{ id?: string; event?: string; data?: string }> =>
+  text
+    .split("\n\n")
+    .filter((block) => block.trim() !== "" && !block.startsWith(":") && !block.startsWith("retry:"))
+    .map((block) => Object.fromEntries(block.split("\n").map((line) => [line.slice(0, line.indexOf(": ")), line.slice(line.indexOf(": ") + 2)])));
 
 const put = (path: string, body: unknown, headers: Record<string, string> = {}) => call("PUT", path, { origin: origin(), ...headers }, body);
 /** The page text as a reader sees it: React separates adjacent text nodes with `<!-- -->` markers in server HTML. */
@@ -871,6 +948,85 @@ describe("web app: with a module installed", () => {
       assert.equal(await exited, 0, output);
     } finally {
       worker.kill("SIGKILL");
+    }
+  });
+
+  test("a stream carries the events a route publishes inside its transaction, resumes by cursor, and never carries an event without a permission", async () => {
+    assert.equal((await call("GET", "/api/events")).status, 401, "a stream needs a session");
+    for (const [query, expected] of [
+      ["?types=e2e-fixture.private.note", 400],
+      ["?types=nobody.nothing", 400],
+      ["?after=abc", 400],
+    ] as const) {
+      const refused = openStream(`/api/events${query}`, { cookie });
+      await refused.until(() => refused.status !== 0);
+      assert.equal(refused.status, expected, query);
+      refused.close();
+    }
+
+    const publish = (name: string, n: number, fail = false) => call("POST", "/e2e-fixture/publish", { cookie, origin: origin() }, { name, n, fail });
+    const stream = openStream("/api/events", { cookie });
+    await stream.until(() => stream.text.includes("retry: 3000"));
+    assert.equal(stream.status, 200);
+    assert.match(String(stream.contentType), /^text\/event-stream/);
+
+    const first = JSON.parse((await publish("pinged", 5001)).body) as { id: number };
+    await publish("private.note", 5002);
+    const second = JSON.parse((await publish("pinged", 5003)).body) as { id: number };
+    await stream.until(() => frames(stream.text).length >= 2);
+    assert.deepEqual(
+      frames(stream.text).map((f) => [Number(f.id), f.event, JSON.parse(f.data!).payload]),
+      [[first.id, `${FIXTURE_ID}.pinged`, { n: 5001 }], [second.id, `${FIXTURE_ID}.pinged`, { n: 5003 }]],
+      "only the event tied to a permission, in order",
+    );
+    assert.equal((await db!.query("select 1 from core.events where type = $1", [`${FIXTURE_ID}.private.note`])).rowCount, 1, "the private event exists but is not streamed");
+
+    const failed = await publish("pinged", 5004, true);
+    assert.equal(failed.status, 500);
+    assert.equal((await db!.query("select 1 from e2e_fixture.items where id = 5004")).rowCount, 0, "the row is gone");
+    assert.equal((await db!.query("select 1 from core.events where payload->>'n' = '5004'")).rowCount, 0, "and so is the event");
+
+    stream.close();
+    const third = JSON.parse((await publish("pinged", 5005)).body) as { id: number };
+    const resumed = openStream("/api/events", { cookie, "last-event-id": String(second.id) });
+    await resumed.until(() => frames(resumed.text).length >= 1);
+    assert.deepEqual(frames(resumed.text).map((f) => Number(f.id)), [third.id], "it continues after the cursor, with what it missed");
+    resumed.close();
+
+    const ahead = openStream("/api/events?after=999999999", { cookie });
+    await ahead.until(() => frames(ahead.text).length >= 1);
+    assert.equal(frames(ahead.text)[0]!.event, "reset", "a cursor from another log is told to start over");
+    ahead.close();
+  });
+
+  test("an event published by the worker process reaches an open stream, and the subscribed job runs", async () => {
+    const stream = openStream("/api/events", { cookie });
+    await stream.until(() => stream.text.includes("retry: 3000"));
+    const queued = await run(["--import", "tsx", CLI, "jobs", "enqueue", FIXTURE_ID, "emit", "--payload", '{"n":6001}'], appEnv);
+    assert.equal(queued.code, 0, queued.output);
+
+    const worker = spawn(process.execPath, ["--import", "tsx", CLI, "worker", "--poll-ms", "100"], { cwd: REPO_ROOT, env: childEnv(appEnv) });
+    let output = "";
+    worker.stdout.on("data", (chunk) => (output += chunk));
+    worker.stderr.on("data", (chunk) => (output += chunk));
+    const exited = new Promise<number | null>((resolve) => worker.once("exit", resolve));
+    try {
+      await stream.until(() => frames(stream.text).some((f) => f.data?.includes('"from":"worker"')), 30_000);
+      const heard = frames(stream.text).find((f) => f.data?.includes('"from":"worker"'))!;
+      assert.equal(heard.event, `${FIXTURE_ID}.pinged`);
+      assert.deepEqual(JSON.parse(heard.data!).payload, { from: "worker", n: 6001 });
+      const eventId = Number(heard.id);
+      let ran = false;
+      for (let i = 0; i < 300 && !ran; i++) {
+        ran = ((await db!.query("select 1 from e2e_fixture.items where id = $1", [1000 + eventId])).rowCount ?? 0) === 1;
+        if (!ran) await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      assert.ok(ran, `the subscribed job did not run:\n${output}`);
+      worker.kill("SIGTERM");
+      assert.equal(await exited, 0, output);
+    } finally {
+      worker.kill("SIGKILL");
+      stream.close();
     }
   });
 

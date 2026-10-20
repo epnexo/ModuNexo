@@ -67,6 +67,11 @@ The user wants a new module (documents, contacts, anything), a change to one, or
   A worker process runs it with `getDb` and `getSetting`; it can run more than once (at-least-once), so make it
   idempotent, and honour `ctx.signal`. Keep the job file free of Next.js imports: it does not run inside Next. See
   the README section "Background jobs".
+- To tell other modules or the browser that something happened, declare `events: [{ name, permission? }]` and call
+  `publishEvent(moduleId, name, payload?, { tx })` as the last step of the transaction that wrote the data (`tx` from
+  `getDb(...).transaction`). Only an event with a `permission` is streamed to browsers (`GET /api/events`); never put a
+  secret in a payload. Another module reacts with `subscriptions: [{ event, job }]` (the module must be in `dependsOn`),
+  and the job receives `{ event: { id, type, payload, createdAt } }`. See the README section "Events and realtime".
 - UI: reuse the shell's tokens and classes (`bg-surface`, `border-border`, `text-muted`, `bg-accent`), English copy,
   one concern per screen (tabs or on-demand panels, not a stack of sections).
 - Code, comments, UI text and commits are in English.

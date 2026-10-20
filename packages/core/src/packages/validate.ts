@@ -28,6 +28,9 @@ export interface PackageReview {
   permissions: { key: string; label: string }[];
   scopes: { key: string; label: string }[];
   jobs: { name: string; every?: string }[];
+  /** `streamed` is true when the event is tied to a permission, which is what lets a signed-in browser follow it. */
+  events: { name: string; streamed: boolean }[];
+  subscriptions: { event: string; job: string }[];
   settings: { key: string; type: string; required: boolean; hasDefault: boolean }[];
   migrations: string[];
   runsHooks: boolean;
@@ -228,6 +231,8 @@ export function validatePackageTree(root: string, context: PackageContext): Pack
       permissions: (manifest.permissions ?? []).map((permission) => ({ key: permission.key, label: permission.label })),
       scopes: (manifest.scopes ?? []).map((scope) => ({ key: scope.key, label: scope.label })),
       jobs: (manifest.jobs ?? []).map((job) => ({ name: job.name, ...(job.every === undefined ? {} : { every: job.every }) })),
+      events: (manifest.events ?? []).map((event) => ({ name: event.name, streamed: event.permission !== undefined })),
+      subscriptions: (manifest.subscriptions ?? []).map((subscription) => ({ event: subscription.event, job: subscription.job })),
       settings: (manifest.settings ?? []).map((setting) => ({ key: setting.key, type: setting.type, required: setting.required === true, hasDefault: setting.default !== undefined })),
       migrations,
       runsHooks,

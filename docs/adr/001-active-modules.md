@@ -45,9 +45,12 @@ Not adopted: per-integration credential tables (the core already has one encrypt
 optional features (the module lifecycle already covers install and enable), and the reference's monolith layout.
 
 Status of the table: capability 1 (public routes with signature, `/hooks/<module-id>/`), capability 2 (service
-tokens with scopes, `/svc/<module-id>/`) and capability 3 (background jobs run by a separate worker process, a Postgres
-queue) are built; see `odd/tasks/public-routes.md`, `odd/tasks/service-tokens.md` and `odd/tasks/background-jobs.md`.
-Open question 2 of section 7 is answered for jobs: they persist in Postgres.
+tokens with scopes, `/svc/<module-id>/`), capability 3 (background jobs run by a separate worker process, a Postgres
+queue) and capability 4 (events and realtime) are built; see `odd/tasks/public-routes.md`, `odd/tasks/service-tokens.md`,
+`odd/tasks/background-jobs.md` and `odd/tasks/events-realtime.md`.
+Open question 2 of section 7 is answered for jobs and events: they persist in Postgres. Events are written in the
+publisher's own transaction (an outbox that is also the bus), announced with `LISTEN`/`NOTIFY` at commit, delivered to
+modules as jobs and to browsers as server-sent events with a cursor.
 
 ## 4. Rules that do not change
 

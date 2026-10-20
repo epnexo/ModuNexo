@@ -84,6 +84,31 @@ describe("validatePackageTree: jobs", () => {
   });
 });
 
+describe("validatePackageTree: events", () => {
+  it("shows the events, whether a browser can follow each, and the subscriptions", () => {
+    writeGood({
+      manifest: {
+        permissions: [{ key: "read", label: "Read" }],
+        jobs: [{ name: "react", entry: "./web/page.tsx" }],
+        events: [{ name: "created", permission: "read" }, { name: "internal" }],
+        subscriptions: [{ event: "reports.created", job: "react" }],
+      },
+    });
+    const result = validatePackageTree(root, context());
+    assert.equal(result.ok, true, result.ok ? "" : result.problems.join("\n"));
+    if (!result.ok) return;
+    assert.deepEqual(result.review.events, [{ name: "created", streamed: true }, { name: "internal", streamed: false }]);
+    assert.deepEqual(result.review.subscriptions, [{ event: "reports.created", job: "react" }]);
+  });
+
+  it("lists no events or subscriptions for a module that declares none", () => {
+    writeGood();
+    const result = validatePackageTree(root, context());
+    assert.equal(result.ok, true);
+    if (result.ok) assert.deepEqual([result.review.events, result.review.subscriptions], [[], []]);
+  });
+});
+
 describe("validatePackageTree: public routes", () => {
   it("shows a public route in the review, so the person who installs sees what opens", () => {
     writeGood({

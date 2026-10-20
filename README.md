@@ -634,6 +634,72 @@ npm run modunexo -- jobs retry <id>                                   # dead onl
 - **Not here yet.** Cron expressions, a per-job concurrency limit, a screen to see jobs, a worker health endpoint, and
   hot reload of handler code.
 
+### Events and realtime
+
+A module announces that something happened with an **event**. Other modules react to it through a job, and a signed-in
+browser can follow it live. The module registers its event types in the manifest, so there is no closed list.
+
+```ts
+permissions: [{ key: "inbox.read", label: "Read the inbox" }],
+events: [
+  { name: "message.received", permission: "inbox.read" },   // full type: inbox.message.received; streamed to browsers
+  { name: "sync.finished" },                                 // no permission: never sent to a browser
+],
+// in another module, which must list "inbox" in dependsOn (or in the module itself):
+jobs: [{ name: "reply", entry: "./jobs/reply.ts" }],
+subscriptions: [{ event: "inbox.message.received", job: "reply" }],   // the job gets { event: { id, type, payload, createdAt } }
+```
+
+```ts
+// Publish inside the transaction that wrote the data: the event exists exactly when the data does.
+import { getDb, publishEvent } from "@modunexo/sdk";
+await getDb("inbox").transaction(async (tx) => {
+  await tx.query("insert into messages (body) values ($1)", [body]);
+  await publishEvent("inbox", "message.received", { body }, { tx });   // last step: see the note on locking
+});
+await publishEvent("inbox", "sync.finished");                          // or alone, in a transaction of its own
+```
+
+```js
+// In the browser: Last-Event-ID is sent by EventSource itself when it reconnects.
+const stream = new EventSource("/api/events?types=inbox.message.received");
+stream.addEventListener("inbox.message.received", (e) => render(JSON.parse(e.data)));   // { id, type, payload, createdAt }
+stream.addEventListener("reset", () => reload());                                        // events were missed: fetch the state again
+```
+
+```bash
+npm run modunexo -- events list [inbox] [--type inbox.message.received] [--limit 50] [--json]   # the payload only with --json
+npm run modunexo -- events publish inbox message.received --payload '{"body":"hi"}'
+```
+
+- **The log is Postgres** (`core.events`, migration 0012). `id` is the position in the log and the cursor. The payload is
+  JSON of at most 16 KiB. The module must be enabled and have declared the event.
+- **Order.** Publishing takes a database lock before the id is assigned and keeps it until commit, so events become
+  visible in id order and a cursor can never skip one. The cost is that publishers wait for each other: keep the
+  transaction short and publish as its last step. Two transactions that publish and then touch each other's rows can
+  deadlock; Postgres aborts one of them.
+- **Jobs from events.** In the publisher's transaction the platform queues the subscribed job of every **enabled**
+  subscriber (the job then runs, retries and dies as any job). A module that is disabled misses the event and does not
+  catch up. Subscribing needs `dependsOn` like the read-only SQL channel, and a subscription whose event the other
+  module never declared simply never fires.
+- **The stream** `GET /api/events` is behind the gate like any `/api` path (a session, or a local request while sign-in is
+  off). It sends `retry`, then the events after the cursor (`?after=` or `Last-Event-ID`), then new ones, plus a
+  comment line every 20 s. An event is sent only if its module tied it to a `permission` that the viewer holds and the
+  module is enabled; the answer is 403 for a viewer who may follow nothing, and 400 for an unknown or unstreamed type, a
+  bad cursor or more than 20 types. Past 200 open streams in a process, 503.
+- **Catching up.** A client that reconnects with a cursor gets what it missed. If the cursor is older than the oldest
+  kept event, comes from another database, or more than 1000 events behind, the stream starts with `event: reset`: fetch
+  the state again, then continue from the id it carries. A client that cannot keep up (500 frames queued) is
+  disconnected and resumes by cursor. A server restart closes streams; `EventSource` reconnects by itself.
+- **Across processes.** Each web process keeps one connection that `LISTEN`s for the database's announcement, which is
+  delivered at commit, and also reads on a timer (5 s) and after any reconnect, so a lost announcement delays an event
+  without dropping it. Events published by the worker or the CLI reach every stream.
+- **History.** Events are kept 7 days (the worker prunes them) and `uninstall --purge` deletes the module's events.
+- **Trust.** `publishEvent` takes any module id, like `enqueueJob`: module code is trusted. Do not put secrets in a
+  payload that a browser may receive.
+- **Not here yet.** A React hook for the stream, delivery receipts per subscriber beyond the job's own, replaying events to
+  a module that was disabled, wildcard types, and a screen for the stream.
+
 ### Secrets
 
 A `secret` is stored encrypted with AES-256-GCM under a key derived from `MODUNEXO_MASTER_KEY`, bound to its module
