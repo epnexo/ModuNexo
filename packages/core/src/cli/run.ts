@@ -13,11 +13,13 @@ import { createPool, resolveDatabaseUrl } from "../pool.ts";
 import { Registry } from "../registry.ts";
 import { MigrationRunError, migrate, pendingMigrations } from "../runner.ts";
 import { SettingValueError, SettingsError } from "../settings/service.ts";
+import { TokenError } from "../tokens/errors.ts";
 import { DATA_DIR } from "../packages/paths.ts";
 import { runNewCommand } from "./new.ts";
 import { runAddCommand, runApplyCommand, runChangeCommand, runPackCommand } from "./packages.ts";
 import { readPassword } from "./password.ts";
 import { runSettingsCommand } from "./settings.ts";
+import { runTokensCommand } from "./tokens.ts";
 
 /** Exit codes: a script can tell a refused action (the rules said no) from a bug or an environment problem. */
 export const EXIT_OK = 0;
@@ -74,6 +76,10 @@ commands:
                                    a secret's value is read from standard input, never from an argument
   settings unset <key> [--module <id>]
                                    keys: appearance.theme|accentHue|radius, or a key the module declares
+  tokens create <module> --name <text> --scope <key> [--scope <key>...] [--expires-in-days <n>]
+                                   issue a service token for a module's scoped routes; it is printed once
+  tokens list [<module>] [--json]  tokens with their state; never the token itself
+  tokens revoke <id>               stop a token from working at once
   auth status                      whether the shell asks for a sign-in
   auth require                     ask for a sign-in (refused while no administrator exists)
   auth disable                     serve local requests without a sign-in
@@ -100,6 +106,8 @@ const OPTIONS = {
   dir: { type: "string" },
   email: { type: "string" },
   name: { type: "string" },
+  scope: { type: "string", multiple: true },
+  "expires-in-days": { type: "string" },
   role: { type: "string" },
   module: { type: "string" },
   actor: { type: "string" },
@@ -129,6 +137,9 @@ const COMMAND_OPTIONS: Record<string, readonly string[]> = {
   "settings get": ["module"],
   "settings set": ["module"],
   "settings unset": ["module"],
+  "tokens create": ["name", "scope", "expires-in-days"],
+  "tokens list": ["json"],
+  "tokens revoke": [],
   "auth status": [],
   "auth require": [],
   "auth disable": [],
@@ -142,7 +153,27 @@ const REMINDER = 'Registration changed: run "npm run registry:generate", then re
 interface Parsed {
   command: string;
   ids: string[];
-  values: { [K in keyof typeof OPTIONS]?: string | boolean };
+  values: { [K in keyof typeof OPTIONS]?: string | boolean | string[] };
+}
+
+function checkTokensArguments(command: string, ids: string[], values: Parsed["values"]): void {
+  if (command === "tokens list") {
+    if (ids.length > 1) throw new UsageError("tokens list takes at most one module id");
+    return;
+  }
+  const noun = command === "tokens create" ? "module id" : "token id";
+  if (ids.length === 0) throw new UsageError(`${command} needs a ${noun}`);
+  if (ids.length > 1) throw new UsageError(`${command} takes exactly one ${noun}`);
+  if (command === "tokens revoke") {
+    if (!/^[1-9]\d{0,15}$/.test(ids[0]!)) throw new UsageError("tokens revoke takes a token id: a whole number");
+    return;
+  }
+  if (typeof values.name !== "string" || values.name.trim() === "") throw new UsageError("tokens create needs --name");
+  if (!Array.isArray(values.scope) || values.scope.length === 0) throw new UsageError("tokens create needs at least one --scope");
+  const days = values["expires-in-days"];
+  if (days !== undefined && (typeof days !== "string" || !/^\d{1,4}$/.test(days) || Number(days) < 1 || Number(days) > 3650)) {
+    throw new UsageError("--expires-in-days takes a whole number from 1 to 3650");
+  }
 }
 
 function parse(argv: string[]): Parsed | "help" {
@@ -168,6 +199,12 @@ function parse(argv: string[]): Parsed | "help" {
       throw new UsageError(second === undefined ? "no settings command given" : `unknown settings command "${second}"`);
     }
     command = `settings ${second}`;
+    ids = rest;
+  } else if (first === "tokens") {
+    if (second !== "create" && second !== "list" && second !== "revoke") {
+      throw new UsageError(second === undefined ? "no tokens command given" : `unknown tokens command "${second}"`);
+    }
+    command = `tokens ${second}`;
     ids = rest;
   } else if (first === "auth") {
     if (second !== "status" && second !== "require" && second !== "disable") {
@@ -202,8 +239,9 @@ function parse(argv: string[]): Parsed | "help" {
       );
     }
   }
+  if (command.startsWith("tokens ")) checkTokensArguments(command, ids, parsed.values);
   const takesId = command !== "modules list" && command.startsWith("modules ");
-  if (!command.startsWith("settings ")) {
+  if (!command.startsWith("settings ") && !command.startsWith("tokens ")) {
     const noun = command === "modules pack" ? "a folder" : command === "modules add" ? "an archive" : command === "modules apply" ? "a package SHA-256" : "a module id";
     if (takesId && ids.length === 0) throw new UsageError(`${command} needs ${noun}`);
     if (takesId ? ids.length !== 1 : ids.length > 0) throw new UsageError(takesId ? `${command} takes exactly one ${noun.slice(2)}` : `${command} takes no arguments`);
@@ -477,6 +515,29 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
       );
       return EXIT_OK;
     }
+    if (parsed.command.startsWith("tokens ")) {
+      let modulesDir: string;
+      try {
+        modulesDir = resolveModulesDir(typeof parsed.values["modules-dir"] === "string" ? parsed.values["modules-dir"] : undefined);
+      } catch (error) {
+        throw new UsageError(error instanceof Error ? error.message : String(error));
+      }
+      const context = await loadContext(modulesDir, io);
+      pool = createPool(resolveDatabaseUrl(), { connectionTimeoutMillis: 5000 });
+      const days = parsed.values["expires-in-days"];
+      await runTokensCommand(
+        {
+          action: parsed.command.slice("tokens ".length) as "create" | "list" | "revoke",
+          args: parsed.ids,
+          name: typeof parsed.values.name === "string" ? parsed.values.name : undefined,
+          scopes: Array.isArray(parsed.values.scope) ? parsed.values.scope : [],
+          expiresInDays: typeof days === "string" ? Number(days) : undefined,
+          json: parsed.values.json === true,
+        },
+        { pool, registry: context.registry, io },
+      );
+      return EXIT_OK;
+    }
     const rebuilding = parsed.values.rebuild === true && ["modules enable", "modules disable", "modules uninstall"].includes(parsed.command);
     if (rebuilding) {
       let changeModulesDir: string;
@@ -583,7 +644,7 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
       io.err(`${USAGE.split("\n")[0]} (run with --help for the commands)`);
       return EXIT_USAGE;
     }
-    if (error instanceof Refusal || error instanceof LifecycleRefusedError || error instanceof RegistrationError || error instanceof AdminRefusedError || error instanceof ModeRefusedError || error instanceof SettingsError || error instanceof SettingValueError) {
+    if (error instanceof Refusal || error instanceof LifecycleRefusedError || error instanceof RegistrationError || error instanceof AdminRefusedError || error instanceof ModeRefusedError || error instanceof SettingsError || error instanceof SettingValueError || error instanceof TokenError) {
       io.err(`refused: ${error.message}`);
       return EXIT_REFUSED;
     }
