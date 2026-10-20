@@ -81,6 +81,26 @@ describe("validatePackageTree: public routes", () => {
     ]);
   });
 
+  it("shows scopes and token routes in the review", () => {
+    writeGood({
+      manifest: {
+        scopes: [{ key: "reports.read", label: "Read reports" }],
+        pages: [
+          { path: "/reports", entry: "./web/page.tsx", kind: "page" },
+          { path: "/svc/reports/list", entry: "./web/page.tsx", kind: "route", scope: "reports.read" },
+        ],
+      },
+    });
+    const result = validatePackageTree(root, context());
+    assert.equal(result.ok, true, result.ok ? "" : result.problems.join("\n"));
+    if (!result.ok) return;
+    assert.deepEqual(result.review.scopes, [{ key: "reports.read", label: "Read reports" }]);
+    assert.deepEqual(result.review.pages, [
+      { path: "/reports", kind: "page" },
+      { path: "/svc/reports/list", kind: "route", scope: "reports.read" },
+    ]);
+  });
+
   it("refuses a public route without a signature", () => {
     writeGood({
       manifest: {

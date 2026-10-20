@@ -28,6 +28,32 @@ describe("publicRouteRules", () => {
   });
 });
 
+describe("publicRouteRules: scoped routes", () => {
+  const svc = { pages: [{ path: "/svc/inbox/messages", scope: "messages.read" }, { path: "/svc/inbox/items/[id]", scope: "messages.read" }] };
+
+  it("collects scoped pages under /svc, next to the signed ones under /hooks", () => {
+    assert.deepEqual(publicRouteRules([inbox, svc]), [
+      ["hooks", "inbox", "messages"],
+      ["hooks", "inbox", "channels", "[channel]"],
+      ["svc", "inbox", "messages"],
+      ["svc", "inbox", "items", "[id]"],
+    ]);
+  });
+
+  it("does not let a scoped page open a path outside /svc, nor a signed one outside /hooks", () => {
+    assert.deepEqual(publicRouteRules([{ pages: [{ path: "/hooks/inbox/x", scope: "a.b" }, { path: "/svc/inbox/x", public: signed }, { path: "/inbox", scope: "a.b" }, { path: "/svc", scope: "a.b" }] }]), []);
+  });
+
+  it("applies the same all-readings rule to a scoped route", () => {
+    const rules = publicRouteRules([svc]);
+    assert.equal(isPublicRoute("/svc/inbox/messages", rules), true);
+    assert.equal(isPublicRoute("/svc/inbox/items/42", rules), true);
+    for (const path of ["/svc", "/svc/inbox", "/svc/other/messages", "/svc/inbox/items/..%2F..%2Fsettings", "/svc/inbox/items/%2e%2e", "/svc/inbox/messages/extra", "/hooks/inbox/messages"]) {
+      assert.equal(isPublicRoute(path, rules), false, path);
+    }
+  });
+});
+
 describe("isPublicRoute", () => {
   it("is true for a declared path, with or without a trailing slash", () => {
     assert.equal(isPublicRoute("/hooks/inbox/messages", rules), true);

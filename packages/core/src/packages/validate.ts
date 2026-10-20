@@ -23,9 +23,10 @@ export interface PackageReview {
   name: string;
   packageName: string;
   platform: string;
-  pages: { path: string; kind: string; permission?: string; public?: true }[];
+  pages: { path: string; kind: string; permission?: string; public?: true; scope?: string }[];
   nav: { label: string; href: string; group?: string; permission?: string }[];
   permissions: { key: string; label: string }[];
+  scopes: { key: string; label: string }[];
   settings: { key: string; type: string; required: boolean; hasDefault: boolean }[];
   migrations: string[];
   runsHooks: boolean;
@@ -211,6 +212,7 @@ export function validatePackageTree(root: string, context: PackageContext): Pack
         kind: page.kind,
         ...(page.permission === undefined ? {} : { permission: page.permission }),
         ...(page.public === undefined ? {} : { public: true as const }),
+        ...(page.scope === undefined ? {} : { scope: page.scope }),
       })),
       nav: manifest.nav.map((entry) => ({
         label: entry.label,
@@ -219,6 +221,7 @@ export function validatePackageTree(root: string, context: PackageContext): Pack
         ...(entry.permission === undefined ? {} : { permission: entry.permission }),
       })),
       permissions: (manifest.permissions ?? []).map((permission) => ({ key: permission.key, label: permission.label })),
+      scopes: (manifest.scopes ?? []).map((scope) => ({ key: scope.key, label: scope.label })),
       settings: (manifest.settings ?? []).map((setting) => ({ key: setting.key, type: setting.type, required: setting.required === true, hasDefault: setting.default !== undefined })),
       migrations,
       runsHooks,
