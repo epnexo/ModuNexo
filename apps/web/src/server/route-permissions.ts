@@ -1,6 +1,6 @@
 /** What a module's manifest says about who may reach which path. Only the parts this file reads. */
 interface ModuleSource {
-  pages?: readonly { path: string; permission?: string }[];
+  pages?: readonly { path: string; permission?: string; public?: unknown }[];
   nav?: readonly { href: string; permission?: string }[];
 }
 
@@ -90,4 +90,36 @@ export function requiredPermissions(pathname: string, rules: readonly Permission
     }
   }
   return [...needed];
+}
+
+/** The shell-owned prefix every public route lives under; the manifest check and the codegen enforce it too. */
+const PUBLIC_PREFIX = "hooks";
+
+/**
+ * The routes that answer without a session: the pages that declare themselves `public`, and only those under
+ * `/hooks`. The prefix is checked again here so that a manifest that slipped past validation still cannot open an
+ * ordinary path.
+ */
+export function publicRouteRules(modules: readonly ModuleSource[]): string[][] {
+  const rules: string[][] = [];
+  for (const module of modules) {
+    for (const page of module.pages ?? []) {
+      if (page.public === undefined || !page.path.startsWith("/")) continue;
+      const segments = segmentsOf(page.path);
+      if (segments[0] === PUBLIC_PREFIX && segments.length > 1) rules.push(segments);
+    }
+  }
+  return rules;
+}
+
+/**
+ * Is this path a declared public route? Every reading of the path (see `pathReadings`) has to land on one, so an
+ * encoding that the router would read as another path, a dot segment included, never counts as public. When in
+ * doubt the answer is no, and the request meets the ordinary gate.
+ */
+export function isPublicRoute(pathname: string, rules: readonly (readonly string[])[]): boolean {
+  if (rules.length === 0) return false;
+  return pathReadings(pathname).every(
+    (path) => path.length > 0 && path.every((segment) => segment !== "." && segment !== "..") && rules.some((rule) => matchesRoute(rule, path)),
+  );
 }

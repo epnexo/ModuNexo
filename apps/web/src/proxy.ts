@@ -14,7 +14,7 @@ import { HEALTH_PATH, decideAccess } from "./server/access.ts";
 import { requestAddresses } from "./server/client-address.ts";
 import { DEGRADED_BODY } from "./server/health.ts";
 import { type Subject, subjectCan } from "./server/nav.ts";
-import { permissionRules, requiredPermissions } from "./server/route-permissions.ts";
+import { isPublicRoute, permissionRules, publicRouteRules, requiredPermissions } from "./server/route-permissions.ts";
 import { resolvePublicUrl } from "./server/launch.ts";
 import { servedOverHttpsWithoutPublicUrl } from "./server/public-url-warning.ts";
 import { platform } from "./server/platform.ts";
@@ -25,6 +25,7 @@ const refusalLog = createRefusalLog((line) => log.warn("access.refused", { detai
 
 /** What the manifests of this build say about who may reach which path. Fixed at build time, like the registry. */
 const PERMISSION_RULES = permissionRules(modules);
+const PUBLIC_ROUTES = publicRouteRules(modules);
 
 const text = (message: string, status: number) =>
   new NextResponse(message, { status, headers: { "cache-control": "no-store", "content-type": "text/plain; charset=utf-8" } });
@@ -43,7 +44,8 @@ export async function proxy(request: NextRequest) {
     const local = requestIsLocal(addresses);
     const hostOk = isLocalHostName(request.headers.get("host") ?? "");
     // The library answers its own endpoints; every other path needs to know whether there is a session.
-    const needsSession = mode === "required" && !pathname.startsWith("/api/auth");
+    const publicRoute = isPublicRoute(pathname, PUBLIC_ROUTES);
+    const needsSession = mode === "required" && !pathname.startsWith("/api/auth") && !publicRoute;
     const session = needsSession ? await auth.api.getSession({ headers: request.headers }) : null;
     const hasSession = session !== null && sessionIsUsable(session.user);
 
@@ -55,7 +57,7 @@ export async function proxy(request: NextRequest) {
     const subject: Subject = mode === "disabled" ? { kind: "operator" } : { kind: "user", role: session?.user.role };
     const permitted = requiredPermissions(pathname, PERMISSION_RULES).every((permission) => subjectCan(subject, permission));
 
-    const decision = decideAccess({ pathname, mode, hasSession, local, hostOk, permitted });
+    const decision = decideAccess({ pathname, mode, hasSession, local, hostOk, permitted, publicRoute });
     if (decision.action === "allow") {
       // Behind a proxy the owner trusts, the sign-in limiter should count the client the proxy saw, not the proxy.
       // Only the header the limiter reads is rewritten; the locality rule above used the original request.
