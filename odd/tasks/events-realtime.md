@@ -49,7 +49,7 @@ Branch: feat/events-realtime (from main). Delivery strategy: ask-on-risk; the ow
 - [x] T3 (S3, S8, S9) register the publisher in web and worker, worker prune, CLI `events`. Route: inline. Commit: bd0ba47 (RED observed for the worker tests; the CLI tests were written first but not run before the code)
 - [x] T4 (S6, S7) event hub (LISTEN, catch-up, poll), `/api/events`, gate, end-to-end. Route: inline. Commit: b3ff18e (hub), next commit (stream, route, e2e) (RED observed for the hub and stream tests; e2e written with the code)
 - [x] T5 (S9 review, S10) install review, README, skill, ADR note. Route: inline. Commit: next commit (no RED for the review test: written together with the code)
-- [ ] T6 full suite, independent verifier. Route: inline. Commit: pending
+- [x] T6 full suite (1229/1229), independent verifier (no blockers). Route: inline. Commit: 85f3eab
 
 ## Log
 
