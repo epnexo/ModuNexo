@@ -13,8 +13,10 @@ import { createPool, resolveDatabaseUrl } from "../pool.ts";
 import { Registry } from "../registry.ts";
 import { MigrationRunError, migrate, pendingMigrations } from "../runner.ts";
 import { SettingValueError, SettingsError } from "../settings/service.ts";
+import { JOB_STATUSES, JobError, type JobStatus } from "../jobs/index.ts";
 import { TokenError } from "../tokens/errors.ts";
 import { DATA_DIR } from "../packages/paths.ts";
+import { runJobsCommand, runWorkerCommand } from "./jobs.ts";
 import { runNewCommand } from "./new.ts";
 import { runAddCommand, runApplyCommand, runChangeCommand, runPackCommand } from "./packages.ts";
 import { readPassword } from "./password.ts";
@@ -80,6 +82,14 @@ commands:
                                    issue a service token for a module's scoped routes; it is printed once
   tokens list [<module>] [--json]  tokens with their state; never the token itself
   tokens revoke <id>               stop a token from working at once
+  worker [--concurrency <n>] [--poll-ms <n>]
+                                   run the background jobs of the enabled modules until stopped (SIGINT or SIGTERM);
+                                   start it next to the web app, with the same DATABASE_URL and modules folder
+  jobs list [<module>] [--status queued|running|succeeded|dead|cancelled] [--json]
+                                   jobs with their state and last error; the payload only with --json
+  jobs enqueue <module> <job> [--payload <json>] [--delay-seconds <n>] [--dedupe-key <key>]
+  jobs cancel <id>                 a queued job only
+  jobs retry <id>                  a dead job only, from its first attempt
   auth status                      whether the shell asks for a sign-in
   auth require                     ask for a sign-in (refused while no administrator exists)
   auth disable                     serve local requests without a sign-in
@@ -107,6 +117,12 @@ const OPTIONS = {
   email: { type: "string" },
   name: { type: "string" },
   scope: { type: "string", multiple: true },
+  concurrency: { type: "string" },
+  "poll-ms": { type: "string" },
+  status: { type: "string" },
+  payload: { type: "string" },
+  "delay-seconds": { type: "string" },
+  "dedupe-key": { type: "string" },
   "expires-in-days": { type: "string" },
   role: { type: "string" },
   module: { type: "string" },
@@ -140,6 +156,11 @@ const COMMAND_OPTIONS: Record<string, readonly string[]> = {
   "tokens create": ["name", "scope", "expires-in-days"],
   "tokens list": ["json"],
   "tokens revoke": [],
+  worker: ["concurrency", "poll-ms"],
+  "jobs list": ["status", "json"],
+  "jobs enqueue": ["payload", "delay-seconds", "dedupe-key"],
+  "jobs cancel": [],
+  "jobs retry": [],
   "auth status": [],
   "auth require": [],
   "auth disable": [],
@@ -176,6 +197,44 @@ function checkTokensArguments(command: string, ids: string[], values: Parsed["va
   }
 }
 
+const WHOLE_NUMBER = /^\d{1,10}$/;
+
+function wholeNumberIn(value: unknown, least: number, most: number): number | null {
+  if (typeof value !== "string" || !WHOLE_NUMBER.test(value)) return null;
+  const number = Number(value);
+  return number >= least && number <= most ? number : null;
+}
+
+function checkWorkerOptions(values: Parsed["values"]): void {
+  if (values.concurrency !== undefined && wholeNumberIn(values.concurrency, 1, 32) === null) throw new UsageError("--concurrency takes a whole number from 1 to 32");
+  if (values["poll-ms"] !== undefined && wholeNumberIn(values["poll-ms"], 100, 60_000) === null) throw new UsageError("--poll-ms takes a whole number from 100 to 60000");
+}
+
+function checkJobsArguments(command: string, ids: string[], values: Parsed["values"]): void {
+  if (command === "jobs list") {
+    if (ids.length > 1) throw new UsageError("jobs list takes at most one module id");
+    if (values.status !== undefined && !JOB_STATUSES.includes(values.status as JobStatus)) throw new UsageError(`--status takes ${JOB_STATUSES.join(", ")}`);
+    return;
+  }
+  if (command === "jobs enqueue") {
+    if (ids.length !== 2) throw new UsageError("jobs enqueue takes a module id and a job name");
+    if (values.payload !== undefined) {
+      try {
+        JSON.parse(values.payload as string);
+      } catch {
+        throw new UsageError("--payload takes JSON");
+      }
+    }
+    if (values["delay-seconds"] !== undefined && wholeNumberIn(values["delay-seconds"], 0, 2_592_000) === null) {
+      throw new UsageError("--delay-seconds takes a whole number from 0 to 2592000");
+    }
+    return;
+  }
+  if (ids.length === 0) throw new UsageError(`${command} needs a job id`);
+  if (ids.length > 1) throw new UsageError(`${command} takes exactly one job id`);
+  if (!/^[1-9]\d{0,15}$/.test(ids[0]!)) throw new UsageError(`${command} takes a job id: a whole number`);
+}
+
 function parse(argv: string[]): Parsed | "help" {
   let parsed;
   try {
@@ -205,6 +264,12 @@ function parse(argv: string[]): Parsed | "help" {
       throw new UsageError(second === undefined ? "no tokens command given" : `unknown tokens command "${second}"`);
     }
     command = `tokens ${second}`;
+    ids = rest;
+  } else if (first === "jobs") {
+    if (second !== "list" && second !== "enqueue" && second !== "cancel" && second !== "retry") {
+      throw new UsageError(second === undefined ? "no jobs command given" : `unknown jobs command "${second}"`);
+    }
+    command = `jobs ${second}`;
     ids = rest;
   } else if (first === "auth") {
     if (second !== "status" && second !== "require" && second !== "disable") {
@@ -240,8 +305,10 @@ function parse(argv: string[]): Parsed | "help" {
     }
   }
   if (command.startsWith("tokens ")) checkTokensArguments(command, ids, parsed.values);
+  if (command.startsWith("jobs ")) checkJobsArguments(command, ids, parsed.values);
+  if (command === "worker") checkWorkerOptions(parsed.values);
   const takesId = command !== "modules list" && command.startsWith("modules ");
-  if (!command.startsWith("settings ") && !command.startsWith("tokens ")) {
+  if (!command.startsWith("settings ") && !command.startsWith("tokens ") && !command.startsWith("jobs ")) {
     const noun = command === "modules pack" ? "a folder" : command === "modules add" ? "an archive" : command === "modules apply" ? "a package SHA-256" : "a module id";
     if (takesId && ids.length === 0) throw new UsageError(`${command} needs ${noun}`);
     if (takesId ? ids.length !== 1 : ids.length > 0) throw new UsageError(takesId ? `${command} takes exactly one ${noun.slice(2)}` : `${command} takes no arguments`);
@@ -538,6 +605,54 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
       );
       return EXIT_OK;
     }
+    if (parsed.command.startsWith("jobs ") || parsed.command === "worker") {
+      let modulesDir: string;
+      try {
+        modulesDir = resolveModulesDir(typeof parsed.values["modules-dir"] === "string" ? parsed.values["modules-dir"] : undefined);
+      } catch (error) {
+        throw new UsageError(error instanceof Error ? error.message : String(error));
+      }
+      pool = createPool(resolveDatabaseUrl(), { connectionTimeoutMillis: 5000 });
+      if (parsed.command === "worker") {
+        const controller = new AbortController();
+        // The first signal asks the worker to finish what it is doing; a second one leaves at once.
+        const stop = () => {
+          if (controller.signal.aborted) process.exit(EXIT_ERROR);
+          controller.abort();
+        };
+        process.on("SIGINT", stop);
+        process.on("SIGTERM", stop);
+        try {
+          await runWorkerCommand(
+            {
+              modulesDir,
+              concurrency: typeof parsed.values.concurrency === "string" ? Number(parsed.values.concurrency) : undefined,
+              pollMs: typeof parsed.values["poll-ms"] === "string" ? Number(parsed.values["poll-ms"]) : undefined,
+            },
+            { pool, signal: controller.signal },
+          );
+        } finally {
+          process.off("SIGINT", stop);
+          process.off("SIGTERM", stop);
+        }
+        return EXIT_OK;
+      }
+      const context = await loadContext(modulesDir, io);
+      const delay = parsed.values["delay-seconds"];
+      await runJobsCommand(
+        {
+          action: parsed.command.slice("jobs ".length) as "enqueue" | "list" | "cancel" | "retry",
+          args: parsed.ids,
+          payload: typeof parsed.values.payload === "string" ? JSON.parse(parsed.values.payload) : null,
+          delaySeconds: typeof delay === "string" ? Number(delay) : undefined,
+          dedupeKey: typeof parsed.values["dedupe-key"] === "string" ? parsed.values["dedupe-key"] : undefined,
+          status: typeof parsed.values.status === "string" ? (parsed.values.status as JobStatus) : undefined,
+          json: parsed.values.json === true,
+        },
+        { pool, registry: context.registry, io },
+      );
+      return EXIT_OK;
+    }
     const rebuilding = parsed.values.rebuild === true && ["modules enable", "modules disable", "modules uninstall"].includes(parsed.command);
     if (rebuilding) {
       let changeModulesDir: string;
@@ -644,7 +759,7 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
       io.err(`${USAGE.split("\n")[0]} (run with --help for the commands)`);
       return EXIT_USAGE;
     }
-    if (error instanceof Refusal || error instanceof LifecycleRefusedError || error instanceof RegistrationError || error instanceof AdminRefusedError || error instanceof ModeRefusedError || error instanceof SettingsError || error instanceof SettingValueError || error instanceof TokenError) {
+    if (error instanceof Refusal || error instanceof LifecycleRefusedError || error instanceof RegistrationError || error instanceof AdminRefusedError || error instanceof ModeRefusedError || error instanceof SettingsError || error instanceof SettingValueError || error instanceof TokenError || error instanceof JobError) {
       io.err(`refused: ${error.message}`);
       return EXIT_REFUSED;
     }
