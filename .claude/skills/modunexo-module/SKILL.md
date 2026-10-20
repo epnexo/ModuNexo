@@ -58,6 +58,10 @@ The user wants a new module (documents, contacts, anything), a change to one, or
   `/hooks/<module-id>/` with explicit `methods` (no GET), and a `secret` setting that holds the shared key. The shell
   verifies the HMAC-SHA256 of the body before your handler runs; never open a route without a signature, and
   deduplicate events yourself (the shell does not). See the README section "Public routes".
+- An API for machine callers is a `kind: "route"` page with `scope: "<key>"`, declared under `/svc/<module-id>/`, and
+  the key listed in the module's `scopes`. The operator issues tokens with `tokens create`; the shell checks the bearer
+  token and scope before your handler runs and reads no body, so cap and validate it yourself. Never combine `scope`
+  with `public` or `permission`. See the README section "Service tokens".
 - UI: reuse the shell's tokens and classes (`bg-surface`, `border-border`, `text-muted`, `bg-accent`), English copy,
   one concern per screen (tabs or on-demand panels, not a stack of sections).
 - Code, comments, UI text and commits are in English.

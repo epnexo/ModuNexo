@@ -412,6 +412,7 @@ session, the path, and whether the request is local) and asks `decideAccess` in 
 | required | no session | pages redirect to `/login`, `/api/*` answers `401` |
 | required | session | served; `/login` redirects to `/` |
 | required | no session, path is a declared public route | served; the route checks its own signature (see "Public routes") |
+| required | no session, path is a declared token route | served; the route checks the bearer token and its scope (see "Service tokens") |
 | disabled | local request | served; `/login` redirects to `/` |
 | disabled | any non-local address | `403 Forbidden`, whatever the path |
 | disabled | `Host` is not a local name | `403 Forbidden`, whatever the path |
@@ -518,6 +519,52 @@ pages: [
   cannot be declared public.
 - **Install review.** `modules add` and the Apps screen list public routes separately, because installing the module
   opens them.
+
+### Service tokens
+
+A module can offer an API to machine callers (an agent, a script, another service) with service tokens. The module
+declares the scopes it understands and marks the routes that need one; the shell checks the token before the module
+code runs:
+
+```ts
+scopes: [
+  { key: "messages.read", label: "Read messages" },
+  { key: "messages.send", label: "Send messages" },
+],
+pages: [
+  { path: "/svc/inbox/messages", entry: "./web/messages.ts", kind: "route", methods: ["GET"], scope: "messages.read" },
+  { path: "/svc/inbox/send",     entry: "./web/send.ts",     kind: "route", methods: ["POST"], scope: "messages.send" },
+],
+```
+
+```bash
+npm run modunexo -- tokens create inbox --name "agent" --scope messages.read [--expires-in-days 90]   # prints the token once
+npm run modunexo -- tokens list [inbox] [--json]                                                       # never the token
+npm run modunexo -- tokens revoke <id>
+curl -H "Authorization: Bearer mdnx_..." https://host/svc/inbox/messages
+```
+
+- **Where.** Token routes live under `/svc/<module-id>/` and nowhere else; no other page may sit under `/svc`. A route
+  declares `scope` instead of `permission` or `public`, never together.
+- **The token.** `mdnx_<8 hex>_<43 characters>`, 32 random bytes. The platform stores only its SHA-256 (migration
+  0010, `core.service_tokens`), so a copy of the database holds no usable token, and the token is shown once, by
+  `tokens create`. A token is issued for scopes its module declared (anything else is refused, exit code 3), belongs
+  to that module alone and can have an expiry.
+- **Checks.** The generated route file wraps every method with `scopedRoute` (`src/server/scoped-route.ts`). A request
+  with no bearer token, an unknown, malformed, revoked or expired token, or a token of another module answers the same
+  `401 Unauthorized` with `WWW-Authenticate: Bearer`; the log says which. A valid token that lacks the route's scope
+  answers `403`. If the platform cannot reach its database the answer is `503`, never an allow. Revoking takes effect
+  on the next request, with no restart.
+- **Limits.** 120 requests a minute per client address and route, answered `429` with `Retry-After` before the token is
+  looked up; the count lives in the process's memory. The shell does not read or cap the body of a token route: the
+  module's handler does. `last_used_at` is updated at most once a minute per token.
+- **Gate.** The same rule as for public routes: a path is a token route only when every way the router could read
+  it lands on a declared one, and with sign-in disabled the local-only rule still applies, so token routes need
+  `auth require` to be reachable from outside.
+- **Lifecycle.** `uninstall --purge` deletes the module's tokens (the trail in `core.service_token_events`, which holds
+  no token, stays). `uninstall --keep` and disabling keep them, so reinstalling the module revives the same tokens.
+  The install review lists the module's scopes and its token routes.
+- **Not here yet.** A screen to manage tokens (the CLI is the only way), rotation, and per-token rate limits.
 
 ### Secrets
 
