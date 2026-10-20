@@ -43,6 +43,39 @@ export interface PageDeclaration {
    * for the page and for the handler alike; it is enforced at the gate, not only by hiding a link.
    */
   permission?: string;
+  /**
+   * `route` only: opens the route to callers without a session, for inbound webhooks. It must declare the signature
+   * check, lives under `/hooks/<module-id>/`, declares its `methods` explicitly (none of GET, HEAD or OPTIONS) and
+   * cannot be combined with `permission`. The shell verifies the signature before the module handler runs.
+   */
+  public?: PublicRouteDeclaration;
+}
+
+/** How the shell authenticates a public route: an HMAC-SHA256 of the raw body, keyed by a `secret` setting. */
+export interface SignatureDeclaration {
+  /** Key of a setting of type "secret" declared by this module; it holds the shared secret. */
+  secret: string;
+  /** Request header carrying the signature. */
+  header: string;
+  /** How the digest is written in the header. Default "hex". */
+  encoding?: "hex" | "base64";
+  /** Text that precedes the digest in the header, for example "sha256=". */
+  prefix?: string;
+  /**
+   * Header with the Unix time in seconds. When set, the signed text is `<timestamp>.<body>` and a request outside
+   * `toleranceSeconds` of the server clock is refused, which closes the replay window.
+   */
+  timestampHeader?: string;
+  /** Accepted clock distance in seconds, 1 to 3600. Only with `timestampHeader`. Default 300. */
+  toleranceSeconds?: number;
+}
+
+export interface PublicRouteDeclaration {
+  signature: SignatureDeclaration;
+  /** Requests accepted per minute from one client; the rest answer 429. 1 to 10000, default 60. */
+  ratePerMinute?: number;
+  /** Largest accepted body in bytes; a larger one answers 413. 1 to 10485760, default 1048576. */
+  maxBodyBytes?: number;
 }
 
 export type SettingType = "string" | "number" | "boolean" | "select" | "secret" | "path";
@@ -114,7 +147,14 @@ const KNOWN_FIELDS = new Set([
   "id", "version", "name", "platform", "dependsOn", "schema", "migrationsDir", "nav", "pages", "settings", "permissions", "hooks",
 ]);
 const KNOWN_NAV_FIELDS = new Set(["label", "href", "icon", "group", "order", "permission"]);
-const KNOWN_PAGE_FIELDS = new Set(["path", "entry", "kind", "dynamic", "methods", "permission"]);
+const KNOWN_PAGE_FIELDS = new Set(["path", "entry", "kind", "dynamic", "methods", "permission", "public"]);
+const KNOWN_PUBLIC_FIELDS = new Set(["signature", "ratePerMinute", "maxBodyBytes"]);
+const KNOWN_SIGNATURE_FIELDS = new Set(["secret", "header", "encoding", "prefix", "timestampHeader", "toleranceSeconds"]);
+const SIGNATURE_ENCODINGS = ["hex", "base64"];
+/** Methods that carry no body to sign, so they cannot be public. */
+const BODYLESS_METHODS = ["GET", "HEAD", "OPTIONS"];
+const HEADER_NAME = /^[A-Za-z0-9-]+$/;
+const MAX_BODY_LIMIT = 10 * 1024 * 1024;
 const KNOWN_SETTING_FIELDS = new Set(["key", "label", "type", "default", "required", "options", "description"]);
 const KNOWN_PERMISSION_FIELDS = new Set(["key", "label"]);
 const PAGE_KINDS = ["page", "route"];
@@ -214,7 +254,92 @@ function checkNav(nav: unknown, permissionKeys: Set<string>, problems: string[])
   });
 }
 
-function checkPages(pages: unknown, permissionKeys: Set<string>, problems: string[]): void {
+function isIntegerInRange(value: unknown, min: number, max: number): boolean {
+  return typeof value === "number" && Number.isInteger(value) && value >= min && value <= max;
+}
+
+function checkSignature(signature: unknown, secretKeys: Set<string>, where: string, problems: string[]): void {
+  if (signature === undefined) {
+    problems.push(`${where}.signature is required: a public route must declare how its callers are authenticated`);
+    return;
+  }
+  if (!isPlainObject(signature)) {
+    problems.push(`${where}.signature must be an object`);
+    return;
+  }
+  const at = `${where}.signature`;
+  checkUnknownFields(signature, KNOWN_SIGNATURE_FIELDS, at, problems);
+  if (typeof signature.secret !== "string" || !secretKeys.has(signature.secret)) {
+    problems.push(`${at}.secret "${String(signature.secret)}" must name a declared setting of type "secret"`);
+  }
+  if (typeof signature.header !== "string" || !HEADER_NAME.test(signature.header)) {
+    problems.push(`${at}.header must be a header name (letters, digits and "-")`);
+  }
+  if (signature.encoding !== undefined && (typeof signature.encoding !== "string" || !SIGNATURE_ENCODINGS.includes(signature.encoding))) {
+    problems.push(`${at}.encoding must be one of ${SIGNATURE_ENCODINGS.join(", ")}`);
+  }
+  if (signature.prefix !== undefined && !isNonEmptyString(signature.prefix)) {
+    problems.push(`${at}.prefix must be a non-empty string when present`);
+  }
+  if (signature.timestampHeader !== undefined && (typeof signature.timestampHeader !== "string" || !HEADER_NAME.test(signature.timestampHeader))) {
+    problems.push(`${at}.timestampHeader must be a header name (letters, digits and "-")`);
+  }
+  if (signature.toleranceSeconds !== undefined) {
+    if (signature.timestampHeader === undefined) problems.push(`${at}.toleranceSeconds needs a timestampHeader`);
+    else if (!isIntegerInRange(signature.toleranceSeconds, 1, 3600)) problems.push(`${at}.toleranceSeconds must be an integer from 1 to 3600`);
+  }
+}
+
+function checkPublic(page: Record<string, unknown>, where: string, ctx: PageContext, problems: string[]): void {
+  const declared = page.public;
+  if (!isPlainObject(declared)) {
+    problems.push(`${where}.public must be an object with a signature`);
+    return;
+  }
+  if (page.kind !== "route") problems.push(`${where}.public is only allowed for kind "route"`);
+  if (page.permission !== undefined) problems.push(`${where}.public cannot be combined with permission: a public route has no session`);
+  if (typeof page.path === "string" && ctx.moduleId !== undefined) {
+    const prefix = `/hooks/${ctx.moduleId}/`;
+    if (!page.path.startsWith(prefix) || page.path.length === prefix.length) {
+      problems.push(`${where}.path "${page.path}" must sit under ${prefix} to be public`);
+    }
+  }
+  if (page.kind === "route") {
+    if (!Array.isArray(page.methods)) {
+      problems.push(`${where}.methods must be declared for a public route`);
+    } else {
+      for (const method of page.methods) {
+        if (BODYLESS_METHODS.includes(method as string)) problems.push(`${where}.methods "${String(method)}" cannot be public: there is no body to sign`);
+      }
+    }
+  }
+  checkUnknownFields(declared, KNOWN_PUBLIC_FIELDS, `${where}.public`, problems);
+  checkSignature(declared.signature, ctx.secretKeys, `${where}.public`, problems);
+  if (declared.ratePerMinute !== undefined && !isIntegerInRange(declared.ratePerMinute, 1, 10000)) {
+    problems.push(`${where}.public.ratePerMinute must be an integer from 1 to 10000`);
+  }
+  if (declared.maxBodyBytes !== undefined && !isIntegerInRange(declared.maxBodyBytes, 1, MAX_BODY_LIMIT)) {
+    problems.push(`${where}.public.maxBodyBytes must be an integer from 1 to ${MAX_BODY_LIMIT}`);
+  }
+}
+
+/** What `checkPages` needs to know about the rest of the manifest. */
+interface PageContext {
+  moduleId: string | undefined;
+  /** Keys of the settings declared with type "secret". */
+  secretKeys: Set<string>;
+}
+
+function secretSettingKeys(settings: unknown): Set<string> {
+  const keys = new Set<string>();
+  if (!Array.isArray(settings)) return keys;
+  for (const setting of settings) {
+    if (isPlainObject(setting) && setting.type === "secret" && typeof setting.key === "string") keys.add(setting.key);
+  }
+  return keys;
+}
+
+function checkPages(pages: unknown, permissionKeys: Set<string>, ctx: PageContext, problems: string[]): void {
   const seen = new Set<string>();
   eachItem(pages, "pages", problems, (page, where) => {
     checkUnknownFields(page, KNOWN_PAGE_FIELDS, where, problems);
@@ -241,6 +366,10 @@ function checkPages(pages: unknown, permissionKeys: Set<string>, problems: strin
       } else if (!Array.isArray(page.methods) || page.methods.length === 0 || !page.methods.every((m) => typeof m === "string" && HTTP_METHODS.includes(m)) || new Set(page.methods).size !== page.methods.length) {
         problems.push(`${where}.methods must be a non-empty array of distinct HTTP methods (${HTTP_METHODS.join(", ")})`);
       }
+    }
+    if (page.public !== undefined) checkPublic(page, where, ctx, problems);
+    else if (typeof page.path === "string" && (page.path === "/hooks" || page.path.startsWith("/hooks/"))) {
+      problems.push(`${where}.path "${page.path}" is under /hooks, which is reserved for public routes`);
     }
   });
 }
@@ -351,7 +480,10 @@ export function validateManifest(input: unknown, options: ValidateOptions = {}):
 
   const permissionKeys = raw.permissions === undefined ? new Set<string>() : checkPermissions(raw.permissions, problems);
   checkNav(raw.nav, permissionKeys, problems);
-  if (raw.pages !== undefined) checkPages(raw.pages, permissionKeys, problems);
+  if (raw.pages !== undefined) {
+    const ctx: PageContext = { moduleId: typeof raw.id === "string" ? raw.id : undefined, secretKeys: secretSettingKeys(raw.settings) };
+    checkPages(raw.pages, permissionKeys, ctx, problems);
+  }
   if (raw.settings !== undefined) checkSettings(raw.settings, problems);
   if (raw.hooks !== undefined && !isRelativeEntry(raw.hooks)) problems.push('hooks must be a relative path starting with "./"');
 
