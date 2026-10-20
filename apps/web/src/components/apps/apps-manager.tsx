@@ -16,6 +16,8 @@ interface Review {
   nav: { label: string }[];
   permissions: { key: string }[];
   jobs: { name: string; every?: string }[];
+  events: { name: string; streamed: boolean }[];
+  subscriptions: { event: string; job: string }[];
   settings: { key: string }[];
   migrations: string[];
   runsHooks: boolean;
@@ -371,6 +373,24 @@ export function AppsManager({ initial, installed, modules }: { initial: AppsStat
                   <dd>
                     {list(staged.review.jobs.map((job) => (job.every === undefined ? job.name : `${job.name} (every ${job.every})`)))}
                     <span className="block text-xs text-muted">These run in the worker process, with the platform&apos;s database access.</span>
+                  </dd>
+                </>
+              ) : null}
+              {staged.review.events.length > 0 ? (
+                <>
+                  <dt className="text-muted">Events</dt>
+                  <dd>
+                    {list(staged.review.events.map((event) => (event.streamed ? `${event.name} (streamed)` : event.name)))}
+                    <span className="block text-xs text-muted">A streamed event is sent to signed-in browsers that hold its permission.</span>
+                  </dd>
+                </>
+              ) : null}
+              {staged.review.subscriptions.length > 0 ? (
+                <>
+                  <dt className="text-muted">Subscribes to</dt>
+                  <dd>
+                    {list(staged.review.subscriptions.map((subscription) => `${subscription.event} → ${subscription.job}`))}
+                    <span className="block text-xs text-muted">The job runs in the worker process for every such event.</span>
                   </dd>
                 </>
               ) : null}

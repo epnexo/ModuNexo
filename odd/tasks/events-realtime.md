@@ -47,8 +47,8 @@ Branch: feat/events-realtime (from main). Delivery strategy: ask-on-risk; the ow
 - [x] T1 (S1, S3 SDK side) manifest `events`/`subscriptions`, `publishEvent`, event-type helpers. Route: inline. Commit: 24c724a (RED observed)
 - [x] T2 (S2, S3, S4, S5, S9 purge/prune) migration 0012, `EventService`, `JobService.enqueue` on a given executor, purge. Route: inline. Commit: 93bbb35, 3d53c13 (no RED before the code; the ordering test was shown to fail with the lock removed)
 - [x] T3 (S3, S8, S9) register the publisher in web and worker, worker prune, CLI `events`. Route: inline. Commit: bd0ba47 (RED observed for the worker tests; the CLI tests were written first but not run before the code)
-- [ ] T4 (S6, S7) event hub (LISTEN, catch-up, poll), `/api/events`, gate, end-to-end. Route: inline. Commit: pending
-- [ ] T5 (S9 review, S10) install review, README, skill, ADR note. Route: inline. Commit: pending
+- [x] T4 (S6, S7) event hub (LISTEN, catch-up, poll), `/api/events`, gate, end-to-end. Route: inline. Commit: b3ff18e (hub), next commit (stream, route, e2e) (RED observed for the hub and stream tests; e2e written with the code)
+- [x] T5 (S9 review, S10) install review, README, skill, ADR note. Route: inline. Commit: next commit (no RED for the review test: written together with the code)
 - [ ] T6 full suite, independent verifier. Route: inline. Commit: pending
 
 ## Log
@@ -68,3 +68,10 @@ Branch: feat/events-realtime (from main). Delivery strategy: ask-on-risk; the ow
   write of the last outcome under load and now waits for the worker to be idle (3d53c13).
 - L5: A subscriber the platform refuses (a `JobError`, for instance a job the module no longer declares) is skipped so it cannot
   abort the publisher's transaction; `JobError` is raised before any statement, so the transaction stays usable.
+- L6: Additions beyond the first draft of the specs, same feature: the stream starts with `event: reset` also when the client is
+  more than 1000 events behind (it is not replayed), and a client with 500 frames queued is disconnected; a viewer who may follow
+  no event gets 403; the hub's starting position is taken under the publishers' lock (`settledPosition`) so an event that
+  was mid-commit cannot be skipped. The ordering test was shown to fail with the lock removed (2 of 3 runs).
+- L7: Observed: full e2e file 42/42 on a production build, including a route publishing inside a module transaction (rollback
+  removes row and event), resume by `Last-Event-ID`, a reset for a cursor from another log, and a worker process publishing
+  an event that an open stream receives while the subscribed job runs.

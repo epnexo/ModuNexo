@@ -55,6 +55,8 @@ export async function runAddCommand(
   const tokenRoutes = review.pages.filter((page) => page.scope !== undefined);
   if (tokenRoutes.length > 0) row("token routes", `${list(tokenRoutes.map((page) => `${page.path} (${page.scope})`))} - answer to a service token without a sign-in`);
   if (review.jobs.length > 0) row("jobs", `${list(review.jobs.map((job) => (job.every === undefined ? job.name : `${job.name} (every ${job.every})`)))} - run by the worker process`);
+  if (review.events.length > 0) row("events", `${list(review.events.map((event) => (event.streamed ? `${event.name} (streamed)` : event.name)))} - a streamed event is sent to signed-in browsers that hold its permission`);
+  if (review.subscriptions.length > 0) row("subscribes", `${list(review.subscriptions.map((subscription) => `${subscription.event} -> ${subscription.job}`))} - the job runs for every such event`);
   if (review.scopes.length > 0) row("scopes", list(review.scopes.map((scope) => scope.key)));
   const open = review.pages.filter((page) => page.public === true);
   if (open.length > 0) row("public", `${list(open.map((page) => page.path))} - answer without a sign-in, guarded only by their signature`);
