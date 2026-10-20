@@ -11,6 +11,8 @@ export interface AccessInput {
   hostOk: boolean;
   /** The visitor holds every permission the path needs (true when it needs none). */
   permitted: boolean;
+  /** The path is a route a module declared `public` (see `isPublicRoute`); the route verifies its caller itself. Default false. */
+  publicRoute?: boolean;
 }
 
 export type AccessDecision =
@@ -36,10 +38,11 @@ const isApi = (pathname: string) => pathname === "/api" || pathname.startsWith("
  *
  * With sign-in disabled the shell is a local tool: a request that carries any non-local address, or that names a
  * public host, is refused outright, before anything else is considered, and the refusal says nothing about why
- * (the server log does). While sign-in is required the host does not matter: the session cookie belongs to the
+ * (the server log does), and that includes a public route: a webhook cannot reach a shell that is not open to the
+ * network. While sign-in is required the host does not matter: the session cookie belongs to the
  * host that set it, so a page on another site has no session to ride.
  */
-export function decideAccess({ pathname, mode, hasSession, local, hostOk, permitted }: AccessInput): AccessDecision {
+export function decideAccess({ pathname, mode, hasSession, local, hostOk, permitted, publicRoute = false }: AccessInput): AccessDecision {
   if (mode === "disabled") {
     if (!local || !hostOk) return { action: "deny", status: 403, message: "Forbidden" };
     // There is no sign-in page to show, and nobody to sign out.
@@ -49,6 +52,8 @@ export function decideAccess({ pathname, mode, hasSession, local, hostOk, permit
 
   if (pathname === LOGIN_PATH || pathname === `${LOGIN_PATH}/`) return hasSession ? { action: "redirect", to: "/" } : { action: "allow" };
   if (isPublicPath(pathname)) return { action: "allow" };
+  // A public route has no session to look for: the generated wrapper checks the signature before the module runs.
+  if (publicRoute) return { action: "allow" };
   // Authentication first: a visitor without a session is sent to sign in and told nothing about permissions.
   if (hasSession) return permitted ? { action: "allow" } : { action: "deny", status: 403, message: "Forbidden" };
   if (isApi(pathname)) return { action: "deny", status: 401, message: "Sign-in required" };
