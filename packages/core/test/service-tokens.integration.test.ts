@@ -101,7 +101,7 @@ describe("TokenService.create", () => {
     await assert.rejects(issue({ moduleId: "no-such-module" }), (e: unknown) => e instanceof TokenError && /not registered/.test(e.message));
     await assert.rejects(issue({ scopes: ["messages.delete"] }), (e: unknown) => e instanceof TokenError && /does not declare the scope "messages.delete"/.test(e.message));
     await assert.rejects(issue({ scopes: [] }), /at least one scope/);
-    for (const name of ["", "   ", "x".repeat(81), "bad\u0000name", "line\nbreak"]) {
+    for (const name of ["", "   ", "x".repeat(81), "bad\u0000name", "line\nbreak", "flip\u202ename", "zero\u200bwidth", "sep\u2028x", "sep\u2029x"]) {
       await assert.rejects(issue({ name }), (e: unknown) => e instanceof TokenError, JSON.stringify(name));
     }
     assert.equal((await pool!.query("select 1 from core.service_tokens where module_id = $1", [moduleId])).rowCount, 0, "nothing was stored");

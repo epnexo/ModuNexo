@@ -13,8 +13,9 @@ Branch: feat/service-tokens (stacked on feat/public-routes). Delivery strategy: 
   revoked. Events (created, revoked) go to `core.service_token_events`, with no foreign key so the trail outlives a purge. [decision]
 - S3. Token format `mdnx_<8 hex>_<43 base64url>`: 32 random bytes of secret. It is shown once, at creation. [decision]
 - S4. CLI: `tokens create <module> --name <text> --scope <key> [--scope <key>...] [--expires-in-days <n>]` prints the token
-  once; `tokens list [module]` never prints a token; `tokens revoke <id>`. A scope the module did not declare, an unknown
-  module, an empty name or no scope is refused (exit 3). [decision]
+  once; `tokens list [module]` never prints a token; `tokens revoke <id>`. A scope the module did not declare or an
+  unknown module is refused (exit 3). A missing or empty name, no scope or a bad expiry is a usage error (exit 2), like
+  every other command that lacks a required option. [decision, corrected after verification: the first text said exit 3]
 - S5. Verification: `Authorization: Bearer <token>`. The token must exist, match its stored hash in constant time, not be
   revoked or expired, belong to the module of the route, and hold the route's scope. Every failure is `401` with the same
   body, except a valid token that lacks the scope, which is `403`. The handler is never called on a failure. [decision]
@@ -54,3 +55,8 @@ Branch: feat/service-tokens (stacked on feat/public-routes). Delivery strategy: 
 - L6: Known limits: CLI only (no screen); no rotation; the rate limit and its counters are per process; token routes
   do not cap the body (the module reads it); with sign-in disabled the local-only rule blocks token routes, so they
   need `auth require`; `last_used_at` is a one-minute hint, not a counter.
+- L7: Independent verifier: no blockers. Two follow-ups applied: S4 text corrected to match the CLI (usage errors exit 2,
+  as for the other commands); token names now also reject invisible formatting characters (bidi overrides, zero-width,
+  line and paragraph separators) so `tokens list` cannot be spoofed. Left as advisories: 405 is answered before
+  authentication (same as public routes), tokens can be issued for a registered module that is disabled, repeated
+  `--name` keeps the last value, and the rate-limit map only sweeps above 1000 keys.
