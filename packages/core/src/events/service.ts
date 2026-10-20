@@ -10,6 +10,7 @@ import { EventError } from "./errors.ts";
 export const EVENTS_CHANNEL = "modunexo_events";
 export const MAX_EVENT_PAYLOAD_BYTES = 16 * 1024;
 export const EVENT_RETENTION_DAYS = 7;
+export const MAX_EVENT_TYPE_CHARS = 200;
 /** Taken before an id is assigned and held to the end of the transaction, so ids become visible in order. */
 const PUBLISH_LOCK = 7_251_041;
 const MAX_LIST = 500;
@@ -80,6 +81,8 @@ export class EventService {
     }
     const json = this.serialise(payload);
     const type = eventType(moduleId, name);
+    // Checked here because Postgres would refuse it inside the caller's transaction and leave that transaction aborted.
+    if (type.length > MAX_EVENT_TYPE_CHARS) throw new EventError(`the event type "${type.slice(0, 40)}…" is over ${MAX_EVENT_TYPE_CHARS} characters`);
 
     if (options.tx !== undefined) return this.write(options.tx as Executor, moduleId, type, json);
     const client = await this.pool.connect();

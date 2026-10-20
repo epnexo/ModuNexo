@@ -75,3 +75,10 @@ Branch: feat/events-realtime (from main). Delivery strategy: ask-on-risk; the ow
 - L7: Observed: full e2e file 42/42 on a production build, including a route publishing inside a module transaction (rollback
   removes row and event), resume by `Last-Event-ID`, a reset for a cursor from another log, and a worker process publishing
   an event that an open stream receives while the subscribed job runs.
+- L8: Full suite 1229/1229 (0 fail, 0 skipped). Independent verifier: no blockers. Advisories fixed with tests that failed first:
+  an event name over 100 characters is refused by the manifest and a full type over 200 characters by the service (the column
+  would have refused it inside the caller's transaction), and a hub stopped while it is still starting leaves no timer.
+  Left as advisories: the new `--type` and `--limit` options change the wording of the usage error that existing commands print
+  for them (the same wording every other registered option already gets); `stop()` of the hub does not close open streams;
+  permission and sign-in are checked when a stream opens, not while it stays open; a long publisher transaction makes new
+  streams wait for the starting position; a false reset when the ids after a cursor were rolled back and the earlier rows pruned.

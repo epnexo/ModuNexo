@@ -3,6 +3,7 @@ import { after, before, describe, it } from "node:test";
 import pg from "pg";
 import type { DbQueryable } from "@modunexo/sdk";
 import { EVENTS_CHANNEL, EventError, EventService, MAX_EVENT_PAYLOAD_BYTES } from "../src/events/index.ts";
+import type { Registry } from "../src/registry.ts";
 import { migrate } from "../src/runner.ts";
 import { createPool } from "../src/pool.ts";
 import { createScratchDatabase } from "../src/testing.ts";
@@ -104,6 +105,16 @@ describe("EventService.publish", { concurrency: false }, () => {
     // A string that merely contains a backslash and the text u0000 is fine.
     await service.publish(pubId, "created", { a: "back\\u0000slash" });
     assert.equal(await count("events"), 1);
+  });
+
+  it("refuses an event whose full type is too long to store, before touching the caller's transaction", async (t) => {
+    if (skipReason) return t.skip(skipReason);
+    await wipe();
+    // A registry that has not validated its manifests, which would refuse a name this long.
+    const long = { id: pubId, events: [{ name: "x".repeat(200) }] };
+    const lenient = { get: () => long, all: () => [] } as unknown as Registry;
+    await assert.rejects(() => new EventService(pool!, lenient).publish(pubId, "x".repeat(200), null), (e) => e instanceof EventError && /over 200 characters/.test(e.message));
+    assert.equal(await count("events"), 0);
   });
 
   it("starts a job for every enabled subscriber and none for a disabled one or another event", async (t) => {

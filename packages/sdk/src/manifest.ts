@@ -210,6 +210,8 @@ const KNOWN_SETTING_FIELDS = new Set(["key", "label", "type", "default", "requir
 const KNOWN_PERMISSION_FIELDS = new Set(["key", "label"]);
 const KNOWN_SCOPE_FIELDS = new Set(["key", "label"]);
 const KNOWN_JOB_FIELDS = new Set(["name", "entry", "every", "timeoutSeconds", "maxAttempts"]);
+/** The log stores the full type, `<module id>.<name>`, in at most 200 characters. */
+const MAX_EVENT_NAME_CHARS = 100;
 const KNOWN_EVENT_FIELDS = new Set(["name", "permission"]);
 const KNOWN_SUBSCRIPTION_FIELDS = new Set(["event", "job"]);
 const PAGE_KINDS = ["page", "route"];
@@ -554,6 +556,8 @@ function checkEvents(events: unknown, permissionKeys: Set<string>, problems: str
     checkUnknownFields(event, KNOWN_EVENT_FIELDS, where, problems);
     if (typeof event.name !== "string" || !KEY.test(event.name)) {
       problems.push(`${where}.name must be a stable identifier (lowercase a-z, 0-9, _ and dot-separated segments)`);
+    } else if (event.name.length > MAX_EVENT_NAME_CHARS) {
+      problems.push(`${where}.name must be at most ${MAX_EVENT_NAME_CHARS} characters`);
     } else if (seen.has(event.name)) {
       problems.push(`${where}.name "${event.name}" is duplicated`);
     } else {
