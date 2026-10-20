@@ -30,12 +30,12 @@ Branch: feat/service-tokens (stacked on feat/public-routes). Delivery strategy: 
 
 ## Tasks
 
-- [ ] T1 (S1) manifest `scopes` and page `scope` in the SDK. Route: inline. Commit: pending
-- [ ] T2 (S2, S3, S5, S8 purge) migration 0010, `TokenService`, purge. Route: inline. Commit: pending
-- [ ] T3 (S4) CLI `tokens`. Route: inline. Commit: pending
-- [ ] T4 (S1, S6, S8 review) codegen wrapper, `/svc` gate, install review. Route: inline. Commit: pending
-- [ ] T5 (S5, S7) web: shared rate limiter, `scopedRoute` wrapper. Route: inline. Commit: pending
-- [ ] T6 (S9) docs, e2e on the fixture, full suite, independent verifier. Route: inline. Commit: pending
+- [x] T1 (S1) manifest `scopes` and page `scope` in the SDK. Route: inline. Commit: e2af41e
+- [x] T2 (S2, S3, S5, S8 purge) migration 0010, `TokenService`, purge. Route: inline. Commit: 605f2da
+- [x] T3 (S4) CLI `tokens`. Route: inline. Commit: a975e53
+- [x] T4 (S1, S6, S8 review) codegen wrapper, `/svc` gate, install review. Route: inline. Commit: 8e2f11f
+- [x] T5 (S5, S7) web: shared rate limiter, `scopedRoute` wrapper. Route: inline. Commit: 3b57b21
+- [x] T6 (S9) docs, e2e on the fixture, full suite, independent verifier. Route: inline. Commit: 0a9155e
 
 ## Log
 
@@ -45,3 +45,12 @@ Branch: feat/service-tokens (stacked on feat/public-routes). Delivery strategy: 
   independent verifier runs at the end.
 - L3: Decisions taken without asking, per the standing instruction in the previous feature (L1 of public-routes): `/svc/<id>/`
   prefix; scopes declared by the module; hashed storage; CLI first, no UI.
+- L4: RED observed for T1 (10 failing), T3 (6 failing), T4 (5 failing). T2 and T5 tests were written together with the
+  implementation, so no RED was observed for them. Beyond the plan: the rate limiter was extracted to
+  `apps/web/src/server/rate-limit.ts` and the public route now uses it (its 23 tests stayed green).
+- L5: End-to-end proof (commit 08117be) on a real production build: no token 401 with `WWW-Authenticate`, bad token 401,
+  valid token 200, valid token without the scope 403, a session cookie alone 401, sibling and encoded paths stay
+  behind the gate (307), revoke takes effect on the next request with no restart, purge deletes the tokens and keeps the trail.
+- L6: Known limits: CLI only (no screen); no rotation; the rate limit and its counters are per process; token routes
+  do not cap the body (the module reads it); with sign-in disabled the local-only rule blocks token routes, so they
+  need `auth require`; `last_used_at` is a one-minute hint, not a counter.
