@@ -169,6 +169,21 @@ function renderRoute({ moduleId, path, page, packageName }: RoutePlan): string {
   const from = JSON.stringify(specifier(packageName, page.entry));
   const exported = page.kind === "page" ? ["default", "metadata"] : (page.methods ?? ["GET"] satisfies HttpMethod[]);
   const lines = [`// Module "${moduleId}", ${page.kind} "${path}".`, `export { ${exported.join(", ")} } from ${from};`];
+  if (page.public !== undefined) {
+    // A public route has no session, so the shell verifies the signature around every handler; the module handler is
+    // never re-exported bare.
+    const rule = JSON.stringify({ moduleId, path, ...page.public });
+    lines.splice(
+      1,
+      1,
+      'import { publicRoute } from "@/server/public-route";',
+      `import * as handlers from ${from};`,
+      "",
+      `const rule = ${rule};`,
+      "",
+      ...exported.map((method) => `export const ${method} = publicRoute(rule, handlers.${method});`),
+    );
+  }
   // Segment config has to be written literally in the route file, so it cannot be re-exported from the module.
   if (page.dynamic !== undefined) lines.push("", "// Segment config is read from this file, so it is written here and not re-exported.", `export const dynamic = ${JSON.stringify(page.dynamic)};`);
   return `${GENERATED_HEADER}${lines.join("\n")}\n`;
