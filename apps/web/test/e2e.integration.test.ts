@@ -357,6 +357,7 @@ export default defineModule({
   schema: "e2e_fixture",
   migrationsDir: "migrations",
   permissions: [{ key: "reports.read", label: "Read reports" }],
+  jobs: [{ name: "record", entry: "./jobs/record.ts", maxAttempts: 2 }],
   scopes: [
     { key: "messages.read", label: "Read messages" },
     { key: "messages.send", label: "Send messages" },
@@ -371,6 +372,7 @@ export default defineModule({
     { path: "/e2e-fixture/area/[id]", entry: "./web/area.tsx", kind: "page" },
     { path: "/e2e-fixture/data", entry: "./web/data.ts", kind: "route", permission: "reports.read" },
     { path: "/e2e-fixture/open-data", entry: "./web/open-data.ts", kind: "route" },
+    { path: "/e2e-fixture/enqueue", entry: "./web/enqueue.ts", kind: "route", methods: ["POST"], permission: "reports.read" },
     {
       path: "/hooks/e2e-fixture/events",
       entry: "./web/hook.ts",
@@ -419,6 +421,15 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 `,
   );
   writeFileSync(join(FIXTURE_DIR, "web", "data.ts"), `export async function GET() {\n  return Response.json({ secret: "restricted-data" });\n}\n`);
+  mkdirSync(join(FIXTURE_DIR, "jobs"), { recursive: true });
+  writeFileSync(
+    join(FIXTURE_DIR, "jobs", "record.ts"),
+    `import { getDb } from "@modunexo/sdk";\nexport default async function (ctx: { payload: { id: number } }) {\n  await getDb("${FIXTURE_ID}").query("insert into items (id) values ($1)", [ctx.payload.id]);\n}\n`,
+  );
+  writeFileSync(
+    join(FIXTURE_DIR, "web", "enqueue.ts"),
+    `import { enqueueJob } from "@modunexo/sdk";\nexport async function POST(request: Request) {\n  const { id } = await request.json();\n  return Response.json(await enqueueJob("${FIXTURE_ID}", "record", { id }, { dedupeKey: "record-" + id }));\n}\n`,
+  );
   writeFileSync(join(FIXTURE_DIR, "web", "items.ts"), `export async function GET() {\n  return Response.json({ items: [1, 2, 3] });\n}\n`);
   writeFileSync(join(FIXTURE_DIR, "web", "send.ts"), `export async function POST(request: Request) {\n  return Response.json({ sent: await request.json() });\n}\n`);
   writeFileSync(join(FIXTURE_DIR, "web", "hook.ts"), `export async function POST(request: Request) {\n  return Response.json({ received: await request.json() });\n}\n`);
@@ -834,6 +845,35 @@ describe("web app: with a module installed", () => {
     assert.equal((await call("GET", "/svc/e2e-fixture/items", bearer)).status, 401, "a revoked token stops working at once, with no restart");
   });
 
+  test("a route enqueues a job, and the worker process runs it with the module's database access", async () => {
+    const queued = await call("POST", "/e2e-fixture/enqueue", { cookie, origin: origin() }, { id: 41 });
+    assert.equal(queued.status, 200, queued.body);
+    const { id, deduplicated } = JSON.parse(queued.body) as { id: string; deduplicated: boolean };
+    assert.equal(deduplicated, false);
+    assert.equal((await call("POST", "/e2e-fixture/enqueue", { cookie, origin: origin() }, { id: 41 })).body, JSON.stringify({ id: Number(id), deduplicated: true }), "the dedupe key holds while it is active");
+    assert.equal((await call("POST", "/e2e-fixture/enqueue", {}, { id: 41 })).status, 307, "and the route is behind the gate like any other");
+    assert.equal((await db!.query("select status, enqueued_by from core.jobs where id = $1", [id])).rows[0].status, "queued");
+
+    const worker = spawn(process.execPath, ["--import", "tsx", CLI, "worker", "--poll-ms", "100"], { cwd: REPO_ROOT, env: childEnv(appEnv) });
+    let output = "";
+    worker.stdout.on("data", (chunk) => (output += chunk));
+    worker.stderr.on("data", (chunk) => (output += chunk));
+    const exited = new Promise<number | null>((resolve) => worker.once("exit", resolve));
+    try {
+      let done = false;
+      for (let i = 0; i < 300 && !done; i++) {
+        done = (await db!.query("select status from core.jobs where id = $1", [id])).rows[0].status === "succeeded";
+        if (!done) await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      assert.ok(done, `the worker did not run the job:\n${output}`);
+      assert.deepEqual((await db!.query("select id from e2e_fixture.items order by id")).rows, [{ id: 41 }], "the handler wrote through getDb");
+      worker.kill("SIGTERM");
+      assert.equal(await exited, 0, output);
+    } finally {
+      worker.kill("SIGKILL");
+    }
+  });
+
   test("uninstalling the module with purge removes its settings and its appearance, and keeps the audit trail", async () => {
     await put(`/api/settings/modules/${FIXTURE_ID}`, { values: { "site.title": "Again" } }, { cookie });
     await put(`/api/settings/modules/${FIXTURE_ID}/appearance`, { accentHue: 30 }, { cookie });
@@ -841,6 +881,7 @@ describe("web app: with a module installed", () => {
     assert.equal(removed.code, 0, removed.output);
     assert.equal((await db!.query("select 1 from core.module_settings where module_id = $1", [FIXTURE_ID])).rowCount, 0);
     assert.equal((await db!.query("select 1 from core.service_tokens where module_id = $1", [FIXTURE_ID])).rowCount, 0, "its tokens go with it");
+    assert.equal((await db!.query("select 1 from core.jobs where module_id = $1", [FIXTURE_ID])).rowCount, 0, "and its jobs");
     assert.ok(((await db!.query("select 1 from core.service_token_events where module_id = $1", [FIXTURE_ID])).rowCount ?? 0) > 0, "and their trail stays");
     assert.equal((await db!.query("select 1 from core.platform_settings where key like $1", [`appearance.module.${FIXTURE_ID}.%`])).rowCount, 0);
     assert.ok(((await db!.query("select 1 from core.settings_events where scope = $1", [FIXTURE_ID])).rowCount ?? 0) > 0, "the trail outlives the data");
