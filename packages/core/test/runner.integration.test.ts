@@ -44,9 +44,9 @@ describe("migrate (integration): the core", () => {
     await migrate(pool!, registry);
 
     const tables = await pool!.query("select table_name from information_schema.tables where table_schema = 'core' order by 1");
-    assert.deepEqual(tables.rows.map((r) => r.table_name), ["auth_account", "auth_rate_limit", "auth_session", "auth_user", "auth_verification", "brand_assets", "jobs", "module_events", "module_operations", "module_packages", "module_settings", "modules", "platform_settings", "schema_migrations", "service_token_events", "service_tokens", "settings_events"]);
+    assert.deepEqual(tables.rows.map((r) => r.table_name), ["auth_account", "auth_rate_limit", "auth_session", "auth_user", "auth_verification", "brand_assets", "events", "jobs", "module_events", "module_operations", "module_packages", "module_settings", "modules", "platform_settings", "schema_migrations", "service_token_events", "service_tokens", "settings_events"]);
     const tracked = await pool!.query("select filename from core.schema_migrations where module_id = 'core' order by filename");
-    assert.deepEqual(tracked.rows.map((r) => r.filename), ["0001_init.sql", "0002_lifecycle_state.sql", "0003_auth.sql", "0004_platform_settings.sql", "0005_settings.sql", "0006_module_packages.sql", "0007_module_operations.sql", "0008_module_operation_changes.sql", "0009_brand_assets.sql", "0010_service_tokens.sql", "0011_jobs.sql"]);
+    assert.deepEqual(tracked.rows.map((r) => r.filename), ["0001_init.sql", "0002_lifecycle_state.sql", "0003_auth.sql", "0004_platform_settings.sql", "0005_settings.sql", "0006_module_packages.sql", "0007_module_operations.sql", "0008_module_operation_changes.sql", "0009_brand_assets.sql", "0010_service_tokens.sql", "0011_jobs.sql", "0012_events.sql"]);
   });
 
   test("refuses to run when the core module is not registered", async (box) => {

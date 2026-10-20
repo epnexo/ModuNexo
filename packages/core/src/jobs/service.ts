@@ -1,6 +1,7 @@
 import type pg from "pg";
 import type { EnqueueOptions, EnqueueResult } from "@modunexo/sdk";
 import type { Registry } from "../registry.ts";
+import type { Executor } from "../executor.ts";
 import { JobError } from "./errors.ts";
 
 export type JobStatus = "queued" | "running" | "succeeded" | "dead" | "cancelled";
@@ -110,8 +111,12 @@ export class JobService {
     this.now = options.now ?? (() => new Date());
   }
 
-  /** Queue a run of a job the module declared. The module has to be enabled. */
-  async enqueue(moduleId: string, name: string, payload: unknown, options: EnqueueOptions = {}, enqueuedBy = "module"): Promise<EnqueueResult> {
+  /**
+   * Queue a run of a job the module declared. The module has to be enabled. With `executor` (a client in a transaction)
+   * the job is queued in that transaction and exists only if it commits.
+   */
+  async enqueue(moduleId: string, name: string, payload: unknown, options: EnqueueOptions = {}, enqueuedBy = "module", executor?: Executor): Promise<EnqueueResult> {
+    const db: Executor = executor ?? this.pool;
     const manifest = this.registry.get(moduleId);
     if (manifest === undefined) throw new JobError(`module "${moduleId}" is not registered`);
     const job = (manifest.jobs ?? []).find((candidate) => candidate.name === name);
@@ -119,7 +124,7 @@ export class JobService {
       const declared = (manifest.jobs ?? []).map((candidate) => candidate.name);
       throw new JobError(`module "${moduleId}" does not declare the job "${name}"${declared.length === 0 ? " (it declares none)" : ` (declared: ${declared.sort().join(", ")})`}`);
     }
-    const enabled = await this.pool.query("select 1 from core.modules where id = $1 and state = 'enabled'", [moduleId]);
+    const enabled = await db.query("select 1 from core.modules where id = $1 and state = 'enabled'", [moduleId]);
     if (enabled.rowCount === 0) throw new JobError(`module "${moduleId}" is not enabled`);
 
     let json: string;
@@ -148,9 +153,9 @@ export class JobService {
     }
 
     for (let attempt = 0; attempt < ENQUEUE_ATTEMPTS; attempt++) {
-      let inserted: pg.QueryResult;
+      let inserted: Awaited<ReturnType<Executor["query"]>>;
       try {
-        inserted = await this.pool.query(
+        inserted = await db.query(
           `insert into core.jobs (module_id, name, payload, run_at, max_attempts, timeout_seconds, dedupe_key, enqueued_by)
            values ($1, $2, $3::jsonb, $4, $5, $6, $7, $8)
            on conflict (module_id, name, dedupe_key) where dedupe_key is not null and status in ('queued', 'running') do nothing
@@ -162,13 +167,13 @@ export class JobService {
         if ((error as { code?: string }).code === UNTRANSLATABLE_CHARACTER) throw new JobError("the payload cannot be stored: a string in it holds the character \\u0000");
         throw error;
       }
-      if (inserted.rowCount === 1) return { id: Number(inserted.rows[0].id), deduplicated: false };
+      if (inserted.rowCount === 1) return { id: Number(inserted.rows[0]!.id), deduplicated: false };
       // The key is taken by an active job. If it finished since, the next pass inserts.
-      const existing = await this.pool.query(
+      const existing = await db.query(
         "select id from core.jobs where module_id = $1 and name = $2 and dedupe_key = $3 and status in ('queued', 'running')",
         [moduleId, name, key],
       );
-      if (existing.rowCount === 1) return { id: Number(existing.rows[0].id), deduplicated: true };
+      if (existing.rowCount === 1) return { id: Number(existing.rows[0]!.id), deduplicated: true };
     }
     throw new JobError("could not enqueue the job; try again");
   }

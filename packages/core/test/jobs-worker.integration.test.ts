@@ -204,7 +204,7 @@ describe("Worker: running a job", () => {
     assert.equal((await row(fine.id)).status, "succeeded");
     assert.match((await row(missing.id)).last_error, /cannot load \.\/jobs\/flaky\.ts/);
     assert.ok(logged.some((l) => l.event === "worker.job_failed"));
-    const orphan = await pool!.query("insert into core.jobs (module_id, name, max_attempts, timeout_seconds, enqueued_by) values ($1, 'removed', 1, 10, 'test') returning id", [moduleId]);
+    const orphan = await pool!.query("insert into core.jobs (module_id, name, run_at, max_attempts, timeout_seconds, enqueued_by) values ($1, 'removed', $2, 1, 10, 'test') returning id", [moduleId, clock]);
     await worker.runOnce();
     const r = await row(orphan.rows[0].id);
     assert.deepEqual([r.status, r.last_error], ["dead", `module "${moduleId}" no longer declares the job "removed"`]);
@@ -215,7 +215,7 @@ describe("Worker: running a job", () => {
     const { worker } = makeWorker({ sync: async (ctx) => void ran.push(ctx.moduleId) });
     const off = await service.enqueue(offId, "sync", null).catch(() => undefined);
     assert.equal(off, undefined, "enqueue refuses a disabled module");
-    const inserted = await pool!.query("insert into core.jobs (module_id, name, max_attempts, timeout_seconds, enqueued_by) values ($1, 'sync', 3, 10, 'test') returning id", [offId]);
+    const inserted = await pool!.query("insert into core.jobs (module_id, name, run_at, max_attempts, timeout_seconds, enqueued_by) values ($1, 'sync', $2, 3, 10, 'test') returning id", [offId, clock]);
     await worker.runOnce();
     assert.equal((await row(inserted.rows[0].id)).status, "queued");
     assert.deepEqual(ran, []);
