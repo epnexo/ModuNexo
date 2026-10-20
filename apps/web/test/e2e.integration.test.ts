@@ -4,6 +4,7 @@
 // is reachable.
 import assert from "node:assert/strict";
 import { type ChildProcess, spawn } from "node:child_process";
+import { createHmac } from "node:crypto";
 import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { createServer } from "node:net";
@@ -366,6 +367,13 @@ export default defineModule({
     { path: "/e2e-fixture/area/[id]", entry: "./web/area.tsx", kind: "page" },
     { path: "/e2e-fixture/data", entry: "./web/data.ts", kind: "route", permission: "reports.read" },
     { path: "/e2e-fixture/open-data", entry: "./web/open-data.ts", kind: "route" },
+    {
+      path: "/hooks/e2e-fixture/events",
+      entry: "./web/hook.ts",
+      kind: "route",
+      methods: ["POST"],
+      public: { signature: { secret: "hook.secret", header: "x-signature" } },
+    },
   ],
   settings: [
     { key: "site.title", label: "Site title", type: "string", default: "Untitled" },
@@ -373,6 +381,7 @@ export default defineModule({
     { key: "report.format", label: "Report format", type: "select", options: ["pdf", "csv"], default: "pdf" },
     { key: "export.dir", label: "Export directory", type: "path", required: true },
     { key: "api.token", label: "API token", type: "secret", required: true },
+    { key: "hook.secret", label: "Webhook secret", type: "secret" },
   ],
 });
 `,
@@ -404,6 +413,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 `,
   );
   writeFileSync(join(FIXTURE_DIR, "web", "data.ts"), `export async function GET() {\n  return Response.json({ secret: "restricted-data" });\n}\n`);
+  writeFileSync(join(FIXTURE_DIR, "web", "hook.ts"), `export async function POST(request: Request) {\n  return Response.json({ received: await request.json() });\n}\n`);
   writeFileSync(join(FIXTURE_DIR, "web", "open-data.ts"), `export async function GET() {\n  return Response.json({ open: true });\n}\n`);
   // What `npm install` does for a workspace package: a link from node_modules to the package folder.
   mkdirSync(FIXTURE_SCOPE_DIR, { recursive: true });
@@ -748,6 +758,36 @@ describe("web app: with a module installed", () => {
     } finally {
       await setSignInMode(db!, "required", "test");
     }
+  });
+
+  test("a public route answers without a session, and only to a signed request", async () => {
+    const secret = "whsec_e2e_0123456789abcdef";
+    assert.equal((await put(`/api/settings/modules/${FIXTURE_ID}`, { values: { "hook.secret": secret } }, { cookie })).status, 200);
+    const path = "/hooks/e2e-fixture/events";
+    const signature = createHmac("sha256", secret).update(JSON.stringify({ event: "ping" })).digest("hex");
+
+    const unsigned = await call("POST", path, {}, { event: "ping" });
+    assert.equal(unsigned.status, 401);
+    assert.equal(unsigned.body, "Unauthorized");
+    assert.equal((await call("POST", path, { "x-signature": "0".repeat(64) }, { event: "ping" })).status, 401);
+    assert.equal((await call("POST", path, { "x-signature": signature }, { event: "tampered" })).status, 401);
+
+    const signed = await call("POST", path, { "x-signature": signature }, { event: "ping" });
+    assert.equal(signed.status, 200, signed.body);
+    assert.deepEqual(JSON.parse(signed.body), { received: { event: "ping" } });
+
+    assert.equal((await call("GET", path)).status, 405, "the module exports no GET, and the gate does not make that an opening");
+    for (const other of ["/hooks/e2e-fixture", "/hooks/e2e-fixture/other", "/hooks/e2e-fixture/events/extra", "/hooks/e2e-fixture/events%2F..%2F..%2Fsettings", "/hooks/e2e-fixture/%2e%2e/settings"]) {
+      const reply = await call("POST", other, { "x-signature": signature }, { event: "ping" });
+      assert.equal(reply.status, 307, `${other} stays behind the gate`);
+      assert.equal(reply.headers.location, "/login");
+    }
+  });
+
+  test("a public route with no secret set refuses everything", async () => {
+    await db!.query("delete from core.module_settings where module_id = $1 and key = 'hook.secret'", [FIXTURE_ID]);
+    const signature = createHmac("sha256", "").update(JSON.stringify({ event: "ping" })).digest("hex");
+    assert.equal((await call("POST", "/hooks/e2e-fixture/events", { "x-signature": signature }, { event: "ping" })).status, 401);
   });
 
   test("uninstalling the module with purge removes its settings and its appearance, and keeps the audit trail", async () => {
