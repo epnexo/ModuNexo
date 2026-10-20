@@ -62,6 +62,8 @@ describe("purgeModule: guards and atomicity", () => {
       "delete from core.jobs where module_id = $1",
       "select to_regclass('core.events') is not null as present",
       "delete from core.events where module_id = $1",
+      "select to_regclass('core.files') is not null as present",
+      "delete from core.files where module_id = $1",
       "commit",
     ]);
     assert.ok(statements.some((s) => s.includes("pg_try_advisory_lock")));
@@ -80,6 +82,7 @@ describe("purgeModule: guards and atomicity", () => {
       "select to_regclass('core.service_tokens') is not null as present",
       "select to_regclass('core.jobs') is not null as present",
       "select to_regclass('core.events') is not null as present",
+      "select to_regclass('core.files') is not null as present",
       "commit",
     ]);
   });

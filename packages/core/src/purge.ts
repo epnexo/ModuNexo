@@ -85,6 +85,11 @@ async function dropStatements(client: pg.PoolClient, target: PurgeTarget): Promi
   if (events.rows[0].present) {
     await client.query("delete from core.events where module_id = $1", [target.id]);
   }
+  // And the rows of its files. The bytes are not the database's to delete: the caller removes them once this commits.
+  const files = await client.query("select to_regclass('core.files') is not null as present");
+  if (files.rows[0].present) {
+    await client.query("delete from core.files where module_id = $1", [target.id]);
+  }
 }
 
 const purgeFailure = (target: PurgeTarget, error: unknown): Error =>
