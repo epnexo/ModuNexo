@@ -163,16 +163,38 @@ export class EventService {
    */
   async resolveCursor(after: number): Promise<CursorResolution> {
     if (!(after > 0)) return { reset: false, from: 0 };
-    const [oldest, assigned] = await Promise.all([
-      this.pool.query("select min(id) as id from core.events"),
-      this.pool.query("select last_value, is_called from core.events_id_seq"),
-    ]);
-    const last = assigned.rows[0].is_called ? Number(assigned.rows[0].last_value) : 0;
+    const [oldest, last] = await Promise.all([this.pool.query("select min(id) as id from core.events"), this.lastAssigned()]);
     if (after > last) return { reset: true, from: last };
     const first = oldest.rows[0].id === null ? null : Number(oldest.rows[0].id);
     if (first === null) return after < last ? { reset: true, from: last } : { reset: false, from: after };
     if (after < first - 1) return { reset: true, from: first - 1 };
     return { reset: false, from: after };
+  }
+
+  /** The highest position ever assigned, 0 when none was. It may belong to a publisher that has not committed yet. */
+  async lastAssigned(): Promise<number> {
+    const assigned = await this.pool.query("select last_value, is_called from core.events_id_seq");
+    return assigned.rows[0]!.is_called ? Number(assigned.rows[0]!.last_value) : 0;
+  }
+
+  /**
+   * The highest position, once every publisher that was in the middle of a commit has finished: it takes the lock
+   * publishers hold, so the position it returns is visible to readers and nothing below it is still to come.
+   */
+  async settledPosition(): Promise<number> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      await client.query("select pg_advisory_xact_lock($1)", [PUBLISH_LOCK]);
+      const assigned = await client.query("select last_value, is_called from core.events_id_seq");
+      await client.query("commit");
+      return assigned.rows[0]!.is_called ? Number(assigned.rows[0]!.last_value) : 0;
+    } catch (error) {
+      await client.query("rollback").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   /** The newest events, newest first. A payload is returned only when asked for. */
