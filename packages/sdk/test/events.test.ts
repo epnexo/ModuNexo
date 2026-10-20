@@ -52,6 +52,11 @@ describe("validateManifest: events", () => {
     assert.ok(problemsOf(withEvents([event(), event()])).some((p) => p.includes("duplicated")));
   });
 
+  it("refuses a name that would make the full type too long to store", () => {
+    assert.deepEqual(problemsOf(withEvents([event({ name: "a".repeat(100) })])), []);
+    assert.ok(problemsOf(withEvents([event({ name: "a".repeat(101) })])).some((p) => p.includes("events[0].name") && p.includes("100")));
+  });
+
   it("refuses a permission the module does not declare", () => {
     assert.ok(problemsOf(withEvents([event({ permission: "inbox.read" })])).some((p) => p.includes("events[0].permission")));
     assert.ok(problemsOf(withEvents([event({ permission: 5 })], { permissions: [{ key: "inbox.read", label: "Read" }] })).some((p) => p.includes("events[0].permission")));

@@ -136,6 +136,19 @@ describe("EventHub", { concurrency: false }, () => {
     }
   });
 
+  it("leaves nothing running when it is stopped while it is still starting", async (t) => {
+    if (skipReason) return t.skip(skipReason);
+    const hub = new EventHub(pool!, service, { pollMs: 50, log: silent });
+    const starting = hub.start();
+    await hub.stop();
+    await starting;
+    assert.equal((hub as unknown as { poll?: unknown }).poll, undefined, "no poll timer");
+    const { seen } = collect(hub);
+    await publish(11);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    assert.equal(seen.length, 0);
+  });
+
   it("stops cleanly and delivers nothing afterwards", async (t) => {
     if (skipReason) return t.skip(skipReason);
     const hub = new EventHub(pool!, service, { pollMs: 50, log: silent });

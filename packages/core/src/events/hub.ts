@@ -69,6 +69,8 @@ export class EventHub {
       this.stopped = true;
       throw error;
     }
+    // Stopped while the position was being read: start nothing.
+    if (this.stopped) return;
     this.poll = setInterval(() => void this.pump(), this.pollMs);
     this.poll.unref();
     await this.listen();
