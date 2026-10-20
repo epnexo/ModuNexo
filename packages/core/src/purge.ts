@@ -75,6 +75,11 @@ async function dropStatements(client: pg.PoolClient, target: PurgeTarget): Promi
   if (tokens.rows[0].present) {
     await client.query("delete from core.service_tokens where module_id = $1", [target.id]);
   }
+  // And its queued, running and finished jobs: a module installed later under the same id starts with an empty queue.
+  const jobs = await client.query("select to_regclass('core.jobs') is not null as present");
+  if (jobs.rows[0].present) {
+    await client.query("delete from core.jobs where module_id = $1", [target.id]);
+  }
 }
 
 const purgeFailure = (target: PurgeTarget, error: unknown): Error =>
