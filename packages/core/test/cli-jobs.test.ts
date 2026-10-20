@@ -42,7 +42,7 @@ beforeEach(() => {
       schema: id,
       migrationsDir: "migrations",
       nav: [],
-      jobs: id === "alpha" ? [{ name: "write", entry: "./jobs/write.ts", maxAttempts: 2 }, { name: "boom", entry: "./jobs/boom.ts", maxAttempts: 1 }] : [],
+      jobs: id === "alpha" ? [{ name: "write", entry: "./jobs/write.ts", maxAttempts: 2 }, { name: "boom", entry: "./jobs/boom.ts", maxAttempts: 1 }, { name: "hang", entry: "./jobs/hang.ts" }] : [],
     };
     writeFileSync(join(modulesDir, id, "manifest.ts"), `export default ${JSON.stringify(manifest)};\n`);
     writeFileSync(join(modulesDir, id, "package.json"), JSON.stringify({ name: `@fixture/${id}`, private: true }));
@@ -53,6 +53,7 @@ beforeEach(() => {
     join(modulesDir, "alpha", "jobs", "write.ts"),
     `import { writeFileSync } from "node:fs";\nexport default async function (ctx: { payload: { file: string; text: string }; attempt: number }) {\n  writeFileSync(ctx.payload.file, ctx.payload.text + ":" + ctx.attempt);\n}\n`,
   );
+  writeFileSync(join(modulesDir, "alpha", "jobs", "hang.ts"), `export default function () {\n  return new Promise(() => {});\n}\n`);
   writeFileSync(join(modulesDir, "alpha", "jobs", "boom.ts"), `export default async function () {\n  throw new Error("the fixture always fails");\n}\n`);
 });
 afterEach(() => {
@@ -231,6 +232,24 @@ describe("cli: worker", () => {
     });
   });
 
+  it("exits within the grace period even when a job never finishes, and leaves that job running for its lease", async (t) => {
+    await inScratchDatabase(t, async (db, cli, url) => {
+      const { child, output } = startWorker(url, ["--grace-seconds", "1"]);
+      try {
+        await cli(["jobs", "enqueue", "alpha", "hang"]);
+        assert.ok(await until(async () => (await db.query("select status from core.jobs where id = 1")).rows[0].status === "running"), output());
+        const started = Date.now();
+        child.kill("SIGTERM");
+        assert.equal(await exited(child), 0, output());
+        assert.ok(Date.now() - started < 8000, `took ${Date.now() - started} ms, and the job's own 60 s timeout is still pending`);
+        assert.equal((await db.query("select status from core.jobs where id = 1")).rows[0].status, "running");
+        assert.match(output(), /abandoned/);
+      } finally {
+        child.kill("SIGKILL");
+      }
+    });
+  });
+
   it("refuses to start before the jobs table exists, and rejects bad options", async (t) => {
     const scratch = await createScratchDatabase();
     if (!scratch.url) return t.skip(scratch.skipReason);
@@ -242,6 +261,8 @@ describe("cli: worker", () => {
         [["worker", "--concurrency", "0"], /--concurrency takes a whole number from 1 to 32/],
         [["worker", "--concurrency", "x"], /--concurrency/],
         [["worker", "--poll-ms", "10"], /--poll-ms takes a whole number from 100 to 60000/],
+        [["worker", "--grace-seconds", "0"], /--grace-seconds takes a whole number from 1 to 300/],
+        [["worker", "--grace-seconds", "301"], /--grace-seconds takes a whole number from 1 to 300/],
         [["worker", "extra"], /takes no arguments/],
         [["worker", "--json"], /does not apply/],
       ] as Array<[string[], RegExp]>) {

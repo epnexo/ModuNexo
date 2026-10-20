@@ -4,11 +4,13 @@ import type pg from "pg";
 import { type JobContext, type JobHandler, JOBS_ENQUEUER, type JobsEnqueuer, enqueueJob } from "@modunexo/sdk";
 import { JobService, Worker, type WorkerDeps, registerModuleRuntime } from "../src/jobs/index.ts";
 import { migrate } from "../src/runner.ts";
-import { openTestPool } from "../src/testing.ts";
+import { createPool } from "../src/pool.ts";
+import { createScratchDatabase } from "../src/testing.ts";
 import { Sandbox } from "./sandbox.ts";
 
 let pool: pg.Pool | undefined;
 let skipReason: string | undefined;
+let dropScratch: (() => Promise<void>) | undefined;
 let box: Sandbox;
 let moduleId: string;
 let offId: string;
@@ -20,8 +22,15 @@ const advance = (seconds: number) => {
 };
 
 before(async () => {
-  ({ pool, skipReason } = await openTestPool());
-  if (!pool) return;
+  // A database of its own: recovering expired leases looks at the whole table, and the tests set the clock by hand,
+  // so another file sharing this table would see its running jobs given back.
+  const scratch = await createScratchDatabase();
+  if (!scratch.url) {
+    skipReason = scratch.skipReason;
+    return;
+  }
+  dropScratch = scratch.drop;
+  pool = createPool(scratch.url);
   box = new Sandbox(pool);
   const mod = box.add();
   mod.manifest.jobs = [
@@ -40,10 +49,10 @@ before(async () => {
 const ids = () => [moduleId, offId];
 after(async () => {
   if (pool) {
-    await pool.query("delete from core.jobs where module_id = any($1)", [ids()]);
     await box.cleanup();
     await pool.end();
   }
+  await dropScratch?.();
 });
 
 const test = (name: string, run: () => Promise<void>) =>
@@ -406,6 +415,62 @@ describe("Worker.run", () => {
     await done;
     assert.equal(order.length, 3);
     assert.ok(Date.now() - started < 2000, "a finished job wakes the loop; the 5 s poll was not needed");
+  });
+});
+
+describe("Worker.run: stopping", () => {
+  /** A service whose first recovery pass takes a while, so a stop request can land in the middle of a tick. */
+  const slowFirstTick = (delayMs: number) => {
+    let first = true;
+    return new Proxy(service, {
+      get(target, prop, receiver) {
+        if (prop === "recoverExpired") {
+          return async () => {
+            if (first) {
+              first = false;
+              await new Promise((resolve) => setTimeout(resolve, delayMs));
+            }
+            return target.recoverExpired();
+          };
+        }
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+  };
+
+  test("a stop that arrives during a tick ends the run at once, not after the poll interval", async () => {
+    const { worker } = makeWorker({ sync: async () => {} }, { service: slowFirstTick(150), pollMs: 5000 });
+    const controller = new AbortController();
+    const started = Date.now();
+    const done = worker.run(controller.signal);
+    setTimeout(() => controller.abort(), 30);
+    await done;
+    assert.ok(Date.now() - started < 1500, `took ${Date.now() - started} ms`);
+  });
+
+  test("a stop that arrives during a tick does not start new jobs", async () => {
+    const { worker } = makeWorker({ sync: async () => {} }, { service: slowFirstTick(150), pollMs: 5000 });
+    const { id } = await enqueue("sync");
+    const controller = new AbortController();
+    const done = worker.run(controller.signal);
+    setTimeout(() => controller.abort(), 30);
+    await done;
+    assert.equal((await row(id)).status, "queued", "left for the next worker");
+  });
+
+  test("answers how many jobs it abandoned", async () => {
+    const { worker } = makeWorker({ sync: () => new Promise<void>(() => {}) }, { graceMs: 50 });
+    await enqueue("sync");
+    const controller = new AbortController();
+    const done = worker.run(controller.signal);
+    for (let i = 0; i < 100 && worker.running === 0; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+    controller.abort();
+    assert.equal(await done, 1);
+    const idle = makeWorker({ sync: async () => {} }).worker;
+    const quiet = new AbortController();
+    quiet.abort();
+    assert.equal(await idle.run(quiet.signal), 0);
   });
 });
 

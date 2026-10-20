@@ -3,11 +3,13 @@ import { after, before, describe, it } from "node:test";
 import type pg from "pg";
 import { JobError, JobService, SCHEDULE_KEY, retryDelayMs } from "../src/jobs/index.ts";
 import { migrate } from "../src/runner.ts";
-import { openTestPool } from "../src/testing.ts";
+import { createPool } from "../src/pool.ts";
+import { createScratchDatabase } from "../src/testing.ts";
 import { Sandbox } from "./sandbox.ts";
 
 let pool: pg.Pool | undefined;
 let skipReason: string | undefined;
+let dropScratch: (() => Promise<void>) | undefined;
 let box: Sandbox;
 let moduleId: string;
 let otherId: string;
@@ -21,8 +23,15 @@ const advance = (seconds: number) => {
 };
 
 before(async () => {
-  ({ pool, skipReason } = await openTestPool());
-  if (!pool) return;
+  // A database of its own: recovering expired leases looks at the whole table, and the tests set the clock by hand,
+  // so another file sharing this table would see its running jobs given back.
+  const scratch = await createScratchDatabase();
+  if (!scratch.url) {
+    skipReason = scratch.skipReason;
+    return;
+  }
+  dropScratch = scratch.drop;
+  pool = createPool(scratch.url);
   box = new Sandbox(pool);
   const mod = box.add();
   mod.manifest.jobs = [
@@ -53,10 +62,10 @@ const wipe = async () => {
 after(async () => {
   if (pool) {
     // Only this file's own modules: another file shares this database.
-    await pool.query("delete from core.jobs where module_id = any($1)", [ids()]);
     await box.cleanup();
     await pool.end();
   }
+  await dropScratch?.();
 });
 
 const test = (name: string, run: () => Promise<void>) =>
@@ -148,6 +157,11 @@ describe("JobService.enqueue", () => {
     const next = await enqueue({ n: 3 }, { dedupeKey: "invoice-9" });
     assert.equal(next.deduplicated, false);
     assert.notEqual(next.id, first.id);
+  });
+
+  test("refuses, as a JobError, a payload the database cannot store", async () => {
+    await assert.rejects(enqueue({ text: "a\u0000b" }), (e: unknown) => e instanceof JobError && /cannot be stored/.test(e.message));
+    assert.equal((await pool!.query("select 1 from core.jobs where module_id = any($1)", [ids()])).rowCount, 0);
   });
 
   test("two enqueues with one key at the same moment leave one job", async () => {
@@ -413,6 +427,18 @@ describe("JobService.list, cancel, retry and prune", () => {
     assert.deepEqual(retried.runAt, clock);
     assert.equal((await service.claim("w1", 1, [moduleId]))[0]!.id, id);
     await assert.rejects(service.retry(999_999_999), /there is no job/);
+  });
+
+  test("refuses, as a JobError, to retry a dead job while another job holds its dedupe key", async () => {
+    const first = await enqueue({ n: 1 }, { dedupeKey: "dup" }, "fast");
+    await pool!.query("update core.jobs set max_attempts = 1 where id = $1", [first.id]);
+    const [job] = await service.claim("w1", 1, [moduleId]);
+    await service.fail(job!, "w1", new Error("boom"));
+    assert.equal((await row(first.id)).status, "dead");
+    const second = await enqueue({ n: 2 }, { dedupeKey: "dup" }, "fast");
+    assert.equal(second.deduplicated, false, "a dead job no longer holds the key");
+    await assert.rejects(service.retry(first.id), (e: unknown) => e instanceof JobError && /dedupe key/.test(e.message) && new RegExp(`${second.id}`).test(e.message));
+    assert.equal((await row(first.id)).status, "dead", "and the dead job is left as it was");
   });
 
   test("prunes finished jobs older than 14 days and nothing else", async () => {

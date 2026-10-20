@@ -76,6 +76,7 @@ export interface WorkerCommand {
   modulesDir: string;
   concurrency: number | undefined;
   pollMs: number | undefined;
+  graceSeconds: number | undefined;
 }
 
 async function readRegistry(modulesDir: string): Promise<{ registry: Registry; manifests: ModuleManifest[] }> {
@@ -89,9 +90,10 @@ async function readRegistry(modulesDir: string): Promise<{ registry: Registry; m
 /**
  * `worker`: runs until `signal` aborts. It registers what module code reaches through the SDK, reads the manifests
  * from the modules folder (again whenever the enabled set changes), and loads each handler from its module's folder.
- * Code is loaded once, so after upgrading a module the worker is restarted.
+ * Code is loaded once, so after upgrading a module the worker is restarted. Returns how many jobs it left running
+ * when the grace period ended.
  */
-export async function runWorkerCommand(command: WorkerCommand, deps: { pool: pg.Pool; signal: AbortSignal }): Promise<void> {
+export async function runWorkerCommand(command: WorkerCommand, deps: { pool: pg.Pool; signal: AbortSignal }): Promise<number> {
   const { pool, signal } = deps;
   const present = await pool.query("select to_regclass('core.jobs') is not null as present");
   if (!present.rows[0].present) throw new Error('the jobs table does not exist yet: run "npm run db:migrate" first');
@@ -120,6 +122,7 @@ export async function runWorkerCommand(command: WorkerCommand, deps: { pool: pg.
     log,
     ...(command.concurrency === undefined ? {} : { concurrency: command.concurrency }),
     ...(command.pollMs === undefined ? {} : { pollMs: command.pollMs }),
+    ...(command.graceSeconds === undefined ? {} : { graceMs: command.graceSeconds * 1000 }),
   });
-  await worker.run(signal);
+  return worker.run(signal);
 }

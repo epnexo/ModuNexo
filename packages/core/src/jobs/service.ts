@@ -59,6 +59,9 @@ const DEDUPE_KEY = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,99}$/;
 const RETRY_BASE_MS = 10_000;
 const RETRY_CAP_MS = 3_600_000;
 const ENQUEUE_ATTEMPTS = 3;
+/** Postgres: a value jsonb cannot hold (a NUL in a string). */
+const UNTRANSLATABLE_CHARACTER = "22P05";
+const UNIQUE_VIOLATION = "23505";
 
 /** How long to wait after attempt `attempt` failed: 10 s, doubling, at most an hour. */
 export const retryDelayMs = (attempt: number): number => Math.min(RETRY_BASE_MS * 2 ** Math.max(0, attempt - 1), RETRY_CAP_MS);
@@ -145,13 +148,20 @@ export class JobService {
     }
 
     for (let attempt = 0; attempt < ENQUEUE_ATTEMPTS; attempt++) {
-      const inserted = await this.pool.query(
-        `insert into core.jobs (module_id, name, payload, run_at, max_attempts, timeout_seconds, dedupe_key, enqueued_by)
-         values ($1, $2, $3::jsonb, $4, $5, $6, $7, $8)
-         on conflict (module_id, name, dedupe_key) where dedupe_key is not null and status in ('queued', 'running') do nothing
-         returning id`,
-        [moduleId, name, json, runAt, job.maxAttempts ?? DEFAULT_MAX_ATTEMPTS, job.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS, key ?? null, enqueuedBy],
-      );
+      let inserted: pg.QueryResult;
+      try {
+        inserted = await this.pool.query(
+          `insert into core.jobs (module_id, name, payload, run_at, max_attempts, timeout_seconds, dedupe_key, enqueued_by)
+           values ($1, $2, $3::jsonb, $4, $5, $6, $7, $8)
+           on conflict (module_id, name, dedupe_key) where dedupe_key is not null and status in ('queued', 'running') do nothing
+           returning id`,
+          [moduleId, name, json, runAt, job.maxAttempts ?? DEFAULT_MAX_ATTEMPTS, job.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS, key ?? null, enqueuedBy],
+        );
+      } catch (error) {
+        // JSON can carry a NUL character in a string; jsonb cannot store it.
+        if ((error as { code?: string }).code === UNTRANSLATABLE_CHARACTER) throw new JobError("the payload cannot be stored: a string in it holds the character \\u0000");
+        throw error;
+      }
       if (inserted.rowCount === 1) return { id: Number(inserted.rows[0].id), deduplicated: false };
       // The key is taken by an active job. If it finished since, the next pass inserts.
       const existing = await this.pool.query(
@@ -284,10 +294,24 @@ export class JobService {
 
   /** Puts a dead job back in the queue with its attempts reset. */
   async retry(id: number): Promise<JobRecord> {
-    const retried = await this.pool.query(
-      `update core.jobs set status = 'queued', attempts = 0, run_at = $2::timestamptz, finished_at = null where id = $1 and status = 'dead' returning ${ROW}`,
-      [id, this.now()],
-    );
+    let retried: pg.QueryResult;
+    try {
+      retried = await this.pool.query(
+        `update core.jobs set status = 'queued', attempts = 0, run_at = $2::timestamptz, finished_at = null where id = $1 and status = 'dead' returning ${ROW}`,
+        [id, this.now()],
+      );
+    } catch (error) {
+      if ((error as { code?: string }).code !== UNIQUE_VIOLATION) throw error;
+      // The dead job's dedupe key was taken since (the next scheduled run, or a job enqueued with the same key).
+      const holder = await this.pool.query(
+        `select active.id from core.jobs dead join core.jobs active
+           on active.module_id = dead.module_id and active.name = dead.name and active.dedupe_key = dead.dedupe_key and active.status in ('queued', 'running')
+         where dead.id = $1 limit 1`,
+        [id],
+      );
+      const other = holder.rowCount === 1 ? ` (job ${holder.rows[0].id})` : "";
+      throw new JobError(`job ${id} cannot be retried: another job${other} holds its dedupe key`);
+    }
     if (retried.rowCount === 1) return toRecord(retried.rows[0]);
     throw await this.refusal(id, "only a dead job can be retried");
   }
