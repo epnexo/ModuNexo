@@ -12,7 +12,7 @@ interface Review {
   name: string;
   packageName: string;
   platform: string;
-  pages: { path: string }[];
+  pages: { path: string; public?: boolean }[];
   nav: { label: string }[];
   permissions: { key: string }[];
   settings: { key: string }[];
@@ -344,6 +344,15 @@ export function AppsManager({ initial, installed, modules }: { initial: AppsStat
               <dd>{staged.review.platform}</dd>
               <dt className="text-muted">Pages</dt>
               <dd>{list(staged.review.pages.map((page) => page.path))}</dd>
+              {staged.review.pages.some((page) => page.public) ? (
+                <>
+                  <dt className="text-muted">Public routes</dt>
+                  <dd>
+                    {list(staged.review.pages.filter((page) => page.public).map((page) => page.path))}
+                    <span className="block text-xs text-muted">These answer without a sign-in and are guarded only by their signature.</span>
+                  </dd>
+                </>
+              ) : null}
               <dt className="text-muted">Navigation</dt>
               <dd>{list(staged.review.nav.map((item) => item.label))}</dd>
               <dt className="text-muted">Permissions</dt>
