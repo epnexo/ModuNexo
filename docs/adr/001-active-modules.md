@@ -44,6 +44,9 @@ none stays passive. Each capability is built as its own feature with its own tas
 Not adopted: per-integration credential tables (the core already has one encrypted settings store), flag-based
 optional features (the module lifecycle already covers install and enable), and the reference's monolith layout.
 
+Status of the table: capability 1 (public routes with signature, `/hooks/<module-id>/`) and capability 2 (service
+tokens with scopes, `/svc/<module-id>/`) are built; see `odd/tasks/public-routes.md` and `odd/tasks/service-tokens.md`.
+
 ## 4. Rules that do not change
 
 - The core never imports a module by name.
