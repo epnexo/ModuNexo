@@ -55,6 +55,42 @@ const problemsOf = (ctx = context()) => {
   return result.ok ? "" : result.problems.join("\n");
 };
 
+describe("validatePackageTree: public routes", () => {
+  it("shows a public route in the review, so the person who installs sees what opens", () => {
+    writeGood({
+      manifest: {
+        settings: [{ key: "webhook_secret", label: "Webhook secret", type: "secret" }],
+        pages: [
+          { path: "/reports", entry: "./web/page.tsx", kind: "page" },
+          {
+            path: "/hooks/reports/inbound",
+            entry: "./web/page.tsx",
+            kind: "route",
+            methods: ["POST"],
+            public: { signature: { secret: "webhook_secret", header: "x-signature" } },
+          },
+        ],
+      },
+    });
+    const result = validatePackageTree(root, context());
+    assert.equal(result.ok, true, result.ok ? "" : result.problems.join("\n"));
+    if (!result.ok) return;
+    assert.deepEqual(result.review.pages, [
+      { path: "/reports", kind: "page" },
+      { path: "/hooks/reports/inbound", kind: "route", public: true },
+    ]);
+  });
+
+  it("refuses a public route without a signature", () => {
+    writeGood({
+      manifest: {
+        pages: [{ path: "/hooks/reports/inbound", entry: "./web/page.tsx", kind: "route", methods: ["POST"], public: {} }],
+      },
+    });
+    assert.match(problemsOf(), /signature/);
+  });
+});
+
 describe("validatePackageTree: a good package", () => {
   it("is accepted and described", () => {
     writeGood({

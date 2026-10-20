@@ -52,6 +52,8 @@ export async function runAddCommand(
   row("package", review.packageName);
   row("platform", review.platform);
   row("pages", list(review.pages.map((page) => page.path)));
+  const open = review.pages.filter((page) => page.public === true);
+  if (open.length > 0) row("public", `${list(open.map((page) => page.path))} - answer without a sign-in, guarded only by their signature`);
   row("nav", list(review.nav.map((item) => item.label)));
   row("permissions", list(review.permissions.map((permission) => permission.key)));
   row("settings", list(review.settings.map((setting) => setting.key)));

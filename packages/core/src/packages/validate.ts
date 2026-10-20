@@ -23,7 +23,7 @@ export interface PackageReview {
   name: string;
   packageName: string;
   platform: string;
-  pages: { path: string; kind: string; permission?: string }[];
+  pages: { path: string; kind: string; permission?: string; public?: true }[];
   nav: { label: string; href: string; group?: string; permission?: string }[];
   permissions: { key: string; label: string }[];
   settings: { key: string; type: string; required: boolean; hasDefault: boolean }[];
@@ -206,7 +206,12 @@ export function validatePackageTree(root: string, context: PackageContext): Pack
       name: manifest.name,
       packageName,
       platform: manifest.platform,
-      pages: (manifest.pages ?? []).map((page) => ({ path: page.path, kind: page.kind, ...(page.permission === undefined ? {} : { permission: page.permission }) })),
+      pages: (manifest.pages ?? []).map((page) => ({
+        path: page.path,
+        kind: page.kind,
+        ...(page.permission === undefined ? {} : { permission: page.permission }),
+        ...(page.public === undefined ? {} : { public: true as const }),
+      })),
       nav: manifest.nav.map((entry) => ({
         label: entry.label,
         href: entry.href,

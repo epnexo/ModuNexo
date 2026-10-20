@@ -333,7 +333,7 @@ written: two modules declaring the same normalised path, dynamic segments of one
 names at the same position under the same parent (`/items/[id]` and `/items/[itemId]/notes`: Next.js rejects
 sibling dynamic folders with different names; the same name is fine), a dynamic segment whose brackets are not
 balanced (only `[x]`, `[...x]` and `[[...x]]` exist), a path at or below a reserved shell path (`RESERVED_PATHS`: `/`, `/apps`, `/settings`, `/login`,
-`/logout`, `/api`, `/_next`), and segments that cannot be a folder name. `--dry-run` prints the planned writes
+`/logout`, `/api`, `/_next`; `/hooks` is reserved for public routes), and segments that cannot be a folder name. `--dry-run` prints the planned writes
 and deletions and touches nothing.
 
 A run is not atomic, but a run that fails partway can always be repaired by running the generator again. Before
@@ -411,6 +411,7 @@ session, the path, and whether the request is local) and asks `decideAccess` in 
 | --- | --- | --- |
 | required | no session | pages redirect to `/login`, `/api/*` answers `401` |
 | required | session | served; `/login` redirects to `/` |
+| required | no session, path is a declared public route | served; the route checks its own signature (see "Public routes") |
 | disabled | local request | served; `/login` redirects to `/` |
 | disabled | any non-local address | `403 Forbidden`, whatever the path |
 | disabled | `Host` is not a local name | `403 Forbidden`, whatever the path |
@@ -471,6 +472,52 @@ What each type accepts: `string` any non-blank text up to 2,000 characters; `num
 without `..` segments; `secret` any non-empty text up to 4,096 characters. A required setting with neither a value
 nor a default shows as incomplete on the screen and in `settings list`; it does not stop the module from running,
 so the module decides what to do without it.
+
+### Public routes
+
+A module can accept calls from outside, such as a messaging provider's webhook, by marking a `kind: "route"` page
+`public`. A public route has no session, so the shell makes it safe by construction instead of leaving that to each
+module:
+
+```ts
+settings: [{ key: "webhook_secret", label: "Webhook secret", type: "secret", required: true }],
+pages: [
+  {
+    path: "/hooks/inbox/messages",           // always /hooks/<module-id>/...
+    entry: "./web/messages.ts",
+    kind: "route",
+    methods: ["POST"],                       // required; GET, HEAD and OPTIONS carry no body to sign
+    public: {
+      signature: { secret: "webhook_secret", header: "x-signature", encoding: "hex", prefix: "sha256=" },
+      ratePerMinute: 60,                     // optional, default 60 per client
+      maxBodyBytes: 1048576,                 // optional, default 1 MiB
+    },
+  },
+],
+```
+
+- **Where.** Public routes live under `/hooks/<module-id>/` and nowhere else; no other page may sit under `/hooks`
+  (`/api` stays reserved). A `public` route cannot also declare a `permission`.
+- **Signature.** The generated route file wraps every method with `publicRoute` (`src/server/public-route.ts`). It
+  computes HMAC-SHA256 over the raw body with the module's `secret` setting and compares it in constant time with the
+  header. The module handler runs only after that, and receives the same bytes. A missing or empty secret, a missing
+  or malformed header or a mismatch all answer the same `401 Unauthorized`; the log says why.
+- **Replay window.** With `timestampHeader` the signed text is `<timestamp>.<body>` (Unix seconds) and a request
+  further than `toleranceSeconds` (default 300) from the server clock is refused. Providers that send no timestamp
+  cannot be protected against replay by the shell; the module must deduplicate (see below).
+- **Limits.** `413` above `maxBodyBytes`, checked from `Content-Length` and while reading; `429` with `Retry-After`
+  above `ratePerMinute` per client address, counted before the signature is checked. The count lives in the process's
+  memory, so each instance keeps its own.
+- **Gate.** The gate treats a path as public only when every way the router could read it (encoded and double
+  encoded forms included) lands on a declared public route; anything else meets the ordinary gate. With sign-in
+  disabled the local-only rule still applies, so a webhook cannot reach a shell that is not open to the network:
+  public routes need `auth require`.
+- **Idempotency is the module's.** The shell does not deduplicate deliveries. A module should store the provider's
+  event id under a unique constraint and ignore repeats.
+- **Not covered yet.** Providers that verify with a handshake instead of a signature (a `GET` carrying a challenge)
+  cannot be declared public.
+- **Install review.** `modules add` and the Apps screen list public routes separately, because installing the module
+  opens them.
 
 ### Secrets
 
