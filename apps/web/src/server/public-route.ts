@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { log } from "@modunexo/core/log";
 import { type PublicRouteDeclaration, getSetting } from "@modunexo/sdk";
 import { CLIENT_IP_HEADER } from "./client-address.ts";
+import { createRateLimiter } from "./rate-limit.ts";
 
 /** What the generated route file passes in: the declaration plus where it came from. */
 export type PublicRouteRule = { moduleId: string; path: string } & PublicRouteDeclaration;
@@ -11,9 +12,6 @@ type Handler = (request: Request, context?: unknown) => Response | Promise<Respo
 const DEFAULT_RATE_PER_MINUTE = 60;
 const DEFAULT_MAX_BODY_BYTES = 1024 * 1024;
 const DEFAULT_TOLERANCE_SECONDS = 300;
-const WINDOW_MS = 60_000;
-/** Above this many tracked clients the expired windows are swept, so a flood of addresses cannot grow the map. */
-const SWEEP_ABOVE = 1000;
 const HEX_DIGEST = /^[0-9a-fA-F]{64}$/;
 const BASE64_DIGEST = /^[A-Za-z0-9+/]{43}=$/;
 const UNIX_SECONDS = /^\d{1,12}$/;
@@ -80,24 +78,13 @@ function sentDigest(header: string | null, rule: PublicRouteRule): Buffer | null
  * The rate limit lives in this process's memory, so with several instances each keeps its own count.
  */
 export function createPublicRoute(deps: PublicRouteDeps) {
-  const windows = new Map<string, { start: number; count: number }>();
+  const limiter = createRateLimiter(deps.now);
 
   /** Counts this request; returns the seconds to wait when the client is over its limit, else 0. */
   function limited(rule: PublicRouteRule, request: Request): number {
-    const now = deps.now();
-    if (windows.size > SWEEP_ABOVE) {
-      for (const [key, w] of windows) if (now - w.start >= WINDOW_MS) windows.delete(key);
-    }
     // A request with no client address (not stamped by the web server) shares one bucket: stricter, never looser.
     const key = `${rule.moduleId}\n${rule.path}\n${request.headers.get(CLIENT_IP_HEADER) ?? ""}`;
-    let w = windows.get(key);
-    if (w === undefined || now - w.start >= WINDOW_MS) {
-      w = { start: now, count: 0 };
-      windows.set(key, w);
-    }
-    w.count += 1;
-    if (w.count <= (rule.ratePerMinute ?? DEFAULT_RATE_PER_MINUTE)) return 0;
-    return Math.max(1, Math.ceil((w.start + WINDOW_MS - now) / 1000));
+    return limiter.hit(key, rule.ratePerMinute ?? DEFAULT_RATE_PER_MINUTE);
   }
 
   return function publicRoute(rule: PublicRouteRule, handler: Handler | undefined): (request: Request, context?: unknown) => Promise<Response> {
