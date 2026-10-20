@@ -56,6 +56,8 @@ describe("purgeModule: guards and atomicity", () => {
       "delete from core.module_settings where module_id = $1",
       "select to_regclass('core.platform_settings') is not null as present",
       "delete from core.platform_settings where starts_with(key, $1)",
+      "select to_regclass('core.service_tokens') is not null as present",
+      "delete from core.service_tokens where module_id = $1",
       "commit",
     ]);
     assert.ok(statements.some((s) => s.includes("pg_try_advisory_lock")));
@@ -71,6 +73,7 @@ describe("purgeModule: guards and atomicity", () => {
       "select to_regclass('core.schema_migrations') is not null as present",
       "select to_regclass('core.module_settings') is not null as present",
       "select to_regclass('core.platform_settings') is not null as present",
+      "select to_regclass('core.service_tokens') is not null as present",
       "commit",
     ]);
   });

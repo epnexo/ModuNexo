@@ -69,6 +69,12 @@ async function dropStatements(client: pg.PoolClient, target: PurgeTarget): Promi
   if (platform.rows[0].present) {
     await client.query("delete from core.platform_settings where starts_with(key, $1)", [`appearance.module.${target.id}.`]);
   }
+  // Its service tokens go too, so a module installed later under the same id inherits no access. The audit trail in
+  // core.service_token_events stays, and holds no token.
+  const tokens = await client.query("select to_regclass('core.service_tokens') is not null as present");
+  if (tokens.rows[0].present) {
+    await client.query("delete from core.service_tokens where module_id = $1", [target.id]);
+  }
 }
 
 const purgeFailure = (target: PurgeTarget, error: unknown): Error =>
