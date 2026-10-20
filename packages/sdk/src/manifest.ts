@@ -127,6 +127,22 @@ export interface JobDeclaration {
   maxAttempts?: number;
 }
 
+/** An event type the module publishes. */
+export interface EventDeclaration {
+  /** Stable identifier, lowercase with digits, underscores and dots; unique in the module. */
+  name: string;
+  /** A declared permission. A signed-in browser is sent the event only if it holds it; without one, the event never reaches a browser. */
+  permission?: string;
+}
+
+/** A job of the module that runs once for every event of a type. */
+export interface SubscriptionDeclaration {
+  /** The full event type, `<module id>.<event name>`; the module is this one or one in `dependsOn`. */
+  event: string;
+  /** The name of a job this module declares. It receives `{ event: { id, type, payload, createdAt } }` as its payload. */
+  job: string;
+}
+
 /** The contract every module declares in its `manifest.ts` (manifest v2). */
 export interface ModuleManifest {
   /** Unique kebab-case identifier. */
@@ -151,6 +167,10 @@ export interface ModuleManifest {
   scopes?: ScopeDeclaration[];
   /** Background jobs the platform's worker can run for this module. */
   jobs?: JobDeclaration[];
+  /** Event types the module publishes; the full type is `<id>.<name>`. */
+  events?: EventDeclaration[];
+  /** Jobs of this module that the platform runs for events of the module itself or of a module in `dependsOn`. */
+  subscriptions?: SubscriptionDeclaration[];
   /** Relative path (starting with "./") to a file exporting `onInstall`, `onEnable`, `onDisable`, `onUpgrade`, `onUninstall`. */
   hooks?: string;
 }
@@ -175,7 +195,7 @@ const SCHEMA_NAME = /^[a-z][a-z0-9_]{0,62}$/;
 // "core" belongs to the platform itself.
 const RESERVED_SCHEMAS = new Set(["public", "information_schema", "core"]);
 const KNOWN_FIELDS = new Set([
-  "id", "version", "name", "platform", "dependsOn", "schema", "migrationsDir", "nav", "pages", "settings", "permissions", "scopes", "jobs", "hooks",
+  "id", "version", "name", "platform", "dependsOn", "schema", "migrationsDir", "nav", "pages", "settings", "permissions", "scopes", "jobs", "events", "subscriptions", "hooks",
 ]);
 const KNOWN_NAV_FIELDS = new Set(["label", "href", "icon", "group", "order", "permission"]);
 const KNOWN_PAGE_FIELDS = new Set(["path", "entry", "kind", "dynamic", "methods", "permission", "public", "scope"]);
@@ -190,6 +210,8 @@ const KNOWN_SETTING_FIELDS = new Set(["key", "label", "type", "default", "requir
 const KNOWN_PERMISSION_FIELDS = new Set(["key", "label"]);
 const KNOWN_SCOPE_FIELDS = new Set(["key", "label"]);
 const KNOWN_JOB_FIELDS = new Set(["name", "entry", "every", "timeoutSeconds", "maxAttempts"]);
+const KNOWN_EVENT_FIELDS = new Set(["name", "permission"]);
+const KNOWN_SUBSCRIPTION_FIELDS = new Set(["event", "job"]);
 const PAGE_KINDS = ["page", "route"];
 const PAGE_DYNAMIC_MODES = ["auto", "force-dynamic", "force-static", "error"];
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
@@ -526,6 +548,51 @@ function checkJobs(jobs: unknown, problems: string[]): void {
   });
 }
 
+function checkEvents(events: unknown, permissionKeys: Set<string>, problems: string[]): void {
+  const seen = new Set<string>();
+  eachItem(events, "events", problems, (event, where) => {
+    checkUnknownFields(event, KNOWN_EVENT_FIELDS, where, problems);
+    if (typeof event.name !== "string" || !KEY.test(event.name)) {
+      problems.push(`${where}.name must be a stable identifier (lowercase a-z, 0-9, _ and dot-separated segments)`);
+    } else if (seen.has(event.name)) {
+      problems.push(`${where}.name "${event.name}" is duplicated`);
+    } else {
+      seen.add(event.name);
+    }
+    if (event.permission !== undefined && (typeof event.permission !== "string" || !permissionKeys.has(event.permission))) {
+      problems.push(`${where}.permission must be one of the module's declared permissions`);
+    }
+  });
+}
+
+interface SubscriptionContext {
+  moduleId: string | undefined;
+  dependsOn: string[];
+  jobNames: Set<string>;
+}
+
+function checkSubscriptions(subscriptions: unknown, ctx: SubscriptionContext, problems: string[]): void {
+  const seen = new Set<string>();
+  eachItem(subscriptions, "subscriptions", problems, (subscription, where) => {
+    checkUnknownFields(subscription, KNOWN_SUBSCRIPTION_FIELDS, where, problems);
+    const event = subscription.event;
+    const dot = typeof event === "string" ? event.indexOf(".") : -1;
+    if (typeof event !== "string" || dot < 1 || !KEBAB_CASE.test(event.slice(0, dot)) || !KEY.test(event.slice(dot + 1))) {
+      problems.push(`${where}.event must be a full event type: a module id, a dot and the event's name`);
+    } else if (event.slice(0, dot) !== ctx.moduleId && !ctx.dependsOn.includes(event.slice(0, dot))) {
+      problems.push(`${where}.event "${event}" belongs to a module that is neither this one nor in dependsOn`);
+    }
+    if (typeof subscription.job !== "string" || !ctx.jobNames.has(subscription.job)) {
+      problems.push(`${where}.job must be the name of a job this module declares`);
+    }
+    if (typeof event === "string" && typeof subscription.job === "string") {
+      const pair = `${event}\u0000${subscription.job}`;
+      if (seen.has(pair)) problems.push(`${where} "${event}" -> "${subscription.job}" is duplicated`);
+      seen.add(pair);
+    }
+  });
+}
+
 export interface ValidateOptions {
   /**
    * Admit the schema name "core", which is reserved for the platform, and only for a manifest whose id is
@@ -581,6 +648,16 @@ export function validateManifest(input: unknown, options: ValidateOptions = {}):
   }
   if (raw.settings !== undefined) checkSettings(raw.settings, problems);
   if (raw.jobs !== undefined) checkJobs(raw.jobs, problems);
+  if (raw.events !== undefined) checkEvents(raw.events, permissionKeys, problems);
+  if (raw.subscriptions !== undefined) {
+    const jobNames = new Set(Array.isArray(raw.jobs) ? raw.jobs.flatMap((job) => (isPlainObject(job) && typeof job.name === "string" ? [job.name] : [])) : []);
+    const ctx: SubscriptionContext = {
+      moduleId: typeof raw.id === "string" ? raw.id : undefined,
+      dependsOn: isPlainObject(raw.dependsOn) ? Object.keys(raw.dependsOn) : [],
+      jobNames,
+    };
+    checkSubscriptions(raw.subscriptions, ctx, problems);
+  }
   if (raw.hooks !== undefined && !isRelativeEntry(raw.hooks)) problems.push('hooks must be a relative path starting with "./"');
 
   if (problems.length > 0) {
