@@ -566,6 +566,66 @@ curl -H "Authorization: Bearer mdnx_..." https://host/svc/inbox/messages
   The install review lists the module's scopes and its token routes.
 - **Not here yet.** A screen to manage tokens (the CLI is the only way), rotation, and per-token rate limits.
 
+### Background jobs
+
+A module can run work outside a request: a sync, a cleanup, a retry. It declares the job, writes the handler and
+enqueues runs (or lets the platform repeat it); a separate **worker process** runs them.
+
+```ts
+jobs: [
+  { name: "sync", entry: "./jobs/sync.ts", timeoutSeconds: 120, maxAttempts: 5 },
+  { name: "cleanup", entry: "./jobs/cleanup.ts", every: "1h" },        // repeats: 1h after each run finished
+],
+```
+
+```ts
+// jobs/sync.ts: the default export is the handler
+import { getDb, getSetting, type JobContext } from "@modunexo/sdk";
+export default async function (ctx: JobContext) {
+  const { payload, attempt, signal } = ctx;                              // signal aborts at timeoutSeconds
+  await getDb(ctx.moduleId).query("insert into synced (n) values ($1)", [1]);
+}
+
+// from a page or route handler, or from another job
+import { enqueueJob } from "@modunexo/sdk";
+await enqueueJob("inbox", "sync", { page: 2 }, { delaySeconds: 30, dedupeKey: "sync-2" });
+```
+
+```bash
+npm run modunexo -- worker [--concurrency 4] [--poll-ms 1000]        # runs until SIGINT/SIGTERM
+npm run modunexo -- jobs list [inbox] [--status dead] [--json]       # the payload only with --json
+npm run modunexo -- jobs enqueue inbox sync --payload '{"page":2}' [--delay-seconds 30] [--dedupe-key k]
+npm run modunexo -- jobs cancel <id>                                  # queued only
+npm run modunexo -- jobs retry <id>                                   # dead only, from the first attempt
+```
+
+- **The queue is Postgres** (`core.jobs`, migration 0011). A worker claims due jobs with `for update skip locked`, so
+  several workers can run side by side and no job runs twice at once. Only jobs of **enabled** modules are claimed;
+  a disabled module's jobs wait.
+- **Handlers.** The worker loads the handler from the module's folder, in its own process, and registers what a request
+  has: `getDb`, `getSetting` and `enqueueJob`. The code is loaded once, so **restart the worker after installing or
+  upgrading a module**. The master key is needed only if a handler reads a `secret` setting.
+- **Time limits.** `timeoutSeconds` (default 60, at most 3600): the handler's `signal` aborts and the attempt is marked
+  failed. A handler that ignores the signal keeps running in the background of the worker, so watch it.
+- **Retries.** A failure queues the job again after 10 s, doubling each attempt up to an hour, until `maxAttempts`
+  (default 5); then it is `dead` (see `jobs list --status dead`, `jobs retry`). The error message is kept, cut at
+  1000 characters.
+- **Dead workers.** A running job holds a lease of `timeoutSeconds` + 30 s. If the worker dies, the lease expires, the
+  next tick gives the job back (that attempt counts) and nobody can overwrite the result of the job another worker now
+  holds. At-least-once: write handlers so that running twice is harmless, or use `dedupeKey` and your own checks.
+- **Schedules.** `every` (`"30s"`, `"5m"`, `"2h"`, `"1d"`; 10 seconds to 30 days) keeps exactly one active run: the next is
+  queued `every` after the previous finished, also after a dead one, and after a pause it runs once, not once per
+  missed interval. Intervals only, no cron expressions.
+- **Enqueue.** The module must be enabled and have declared the job; the payload must be JSON of at most 64 KiB. With a
+  `dedupeKey`, a second enqueue while a job with that key is queued or running returns the existing one
+  (`deduplicated: true`).
+- **Stop.** The first SIGINT or SIGTERM stops claiming and waits up to 30 s for running jobs; what is left keeps its lease
+  and is recovered by another worker. A second signal exits at once. Exit code 0 after a clean stop.
+- **History.** Finished jobs stay 14 days and are pruned by the worker. `uninstall --purge` deletes the module's jobs.
+- **Docker.** The `worker` service in `docker-compose.yml` (profile `app`) runs the same image with `modunexo worker`.
+- **Not here yet.** Cron expressions, a per-job concurrency limit, a screen to see jobs, a worker health endpoint, and
+  hot reload of handler code.
+
 ### Secrets
 
 A `secret` is stored encrypted with AES-256-GCM under a key derived from `MODUNEXO_MASTER_KEY`, bound to its module
@@ -845,7 +905,8 @@ docker compose exec web npm run modunexo -- admin create --email you@example.com
 
 The `web` service is behind the `app` profile, so the development flow (`docker compose up -d db`) is unchanged. The
 image runs as a non-root user, applies the migrations on every start, and has a health check on `/api/health`.
-Installed modules and received packages live in the `modunexo-modules` and `modunexo-data` volumes (back them up with
+A `worker` service (same profile, same image) runs the background jobs; restart it after installing or upgrading a
+module (`docker compose restart worker`). Installed modules and received packages live in the `modunexo-modules` and `modunexo-data` volumes (back them up with
 `scripts/backup.sh --modules-dir ... --data-dir ...`, or copy the volumes). Set `WEB_PUBLIC_URL` to the public https
 origin when the app sits behind a TLS proxy. The image keeps the dev dependencies on purpose: installing a module
 rebuilds the web app inside the container.

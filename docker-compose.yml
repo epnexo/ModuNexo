@@ -28,6 +28,7 @@ services:
       context: .
       args:
         WEB_PUBLIC_URL: ${WEB_PUBLIC_URL:-}
+    image: modunexo-app
     container_name: modunexo-web
     restart: unless-stopped
     depends_on:
@@ -43,6 +44,30 @@ services:
       WEB_PUBLIC_URL: ${WEB_PUBLIC_URL:-}
     ports:
       - "127.0.0.1:3000:3000"
+    volumes:
+      - epnexo-modules:/app/modules
+      - epnexo-data:/app/var
+
+  # The background-job worker: the same image and volumes as the web app, a different command. It sees the modules the
+  # web app installed, so restart it after installing or upgrading a module (`docker compose restart worker`): it
+  # loads each job's code once.
+  worker:
+    profiles: ["app"]
+    image: modunexo-app
+    container_name: modunexo-worker
+    restart: unless-stopped
+    command: ["npm", "run", "modunexo", "--", "worker"]
+    # The web service applies the migrations on start, so wait for it. The image's health check probes the web port,
+    # which a worker does not open.
+    depends_on:
+      web:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    environment:
+      DATABASE_URL: postgres://epnexo:epnexo@db:5432/epnexo
+      MODUNEXO_MASTER_KEY: ${MODUNEXO_MASTER_KEY:-}
+      EPNEXO_MASTER_KEY: ${EPNEXO_MASTER_KEY:-}
     volumes:
       - epnexo-modules:/app/modules
       - epnexo-data:/app/var

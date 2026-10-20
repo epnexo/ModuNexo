@@ -44,8 +44,10 @@ none stays passive. Each capability is built as its own feature with its own tas
 Not adopted: per-integration credential tables (the core already has one encrypted settings store), flag-based
 optional features (the module lifecycle already covers install and enable), and the reference's monolith layout.
 
-Status of the table: capability 1 (public routes with signature, `/hooks/<module-id>/`) and capability 2 (service
-tokens with scopes, `/svc/<module-id>/`) are built; see `odd/tasks/public-routes.md` and `odd/tasks/service-tokens.md`.
+Status of the table: capability 1 (public routes with signature, `/hooks/<module-id>/`), capability 2 (service
+tokens with scopes, `/svc/<module-id>/`) and capability 3 (background jobs run by a separate worker process, a Postgres
+queue) are built; see `odd/tasks/public-routes.md`, `odd/tasks/service-tokens.md` and `odd/tasks/background-jobs.md`.
+Open question 2 of section 7 is answered for jobs: they persist in Postgres.
 
 ## 4. Rules that do not change
 
