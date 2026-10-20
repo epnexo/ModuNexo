@@ -56,7 +56,9 @@ services:
     image: modunexo-app
     container_name: modunexo-worker
     restart: unless-stopped
-    command: ["npm", "run", "modunexo", "--", "worker"]
+    # Not through npm: the worker must receive the stop signal itself. It waits up to 30 s for running jobs.
+    command: ["node", "--import", "tsx", "packages/core/src/cli/index.ts", "worker"]
+    stop_grace_period: 40s
     # The web service applies the migrations on start, so wait for it. The image's health check probes the web port,
     # which a worker does not open.
     depends_on:

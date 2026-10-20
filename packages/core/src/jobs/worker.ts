@@ -53,6 +53,7 @@ export class Worker {
   private lastSchedule = Number.NEGATIVE_INFINITY;
   private lastPrune = Number.NEGATIVE_INFINITY;
   private wake: (() => void) | undefined;
+  private stopping = false;
 
   constructor(private readonly deps: WorkerDeps) {
     this.o = {
@@ -89,6 +90,8 @@ export class Worker {
       if (pruned > 0) this.deps.log.info("worker.jobs_pruned", { count: pruned });
     }
 
+    // A stop was asked for while this tick was working: leave what is due for the next worker.
+    if (this.stopping) return [];
     const free = this.o.concurrency - this.inFlight.size;
     const withJobs = [...enabled.keys()].filter((id) => (this.manifests.get(id)?.jobs ?? []).length > 0);
     const claimed = await service.claim(this.deps.workerId, free, withJobs);
@@ -109,25 +112,41 @@ export class Worker {
     return claimed;
   }
 
-  /** Ticks until `signal` aborts, then waits up to the grace period for running jobs. Never throws for a failed tick. */
-  async run(signal: AbortSignal): Promise<void> {
+  /**
+   * Ticks until `signal` aborts, then waits up to the grace period for running jobs. Never throws for a failed tick.
+   * Returns how many jobs were still running when it gave up; they keep their lease and are recovered later.
+   */
+  async run(signal: AbortSignal): Promise<number> {
     this.deps.log.info("worker.started", { worker: this.deps.workerId, concurrency: this.o.concurrency });
-    while (!signal.aborted) {
-      let more = false;
-      try {
-        const claimed = await this.tick();
-        // A full batch means there may be more waiting: go again as soon as a slot is free.
-        more = claimed.length > 0 && this.inFlight.size < this.o.concurrency;
-      } catch (error) {
-        this.deps.log.error("worker.tick_failed", { error });
+    this.stopping = signal.aborted;
+    const stop = () => {
+      this.stopping = true;
+      this.wake?.();
+    };
+    signal.addEventListener("abort", stop, { once: true });
+    try {
+      while (!signal.aborted) {
+        let more = false;
+        try {
+          const claimed = await this.tick();
+          // A full batch means there may be more waiting: go again as soon as a slot is free.
+          more = claimed.length > 0 && this.inFlight.size < this.o.concurrency;
+        } catch (error) {
+          this.deps.log.error("worker.tick_failed", { error });
+        }
+        if (!more && !signal.aborted) await this.sleep(signal);
       }
-      if (!more) await this.sleep(signal);
+    } finally {
+      signal.removeEventListener("abort", stop);
     }
     const left = await this.drain();
     this.deps.log.info("worker.stopped", { worker: this.deps.workerId, abandoned: left });
+    return left;
   }
 
   private sleep(signal: AbortSignal): Promise<void> {
+    // An abort listener added to a signal that already aborted never fires: do not wait at all.
+    if (signal.aborted) return Promise.resolve();
     return new Promise((resolve) => {
       const done = () => {
         clearTimeout(timer);

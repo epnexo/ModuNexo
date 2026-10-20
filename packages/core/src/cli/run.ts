@@ -82,7 +82,7 @@ commands:
                                    issue a service token for a module's scoped routes; it is printed once
   tokens list [<module>] [--json]  tokens with their state; never the token itself
   tokens revoke <id>               stop a token from working at once
-  worker [--concurrency <n>] [--poll-ms <n>]
+  worker [--concurrency <n>] [--poll-ms <n>] [--grace-seconds <n>]
                                    run the background jobs of the enabled modules until stopped (SIGINT or SIGTERM);
                                    start it next to the web app, with the same DATABASE_URL and modules folder
   jobs list [<module>] [--status queued|running|succeeded|dead|cancelled] [--json]
@@ -119,6 +119,7 @@ const OPTIONS = {
   scope: { type: "string", multiple: true },
   concurrency: { type: "string" },
   "poll-ms": { type: "string" },
+  "grace-seconds": { type: "string" },
   status: { type: "string" },
   payload: { type: "string" },
   "delay-seconds": { type: "string" },
@@ -156,7 +157,7 @@ const COMMAND_OPTIONS: Record<string, readonly string[]> = {
   "tokens create": ["name", "scope", "expires-in-days"],
   "tokens list": ["json"],
   "tokens revoke": [],
-  worker: ["concurrency", "poll-ms"],
+  worker: ["concurrency", "poll-ms", "grace-seconds"],
   "jobs list": ["status", "json"],
   "jobs enqueue": ["payload", "delay-seconds", "dedupe-key"],
   "jobs cancel": [],
@@ -208,6 +209,7 @@ function wholeNumberIn(value: unknown, least: number, most: number): number | nu
 function checkWorkerOptions(values: Parsed["values"]): void {
   if (values.concurrency !== undefined && wholeNumberIn(values.concurrency, 1, 32) === null) throw new UsageError("--concurrency takes a whole number from 1 to 32");
   if (values["poll-ms"] !== undefined && wholeNumberIn(values["poll-ms"], 100, 60_000) === null) throw new UsageError("--poll-ms takes a whole number from 100 to 60000");
+  if (values["grace-seconds"] !== undefined && wholeNumberIn(values["grace-seconds"], 1, 300) === null) throw new UsageError("--grace-seconds takes a whole number from 1 to 300");
 }
 
 function checkJobsArguments(command: string, ids: string[], values: Parsed["values"]): void {
@@ -623,14 +625,18 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
         process.on("SIGINT", stop);
         process.on("SIGTERM", stop);
         try {
-          await runWorkerCommand(
+          const abandoned = await runWorkerCommand(
             {
               modulesDir,
               concurrency: typeof parsed.values.concurrency === "string" ? Number(parsed.values.concurrency) : undefined,
               pollMs: typeof parsed.values["poll-ms"] === "string" ? Number(parsed.values["poll-ms"]) : undefined,
+              graceSeconds: typeof parsed.values["grace-seconds"] === "string" ? Number(parsed.values["grace-seconds"]) : undefined,
             },
             { pool, signal: controller.signal },
           );
+          // A job that outlived the grace period keeps this process alive through its own timers, up to its timeout.
+          // Its lease is left to expire and another worker recovers it, so leave now rather than hang until then.
+          if (abandoned > 0) process.exit(EXIT_OK);
         } finally {
           process.off("SIGINT", stop);
           process.off("SIGTERM", stop);
