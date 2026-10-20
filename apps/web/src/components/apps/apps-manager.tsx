@@ -15,6 +15,7 @@ interface Review {
   pages: { path: string; public?: boolean; scope?: string }[];
   nav: { label: string }[];
   permissions: { key: string }[];
+  jobs: { name: string; every?: string }[];
   settings: { key: string }[];
   migrations: string[];
   runsHooks: boolean;
@@ -364,6 +365,15 @@ export function AppsManager({ initial, installed, modules }: { initial: AppsStat
               ) : null}
               <dt className="text-muted">Navigation</dt>
               <dd>{list(staged.review.nav.map((item) => item.label))}</dd>
+              {staged.review.jobs.length > 0 ? (
+                <>
+                  <dt className="text-muted">Background jobs</dt>
+                  <dd>
+                    {list(staged.review.jobs.map((job) => (job.every === undefined ? job.name : `${job.name} (every ${job.every})`)))}
+                    <span className="block text-xs text-muted">These run in the worker process, with the platform&apos;s database access.</span>
+                  </dd>
+                </>
+              ) : null}
               <dt className="text-muted">Permissions</dt>
               <dd>{list(staged.review.permissions.map((permission) => permission.key))}</dd>
               <dt className="text-muted">Settings</dt>
