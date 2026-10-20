@@ -77,8 +77,8 @@ export class TokenService {
     const manifest = this.registry.get(input.moduleId);
     if (manifest === undefined) throw new TokenError(`module "${input.moduleId}" is not registered`);
     const name = input.name.trim();
-    if (name === "" || name.length > MAX_NAME || /\p{Cc}/u.test(name)) {
-      throw new TokenError(`the token name must be 1 to ${MAX_NAME} characters with no control characters`);
+    if (name === "" || name.length > MAX_NAME || /[\p{Cc}\p{Cf}\u2028\u2029]/u.test(name)) {
+      throw new TokenError(`the token name must be 1 to ${MAX_NAME} characters with no control or invisible formatting characters`);
     }
     const declared = new Set((manifest.scopes ?? []).map((scope) => scope.key));
     const scopes = [...new Set(input.scopes)].sort();
