@@ -44,9 +44,9 @@ Branch: feat/events-realtime (from main). Delivery strategy: ask-on-risk; the ow
 
 ## Tasks
 
-- [ ] T1 (S1, S3 SDK side) manifest `events`/`subscriptions`, `publishEvent`, event-type helpers. Route: inline. Commit: pending
-- [ ] T2 (S2, S3, S4, S5, S9 purge/prune) migration 0012, `EventService`, `JobService.enqueue` on a given executor, purge, sandbox cleanup. Route: inline. Commit: pending
-- [ ] T3 (S3, S8, S9) register the publisher in web and worker, worker prune, CLI `events`. Route: inline. Commit: pending
+- [x] T1 (S1, S3 SDK side) manifest `events`/`subscriptions`, `publishEvent`, event-type helpers. Route: inline. Commit: 24c724a (RED observed)
+- [x] T2 (S2, S3, S4, S5, S9 purge/prune) migration 0012, `EventService`, `JobService.enqueue` on a given executor, purge. Route: inline. Commit: 93bbb35, 3d53c13 (no RED before the code; the ordering test was shown to fail with the lock removed)
+- [x] T3 (S3, S8, S9) register the publisher in web and worker, worker prune, CLI `events`. Route: inline. Commit: bd0ba47 (RED observed for the worker tests; the CLI tests were written first but not run before the code)
 - [ ] T4 (S6, S7) event hub (LISTEN, catch-up, poll), `/api/events`, gate, end-to-end. Route: inline. Commit: pending
 - [ ] T5 (S9 review, S10) install review, README, skill, ADR note. Route: inline. Commit: pending
 - [ ] T6 full suite, independent verifier. Route: inline. Commit: pending
@@ -62,3 +62,9 @@ Branch: feat/events-realtime (from main). Delivery strategy: ask-on-risk; the ow
   poll), events are announced inside the publisher's transaction so they appear only on commit, module-to-module delivery
   reuses the job queue (durable, retried), a browser sees an event only if the manifest ties it to a permission it holds
   (fail closed), subscribing requires `dependsOn` like the read-only SQL channel.
+- L4: While running the job tests for T2 two worker tests failed on the unchanged baseline too: they inserted rows with the
+  database clock while the test clock was fixed at 2026-10-20T12:00:00Z, so they passed only before that moment on the day they
+  were written. The inserts now carry the fake clock (a time bomb of capability 3, fixed in 93bbb35). A third test raced the
+  write of the last outcome under load and now waits for the worker to be idle (3d53c13).
+- L5: A subscriber the platform refuses (a `JobError`, for instance a job the module no longer declares) is skipped so it cannot
+  abort the publisher's transaction; `JobError` is raised before any statement, so the transaction stays usable.
