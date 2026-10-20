@@ -357,6 +357,10 @@ export default defineModule({
   schema: "e2e_fixture",
   migrationsDir: "migrations",
   permissions: [{ key: "reports.read", label: "Read reports" }],
+  scopes: [
+    { key: "messages.read", label: "Read messages" },
+    { key: "messages.send", label: "Send messages" },
+  ],
   nav: [
     { label: "Fixture", href: "/e2e-fixture", group: "Fixtures", order: 1, icon: "chart" },
     { label: "Restricted", href: "/e2e-fixture/area", group: "Fixtures", order: 2, permission: "reports.read" },
@@ -374,6 +378,8 @@ export default defineModule({
       methods: ["POST"],
       public: { signature: { secret: "hook.secret", header: "x-signature" } },
     },
+    { path: "/svc/e2e-fixture/items", entry: "./web/items.ts", kind: "route", scope: "messages.read" },
+    { path: "/svc/e2e-fixture/send", entry: "./web/send.ts", kind: "route", methods: ["POST"], scope: "messages.send" },
   ],
   settings: [
     { key: "site.title", label: "Site title", type: "string", default: "Untitled" },
@@ -413,6 +419,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 `,
   );
   writeFileSync(join(FIXTURE_DIR, "web", "data.ts"), `export async function GET() {\n  return Response.json({ secret: "restricted-data" });\n}\n`);
+  writeFileSync(join(FIXTURE_DIR, "web", "items.ts"), `export async function GET() {\n  return Response.json({ items: [1, 2, 3] });\n}\n`);
+  writeFileSync(join(FIXTURE_DIR, "web", "send.ts"), `export async function POST(request: Request) {\n  return Response.json({ sent: await request.json() });\n}\n`);
   writeFileSync(join(FIXTURE_DIR, "web", "hook.ts"), `export async function POST(request: Request) {\n  return Response.json({ received: await request.json() });\n}\n`);
   writeFileSync(join(FIXTURE_DIR, "web", "open-data.ts"), `export async function GET() {\n  return Response.json({ open: true });\n}\n`);
   // What `npm install` does for a workspace package: a link from node_modules to the package folder.
@@ -790,12 +798,50 @@ describe("web app: with a module installed", () => {
     assert.equal((await call("POST", "/hooks/e2e-fixture/events", { "x-signature": signature }, { event: "ping" })).status, 401);
   });
 
+  test("a token route answers without a session, and only to a token that holds its scope", async () => {
+    const cli = (...args: string[]) => run(["--import", "tsx", CLI, "tokens", ...args], appEnv);
+    const made = await cli("create", FIXTURE_ID, "--name", "e2e reader", "--scope", "messages.read");
+    assert.equal(made.code, 0, made.output);
+    const token = /mdnx_[0-9a-f]{8}_[A-Za-z0-9_-]{43}/.exec(made.output)?.[0];
+    assert.ok(token !== undefined, made.output);
+    const bearer = { authorization: `Bearer ${token}` };
+
+    const none = await call("GET", "/svc/e2e-fixture/items");
+    assert.equal(none.status, 401);
+    assert.equal(none.headers["www-authenticate"], "Bearer");
+    assert.equal((await call("GET", "/svc/e2e-fixture/items", { authorization: `Bearer mdnx_${"0".repeat(8)}_${"A".repeat(43)}` })).status, 401);
+
+    const ok = await call("GET", "/svc/e2e-fixture/items", bearer);
+    assert.equal(ok.status, 200, ok.body);
+    assert.deepEqual(JSON.parse(ok.body), { items: [1, 2, 3] });
+
+    const wrongScope = await call("POST", "/svc/e2e-fixture/send", bearer, { text: "hi" });
+    assert.equal(wrongScope.status, 403, "a valid token without the route's scope is told so");
+    assert.equal((await call("GET", "/svc/e2e-fixture/items", { cookie })).status, 401, "a session is not a token: the route is for machines");
+
+    for (const other of ["/svc/e2e-fixture", "/svc/e2e-fixture/other", "/svc/e2e-fixture/items/extra", "/svc/e2e-fixture/items%2F..%2F..%2Fsettings"]) {
+      const reply = await call("GET", other, bearer);
+      assert.equal(reply.status, 307, `${other} stays behind the gate`);
+      assert.equal(reply.headers.location, "/login");
+    }
+
+    const listed = await cli("list", FIXTURE_ID);
+    assert.match(listed.output, /e2e reader\s+[0-9a-f]{8}\s+messages\.read\s+active/);
+    assert.ok(!listed.output.includes(token), "the list never shows a token");
+    const id = (await db!.query("select id from core.service_tokens where module_id = $1", [FIXTURE_ID])).rows[0].id;
+    assert.ok(((await db!.query("select last_used_at from core.service_tokens where id = $1", [id])).rows[0].last_used_at) !== null, "a use is noted");
+    assert.equal((await cli("revoke", String(id))).code, 0);
+    assert.equal((await call("GET", "/svc/e2e-fixture/items", bearer)).status, 401, "a revoked token stops working at once, with no restart");
+  });
+
   test("uninstalling the module with purge removes its settings and its appearance, and keeps the audit trail", async () => {
     await put(`/api/settings/modules/${FIXTURE_ID}`, { values: { "site.title": "Again" } }, { cookie });
     await put(`/api/settings/modules/${FIXTURE_ID}/appearance`, { accentHue: 30 }, { cookie });
     const removed = await run(["--import", "tsx", CLI, "modules", "uninstall", FIXTURE_ID, "--purge"], appEnv);
     assert.equal(removed.code, 0, removed.output);
     assert.equal((await db!.query("select 1 from core.module_settings where module_id = $1", [FIXTURE_ID])).rowCount, 0);
+    assert.equal((await db!.query("select 1 from core.service_tokens where module_id = $1", [FIXTURE_ID])).rowCount, 0, "its tokens go with it");
+    assert.ok(((await db!.query("select 1 from core.service_token_events where module_id = $1", [FIXTURE_ID])).rowCount ?? 0) > 0, "and their trail stays");
     assert.equal((await db!.query("select 1 from core.platform_settings where key like $1", [`appearance.module.${FIXTURE_ID}.%`])).rowCount, 0);
     assert.ok(((await db!.query("select 1 from core.settings_events where scope = $1", [FIXTURE_ID])).rowCount ?? 0) > 0, "the trail outlives the data");
 
