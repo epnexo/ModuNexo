@@ -27,11 +27,11 @@ Branch: feat/public-routes. Delivery strategy: ask-on-risk (no remote work witho
 
 ## Tasks
 
-- T1 (S1, S2 manifest part, S5/S6 fields) manifest types and validation in the SDK. Route: inline. Commit: pending
-- T2 (S2) reserved `/hooks` in codegen and package validation, generated route wrapper. Route: inline. Commit: pending
-- T3 (S3) gate: public route matcher, `decideAccess`, proxy. Route: inline. Commit: pending
-- T4 (S4, S5, S6) runtime: signature, timestamp, rate limit, body limit. Route: inline. Commit: pending
-- T5 (S8) docs, skill, install review. Route: inline. Commit: pending
+- [x] T1 (S1, S2 manifest part, S5/S6 fields) manifest types and validation in the SDK. Route: inline. Commit: 4598bd8
+- [x] T2 (S2) reserved `/hooks` in codegen and package validation, generated route wrapper. Route: inline. Commit: 8ad6e6d
+- [x] T3 (S3) gate: public route matcher, `decideAccess`, proxy. Route: inline. Commit: d016b21
+- [x] T4 (S4, S5, S6) runtime: signature, timestamp, rate limit, body limit. Route: inline. Commit: abfe7e8
+- [x] T5 (S8) docs, skill, install review. Route: inline. Commit: 6b9e69e
 
 ## Log
 
@@ -40,3 +40,14 @@ Branch: feat/public-routes. Delivery strategy: ask-on-risk (no remote work witho
   parallel disjoint units). The explorer mapped the code once (mapping trigger); reading for each edit is inline.
 - L3: Decisions taken without asking, per L1: `/hooks/<module-id>/` prefix; HMAC-SHA256 only in v1; idempotency
   deferred (S7); verification wrapper is generated into the route file and calls an app-level helper.
+- L4 (T1-T5 done): RED observed for T1 (12 failing), T2 (3 failing), T3 (module missing). T4 tests were written
+  with the implementation in the same step, so no RED was observed for T4; the 23 tests pin the behavior now.
+  T2 needed no codegen-side path check: `renderRegistration` already runs the SDK validation, so the `/hooks`
+  rules are enforced once, in `validateManifest`, and the gate re-checks the `/hooks` prefix on its own (defense in depth).
+- L5: Extra task beyond the plan, same feature: end-to-end proof in `apps/web/test/e2e.integration.test.ts`
+  (commit 096929e): a real production build and server, a signed request answers 200, unsigned and tampered 401,
+  GET 405, encoded traversal and sibling paths stay behind the gate (307 to /login), an unset secret refuses everything.
+- L6: Known limits, recorded not hidden: (a) handshake providers (GET with a challenge, e.g. Meta) cannot be
+  public yet; (b) rate limit and its counters are per process; (c) no idempotency (module's job, documented);
+  (d) with sign-in disabled the local-only rule still blocks webhooks, so public routes need `auth require`;
+  (e) the install downtime question of ADR-001 section 7.1 is still open.
