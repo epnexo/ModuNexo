@@ -1,6 +1,6 @@
 /** What a module's manifest says about who may reach which path. Only the parts this file reads. */
 interface ModuleSource {
-  pages?: readonly { path: string; permission?: string; public?: unknown }[];
+  pages?: readonly { path: string; permission?: string; public?: unknown; scope?: unknown }[];
   nav?: readonly { href: string; permission?: string }[];
 }
 
@@ -92,21 +92,23 @@ export function requiredPermissions(pathname: string, rules: readonly Permission
   return [...needed];
 }
 
-/** The shell-owned prefix every public route lives under; the manifest check and the codegen enforce it too. */
-const PUBLIC_PREFIX = "hooks";
+/** The shell-owned prefixes of routes that answer without a session and verify their caller themselves. */
+const SIGNED_PREFIX = "hooks";
+const TOKEN_PREFIX = "svc";
 
 /**
- * The routes that answer without a session: the pages that declare themselves `public`, and only those under
- * `/hooks`. The prefix is checked again here so that a manifest that slipped past validation still cannot open an
- * ordinary path.
+ * The routes that answer without a session: the pages that declare themselves `public` (signed, under `/hooks`) and
+ * the pages that declare a `scope` (service token, under `/svc`). The prefix is checked again here so that a
+ * manifest that slipped past validation still cannot open an ordinary path, and a page that declares both is
+ * ignored rather than guessed at.
  */
 export function publicRouteRules(modules: readonly ModuleSource[]): string[][] {
   const rules: string[][] = [];
   for (const module of modules) {
     for (const page of module.pages ?? []) {
-      if (page.public === undefined || !page.path.startsWith("/")) continue;
+      if (!page.path.startsWith("/") || (page.public === undefined) === (page.scope === undefined)) continue;
       const segments = segmentsOf(page.path);
-      if (segments[0] === PUBLIC_PREFIX && segments.length > 1) rules.push(segments);
+      if (segments[0] === (page.public !== undefined ? SIGNED_PREFIX : TOKEN_PREFIX) && segments.length > 1) rules.push(segments);
     }
   }
   return rules;

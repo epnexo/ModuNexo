@@ -12,7 +12,7 @@ interface Review {
   name: string;
   packageName: string;
   platform: string;
-  pages: { path: string; public?: boolean }[];
+  pages: { path: string; public?: boolean; scope?: string }[];
   nav: { label: string }[];
   permissions: { key: string }[];
   settings: { key: string }[];
@@ -344,6 +344,15 @@ export function AppsManager({ initial, installed, modules }: { initial: AppsStat
               <dd>{staged.review.platform}</dd>
               <dt className="text-muted">Pages</dt>
               <dd>{list(staged.review.pages.map((page) => page.path))}</dd>
+              {staged.review.pages.some((page) => page.scope !== undefined) ? (
+                <>
+                  <dt className="text-muted">Token routes</dt>
+                  <dd>
+                    {list(staged.review.pages.filter((page) => page.scope !== undefined).map((page) => `${page.path} (${page.scope})`))}
+                    <span className="block text-xs text-muted">These answer to a service token without a sign-in, guarded by the token and its scope.</span>
+                  </dd>
+                </>
+              ) : null}
               {staged.review.pages.some((page) => page.public) ? (
                 <>
                   <dt className="text-muted">Public routes</dt>

@@ -52,6 +52,9 @@ export async function runAddCommand(
   row("package", review.packageName);
   row("platform", review.platform);
   row("pages", list(review.pages.map((page) => page.path)));
+  const tokenRoutes = review.pages.filter((page) => page.scope !== undefined);
+  if (tokenRoutes.length > 0) row("token routes", `${list(tokenRoutes.map((page) => `${page.path} (${page.scope})`))} - answer to a service token without a sign-in`);
+  if (review.scopes.length > 0) row("scopes", list(review.scopes.map((scope) => scope.key)));
   const open = review.pages.filter((page) => page.public === true);
   if (open.length > 0) row("public", `${list(open.map((page) => page.path))} - answer without a sign-in, guarded only by their signature`);
   row("nav", list(review.nav.map((item) => item.label)));

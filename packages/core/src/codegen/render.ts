@@ -184,6 +184,21 @@ function renderRoute({ moduleId, path, page, packageName }: RoutePlan): string {
       ...exported.map((method) => `export const ${method} = publicRoute(rule, handlers.${method});`),
     );
   }
+  if (page.scope !== undefined) {
+    // Same shape for a route a service token opens: the shell checks the bearer token and its scope around every
+    // method, and the module handler is never re-exported bare.
+    const rule = JSON.stringify({ moduleId, path, scope: page.scope });
+    lines.splice(
+      1,
+      1,
+      'import { scopedRoute } from "@/server/scoped-route";',
+      `import * as handlers from ${from};`,
+      "",
+      `const rule = ${rule};`,
+      "",
+      ...exported.map((method) => `export const ${method} = scopedRoute(rule, handlers.${method});`),
+    );
+  }
   // Segment config has to be written literally in the route file, so it cannot be re-exported from the module.
   if (page.dynamic !== undefined) lines.push("", "// Segment config is read from this file, so it is written here and not re-exported.", `export const dynamic = ${JSON.stringify(page.dynamic)};`);
   return `${GENERATED_HEADER}${lines.join("\n")}\n`;
