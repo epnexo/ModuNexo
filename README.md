@@ -25,7 +25,8 @@ module by name, and modules never import each other's code.
 ```bash
 npm install
 docker compose up -d db      # Postgres 16 on 127.0.0.1:5436, compose project "epnexo-shell-core"
-cp .env.example .env         # DATABASE_URL and TEST_DATABASE_URL
+echo "DATABASE_URL=postgres://epnexo:epnexo@127.0.0.1:5436/epnexo" > .env   # local dev database
+echo "TEST_DATABASE_URL=postgres://epnexo:epnexo@127.0.0.1:5436/epnexo_test" >> .env
 echo "MODUNEXO_MASTER_KEY=$(openssl rand -base64 48)" >> .env
 npm run db:migrate           # creates the core schema
 npm run modunexo -- admin create --email you@example.com --name "Your Name"   # asks for the password

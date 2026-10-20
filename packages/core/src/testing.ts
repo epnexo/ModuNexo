@@ -68,7 +68,7 @@ export function isServerUnreachable(error: unknown): boolean {
  */
 export async function openTestPool(env: Env = process.env): Promise<TestPool> {
   const url = resolveTestDatabaseUrl(env);
-  if (!url) return { skipReason: "neither TEST_DATABASE_URL nor DATABASE_URL is set (copy .env.example to .env and run `docker compose up -d db`)" };
+  if (!url) return { skipReason: "neither TEST_DATABASE_URL nor DATABASE_URL is set (create .env as the README Setup section shows and run `docker compose up -d db`)" };
 
   try {
     const client = new pg.Client({ connectionString: adminUrl(url), connectionTimeoutMillis: 2000 });
