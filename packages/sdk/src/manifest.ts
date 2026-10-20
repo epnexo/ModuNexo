@@ -1,4 +1,5 @@
 import { valid, validRange } from "semver";
+import { parseInterval } from "./jobs.ts";
 
 /** A navigation entry a module contributes to the web shell. */
 export interface NavEntry {
@@ -112,6 +113,20 @@ export interface ScopeDeclaration {
   label: string;
 }
 
+/** A background job the module declares; its handler is the default export of `entry`. */
+export interface JobDeclaration {
+  /** Stable identifier, lowercase with digits, underscores and dots; unique in the module. */
+  name: string;
+  /** Relative path (starting with "./") to the file whose default export is a `JobHandler`. */
+  entry: string;
+  /** Run again this long after each run finishes: `"30s"`, `"5m"`, `"2h"`, `"1d"` (10 seconds to 30 days). Omitted: only runs that are enqueued. */
+  every?: string;
+  /** The run is marked failed after this many seconds, 1 to 3600. Default 60. */
+  timeoutSeconds?: number;
+  /** Attempts before the job is dead, 1 to 20. Default 5. */
+  maxAttempts?: number;
+}
+
 /** The contract every module declares in its `manifest.ts` (manifest v2). */
 export interface ModuleManifest {
   /** Unique kebab-case identifier. */
@@ -134,6 +149,8 @@ export interface ModuleManifest {
   permissions?: PermissionDeclaration[];
   /** Scopes a service token can hold for this module; a route names the one it requires with `scope`. */
   scopes?: ScopeDeclaration[];
+  /** Background jobs the platform's worker can run for this module. */
+  jobs?: JobDeclaration[];
   /** Relative path (starting with "./") to a file exporting `onInstall`, `onEnable`, `onDisable`, `onUpgrade`, `onUninstall`. */
   hooks?: string;
 }
@@ -158,7 +175,7 @@ const SCHEMA_NAME = /^[a-z][a-z0-9_]{0,62}$/;
 // "core" belongs to the platform itself.
 const RESERVED_SCHEMAS = new Set(["public", "information_schema", "core"]);
 const KNOWN_FIELDS = new Set([
-  "id", "version", "name", "platform", "dependsOn", "schema", "migrationsDir", "nav", "pages", "settings", "permissions", "scopes", "hooks",
+  "id", "version", "name", "platform", "dependsOn", "schema", "migrationsDir", "nav", "pages", "settings", "permissions", "scopes", "jobs", "hooks",
 ]);
 const KNOWN_NAV_FIELDS = new Set(["label", "href", "icon", "group", "order", "permission"]);
 const KNOWN_PAGE_FIELDS = new Set(["path", "entry", "kind", "dynamic", "methods", "permission", "public", "scope"]);
@@ -172,6 +189,7 @@ const MAX_BODY_LIMIT = 10 * 1024 * 1024;
 const KNOWN_SETTING_FIELDS = new Set(["key", "label", "type", "default", "required", "options", "description"]);
 const KNOWN_PERMISSION_FIELDS = new Set(["key", "label"]);
 const KNOWN_SCOPE_FIELDS = new Set(["key", "label"]);
+const KNOWN_JOB_FIELDS = new Set(["name", "entry", "every", "timeoutSeconds", "maxAttempts"]);
 const PAGE_KINDS = ["page", "route"];
 const PAGE_DYNAMIC_MODES = ["auto", "force-dynamic", "force-static", "error"];
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
@@ -484,6 +502,30 @@ function checkScopes(scopes: unknown, problems: string[]): Set<string> {
   return seen;
 }
 
+function checkJobs(jobs: unknown, problems: string[]): void {
+  const seen = new Set<string>();
+  eachItem(jobs, "jobs", problems, (job, where) => {
+    checkUnknownFields(job, KNOWN_JOB_FIELDS, where, problems);
+    if (typeof job.name !== "string" || !KEY.test(job.name)) {
+      problems.push(`${where}.name must be a stable identifier (lowercase a-z, 0-9, _ and dot-separated segments)`);
+    } else if (seen.has(job.name)) {
+      problems.push(`${where}.name "${job.name}" is duplicated`);
+    } else {
+      seen.add(job.name);
+    }
+    if (!isRelativeEntry(job.entry)) problems.push(`${where}.entry must be a relative path starting with "./"`);
+    if (job.every !== undefined && parseInterval(job.every) === null) {
+      problems.push(`${where}.every must be a whole number and a unit, as in "30s", "5m", "2h" or "1d", from 10 seconds to 30 days`);
+    }
+    if (job.timeoutSeconds !== undefined && !isIntegerInRange(job.timeoutSeconds, 1, 3600)) {
+      problems.push(`${where}.timeoutSeconds must be an integer from 1 to 3600`);
+    }
+    if (job.maxAttempts !== undefined && !isIntegerInRange(job.maxAttempts, 1, 20)) {
+      problems.push(`${where}.maxAttempts must be an integer from 1 to 20`);
+    }
+  });
+}
+
 export interface ValidateOptions {
   /**
    * Admit the schema name "core", which is reserved for the platform, and only for a manifest whose id is
@@ -538,6 +580,7 @@ export function validateManifest(input: unknown, options: ValidateOptions = {}):
     checkPages(raw.pages, permissionKeys, ctx, problems);
   }
   if (raw.settings !== undefined) checkSettings(raw.settings, problems);
+  if (raw.jobs !== undefined) checkJobs(raw.jobs, problems);
   if (raw.hooks !== undefined && !isRelativeEntry(raw.hooks)) problems.push('hooks must be a relative path starting with "./"');
 
   if (problems.length > 0) {
