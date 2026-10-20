@@ -197,7 +197,7 @@ describe("JobService.claim", () => {
     assert.equal((await service.claim("w1", 2, [moduleId])).length, 2);
     assert.deepEqual(await service.claim("w1", 0, [moduleId]), []);
     assert.deepEqual(await service.claim("w1", 5, []), []);
-    await pool!.query("insert into core.jobs (module_id, name, max_attempts, timeout_seconds, enqueued_by) values ($1, 'sync', 3, 10, 'test')", [offId]);
+    await pool!.query("insert into core.jobs (module_id, name, run_at, max_attempts, timeout_seconds, enqueued_by) values ($1, 'sync', $2, 3, 10, 'test')", [offId, clock]);
     assert.deepEqual(await service.claim("w1", 50, [otherId]), []);
     assert.equal((await service.claim("w1", 50, [moduleId])).length, 3);
   });

@@ -80,6 +80,11 @@ async function dropStatements(client: pg.PoolClient, target: PurgeTarget): Promi
   if (jobs.rows[0].present) {
     await client.query("delete from core.jobs where module_id = $1", [target.id]);
   }
+  // And the events it published: the log of a module installed later under the same id starts empty.
+  const events = await client.query("select to_regclass('core.events') is not null as present");
+  if (events.rows[0].present) {
+    await client.query("delete from core.events where module_id = $1", [target.id]);
+  }
 }
 
 const purgeFailure = (target: PurgeTarget, error: unknown): Error =>
