@@ -40,9 +40,32 @@ const clampLimit = (asked: number | undefined): number =>
 
 const keyOf = (moduleId: string, id: string): string => `${moduleId}/${id.slice(0, 2)}/${id}`;
 
+/**
+ * A web stream read through a reader of our own, and only once someone iterates it. `Readable.fromWeb` listens at once,
+ * so a stream that fails before it is read (a client that aborted) would raise an exception nothing is waiting for.
+ */
+async function* readWeb(stream: ReadableStream<Uint8Array>): AsyncGenerator<Uint8Array> {
+  const reader = stream.getReader();
+  let finished = false;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) {
+        finished = true;
+        return;
+      }
+      yield value;
+    }
+  } finally {
+    // Stopped early (over the limit, a failed write): tell the source nobody is reading any more.
+    if (!finished) await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
+  }
+}
+
 function toIterable(data: FileData): AsyncIterable<Uint8Array> {
   if (data instanceof Uint8Array) return Readable.from([data], { objectMode: true });
-  if (typeof ReadableStream !== "undefined" && data instanceof ReadableStream) return Readable.fromWeb(data as never) as AsyncIterable<Uint8Array>;
+  if (typeof ReadableStream !== "undefined" && data instanceof ReadableStream) return readWeb(data as ReadableStream<Uint8Array>);
   if (data !== null && typeof data === "object" && Symbol.asyncIterator in data) return data;
   throw new FileError("data must be bytes, a ReadableStream or an async iterable of bytes");
 }

@@ -47,7 +47,7 @@ Branch: feat/files-attachments (from main). Delivery strategy: ask-on-risk; the 
 - [x] T3 (S8, S9, S10) register the service in web and worker, orphan sweep, purge of bytes on uninstall, CLI `files`, backup scripts. Route: inline. Commit: 5a28f93 (RED observed; the CLI `modules uninstall --purge` path was added later, in the T4/T5 commit)
 - [x] T4 (S7) download route, gate, end-to-end. Route: inline. Commit: next commit (RED observed for the helpers, the header rules and the CLI purge; e2e 45/45 on a production build)
 - [x] T5 (S9 review, S11) install review, README, skill, ADR note. Route: inline. Commit: next commit (RED observed for the review)
-- [ ] T6 full suite, independent verifier. Route: inline then verifier.
+- [x] T6 full suite (1313/1313), independent verifier (1 blocker, fixed). Route: inline then verifier. Commit: next commit
 
 ## Log
 
@@ -80,3 +80,14 @@ Branch: feat/files-attachments (from main). Delivery strategy: ask-on-risk; the 
   the bytes (only `changeModule` removed them). Both paths now remove the module's folder after the purge commits. The e2e
   runs with its own `MODUNEXO_DATA_DIR` so nothing lands in the repository's `var/`.
 - L9: T4/T5 observed: web unit tests 14 (download helpers, header rules), review tests 31, CLI files tests 6, e2e 45/45.
+- L10: Full suite 1313/1313 (0 fail, 0 skipped). Independent verifier, probes in a scratch copy: S1-S10 pass; one BLOCKER, fixed
+  with a test that failed first: `Readable.fromWeb` listened at once, so a web stream that failed before it was read (a client
+  aborting `request.body` as `putFile` starts) raised an uncaught exception that can end the process; the body is now read
+  through a lazy reader of our own and cancelled when the write stops early. Recheck after the fix: file tests 45/45 twice,
+  e2e plus worker tests 73/73.
+- L11: Advisories left, not fixed: (A1) `DiskStorage` refuses a link as the last part of a key but does not check intermediate
+  folders, so someone who can already write the data directory could point `<root>/<module>` outside it; (A2) `backup.sh`
+  aborts, and a retry works, if a stray `.tmp` file disappears while `tar` reads it; (A3) `/api/files/` with a trailing slash
+  gets neither header rule and only meets the redirect; (A4) 403 versus 404 tells a signed-in viewer which modules store files;
+  (A5) up to 3 trailing bytes of the first 8 KiB are not checked as text, which is harmless because the type stays on the
+  platform's list and downloads are attachments. The brand logo route's own policy is overridden by the global one (L7).
