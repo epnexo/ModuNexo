@@ -109,6 +109,26 @@ describe("validatePackageTree: events", () => {
   });
 });
 
+describe("validatePackageTree: files", () => {
+  it("shows the limit, the accepted types and whether a browser can download", () => {
+    writeGood({ manifest: { permissions: [{ key: "read", label: "Read" }], files: { maxBytes: 1024, accept: ["image/png", "text/*"], permission: "read" } } });
+    const result = validatePackageTree(root, context());
+    assert.equal(result.ok, true, result.ok ? "" : result.problems.join("\n"));
+    if (result.ok) assert.deepEqual(result.review.files, { maxBytes: 1024, accept: ["image/png", "text/*"], downloadable: true });
+  });
+
+  it("shows the defaults for an empty declaration, and nothing for a module that stores no files", () => {
+    writeGood({ manifest: { files: {} } });
+    const stores = validatePackageTree(root, context());
+    assert.equal(stores.ok, true);
+    if (stores.ok) assert.deepEqual(stores.review.files, { maxBytes: 10 * 1024 * 1024, accept: null, downloadable: false });
+    writeGood();
+    const plain = validatePackageTree(root, context());
+    assert.equal(plain.ok, true);
+    if (plain.ok) assert.equal(plain.review.files, null);
+  });
+});
+
 describe("validatePackageTree: public routes", () => {
   it("shows a public route in the review, so the person who installs sees what opens", () => {
     writeGood({

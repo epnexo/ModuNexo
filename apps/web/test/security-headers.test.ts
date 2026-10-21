@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { securityHeaders } from "../src/server/security-headers.ts";
+import { headerRules, securityHeaders } from "../src/server/security-headers.ts";
 
 const asMap = (headers: { key: string; value: string }[]) => new Map(headers.map((header) => [header.key.toLowerCase(), header.value]));
 
@@ -23,5 +23,21 @@ describe("securityHeaders", () => {
   it("sends HSTS only when the app is served over https", () => {
     assert.equal(asMap(securityHeaders(false)).has("strict-transport-security"), false);
     assert.match(asMap(securityHeaders(true)).get("strict-transport-security") ?? "", /^max-age=\d+/);
+  });
+});
+
+describe("headerRules", () => {
+  it("gives every page the full set, and the file downloads the same set without the content policy, which the download sets itself", () => {
+    const [everything, downloads] = headerRules(false);
+    assert.deepEqual(everything!.headers, securityHeaders(false));
+    assert.equal(downloads!.source, "/api/files/:path*");
+    assert.deepEqual(downloads!.headers, securityHeaders(false).filter((header) => header.key !== "Content-Security-Policy"));
+    assert.ok(downloads!.headers.some((header) => header.key === "X-Frame-Options"), "it is still not frameable");
+  });
+
+  it("keeps the first rule off the downloads, so the two never both write the policy", () => {
+    const [everything] = headerRules(true);
+    assert.match(everything!.source, /api\/files/, "the first rule names what it leaves out");
+    assert.ok(everything!.headers.some((header) => header.key === "Strict-Transport-Security"));
   });
 });

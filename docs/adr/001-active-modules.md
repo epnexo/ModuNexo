@@ -46,8 +46,9 @@ optional features (the module lifecycle already covers install and enable), and 
 
 Status of the table: capability 1 (public routes with signature, `/hooks/<module-id>/`), capability 2 (service
 tokens with scopes, `/svc/<module-id>/`), capability 3 (background jobs run by a separate worker process, a Postgres
-queue) and capability 4 (events and realtime) are built; see `odd/tasks/public-routes.md`, `odd/tasks/service-tokens.md`,
-`odd/tasks/background-jobs.md` and `odd/tasks/events-realtime.md`.
+queue), capability 4 (events and realtime) and capability 5 (files behind a storage adapter, a disk folder first) are built;
+see `odd/tasks/public-routes.md`, `odd/tasks/service-tokens.md`, `odd/tasks/background-jobs.md`,
+`odd/tasks/events-realtime.md` and `odd/tasks/files-attachments.md`.
 Open question 2 of section 7 is answered for jobs and events: they persist in Postgres. Events are written in the
 publisher's own transaction (an outbox that is also the bus), announced with `LISTEN`/`NOTIFY` at commit, delivered to
 modules as jobs and to browsers as server-sent events with a cursor.

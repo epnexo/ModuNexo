@@ -5,9 +5,10 @@
 import assert from "node:assert/strict";
 import { type ChildProcess, spawn } from "node:child_process";
 import { createHmac } from "node:crypto";
-import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { createServer } from "node:net";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, describe, it } from "node:test";
@@ -77,6 +78,19 @@ const call = (method: string, path: string, headers: Record<string, string> = {}
     req.end(payload);
   });
 
+/** A request with a raw body: bytes or text, sent as they are. */
+const callRaw = (method: string, path: string, headers: Record<string, string>, body: string | Buffer) =>
+  new Promise<Reply>((resolve, reject) => {
+    const payload = typeof body === "string" ? Buffer.from(body) : body;
+    const req = httpRequest({ host: "127.0.0.1", port, method, path, headers: { "content-type": "application/octet-stream", "content-length": payload.length, ...headers } }, (res) => {
+      let text = "";
+      res.on("data", (chunk) => (text += chunk));
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: text }));
+    });
+    req.on("error", reject);
+    req.end(payload);
+  });
+
 const origin = () => `http://127.0.0.1:${port}`;
 const signIn = (password: string, extra: Record<string, string> = {}) =>
   call("POST", "/api/auth/sign-in/email", { origin: origin(), ...extra }, { email: EMAIL, password });
@@ -87,6 +101,8 @@ const cookieOf = (reply: Reply) => {
 const location = (reply: Reply) => (reply.headers.location === undefined ? "" : new URL(String(reply.headers.location), origin()).pathname);
 
 let appEnv: Record<string, string> = {};
+/** Where the app, the worker and the CLI keep stored files in these tests, so nothing lands in the repository's var/. */
+let dataDir = "";
 
 async function buildApp(): Promise<void> {
   const built = await run(["--import", "tsx", `${WEB_ROOT}scripts/run.ts`, "build"], appEnv);
@@ -137,7 +153,8 @@ before(async () => {
   await new BrandService(db).setProfile({ kind: "personal", name: "E2E" }, "e2e");
 
   port = await freePort();
-  appEnv = { DATABASE_URL: scratchUrl, MODUNEXO_MASTER_KEY: MASTER_KEY, WEB_HOST: "127.0.0.1", WEB_PORT: String(port), NODE_ENV: "production" };
+  dataDir = mkdtempSync(join(tmpdir(), "modunexo-e2e-data-"));
+  appEnv = { DATABASE_URL: scratchUrl, MODUNEXO_MASTER_KEY: MASTER_KEY, MODUNEXO_DATA_DIR: dataDir, WEB_HOST: "127.0.0.1", WEB_PORT: String(port), NODE_ENV: "production" };
   await buildApp();
   await startServer();
 });
@@ -151,6 +168,7 @@ after(async () => {
     }
   }
   removeFixture();
+  if (dataDir !== "") rmSync(dataDir, { recursive: true, force: true });
   if (db !== undefined) {
     // The module's routes and registry entry were generated into the working tree; with the module gone from the
     // database and from disk, regenerating leaves the empty registry that a fresh checkout has.
@@ -364,6 +382,7 @@ export default defineModule({
   ],
   events: [{ name: "pinged", permission: "reports.read" }, { name: "private.note" }],
   subscriptions: [{ event: "${FIXTURE_ID}.pinged", job: "on_pinged" }],
+  files: { maxBytes: 2048, accept: ["image/png", "text/plain"], permission: "reports.read" },
   scopes: [
     { key: "messages.read", label: "Read messages" },
     { key: "messages.send", label: "Send messages" },
@@ -380,6 +399,7 @@ export default defineModule({
     { path: "/e2e-fixture/open-data", entry: "./web/open-data.ts", kind: "route" },
     { path: "/e2e-fixture/enqueue", entry: "./web/enqueue.ts", kind: "route", methods: ["POST"], permission: "reports.read" },
     { path: "/e2e-fixture/publish", entry: "./web/publish.ts", kind: "route", methods: ["POST"], permission: "reports.read" },
+    { path: "/e2e-fixture/upload", entry: "./web/upload.ts", kind: "route", methods: ["POST"], permission: "reports.read" },
     {
       path: "/hooks/e2e-fixture/events",
       entry: "./web/hook.ts",
@@ -461,6 +481,36 @@ export async function POST(request: Request) {
     return Response.json(result);
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
+  }
+}
+`,
+  );
+  // Stores the request body as a file; `rollback` does it inside a module transaction that is then abandoned.
+  writeFileSync(
+    join(FIXTURE_DIR, "web", "upload.ts"),
+    `import { getDb, putFile } from "@modunexo/sdk";
+export async function POST(request: Request) {
+  if (request.body === null) return Response.json({ error: "no body" }, { status: 400 });
+  const body = request.body;
+  const name = request.headers.get("x-file-name") ?? "upload.bin";
+  const ref = request.headers.get("x-file-ref");
+  const input = { name, data: body, ...(ref === null ? {} : { ref }) };
+  try {
+    if (new URL(request.url).searchParams.get("rollback") !== null) {
+      let id = "";
+      try {
+        await getDb("${FIXTURE_ID}").transaction(async (tx) => {
+          id = (await putFile("${FIXTURE_ID}", input, { tx })).id;
+          throw new Error("rolled back on purpose");
+        });
+      } catch {
+        // the point of the case
+      }
+      return Response.json({ id, rolledBack: true });
+    }
+    return Response.json(await putFile("${FIXTURE_ID}", input));
+  } catch (error) {
+    return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 422 });
   }
 }
 `,
@@ -1030,11 +1080,92 @@ describe("web app: with a module installed", () => {
     }
   });
 
+  test("a route stores a file through the SDK; a viewer with the permission downloads it as an attachment and everyone else is refused", async () => {
+    const upload = (body: string | Buffer, headers: Record<string, string> = {}, query = "") =>
+      callRaw("POST", `/e2e-fixture/upload${query}`, { cookie, origin: origin(), ...headers }, body);
+    const made = await upload("hello file", { "x-file-name": "notes ñ.txt", "x-file-ref": "message:7" });
+    assert.equal(made.status, 200, made.body);
+    const meta = JSON.parse(made.body) as { id: string; name: string; contentType: string; size: number; ref: string };
+    assert.deepEqual([meta.name, meta.contentType, meta.size, meta.ref], ["notes ñ.txt", "text/plain", 10, "message:7"]);
+    assert.equal((await db!.query("select count(*)::int as n from core.files where module_id = $1", [FIXTURE_ID])).rows[0].n, 1);
+    assert.equal(existsSync(join(dataDir, "files", FIXTURE_ID, meta.id.slice(0, 2), meta.id)), true, "the bytes are under the data directory");
+
+    const path = `/api/files/${FIXTURE_ID}/${meta.id}`;
+    const got = await call("GET", path, { cookie });
+    assert.equal(got.status, 200);
+    assert.equal(got.body, "hello file");
+    assert.equal(got.headers["content-type"], "text/plain");
+    assert.equal(got.headers["content-length"], "10");
+    assert.equal(got.headers["content-disposition"], `attachment; filename="notes _.txt"; filename*=UTF-8''notes%20%C3%B1.txt`);
+    assert.equal(got.headers["x-content-type-options"], "nosniff");
+    assert.equal(got.headers["content-security-policy"], "default-src 'none'; sandbox");
+    assert.equal(got.headers["cache-control"], "private, no-store");
+    assert.equal(got.headers["x-frame-options"], "DENY", "a download keeps the shell's other protections");
+
+    // The route's own policy must not replace, or be replaced by, the page policy: pages keep theirs.
+    for (const page of ["/login", "/"]) {
+      const reply = await call("GET", page);
+      assert.match(String(reply.headers["content-security-policy"]), /frame-ancestors 'none'/, page);
+      assert.equal(reply.headers["x-frame-options"], "DENY", page);
+    }
+
+    assert.equal((await call("GET", path)).status, 401, "a download needs a session");
+    const refused = await call("GET", path, { cookie: userCookie });
+    assert.equal(refused.status, 403);
+    assert.ok(!refused.body.includes("hello file"));
+    assert.equal((await call("GET", path, { cookie: operatorCookie })).status, 200);
+    for (const missing of [`/api/files/${FIXTURE_ID}/00000000-0000-4000-8000-000000000000`, `/api/files/${FIXTURE_ID}/${meta.id}x`, `/api/files/${FIXTURE_ID}/..%2F..%2Fetc%2Fpasswd`, `/api/files/nobody/${meta.id}`, `/api/files/hello/${meta.id}`]) {
+      assert.equal((await call("GET", missing, { cookie })).status, 404, missing);
+    }
+  });
+
+  test("the type of a stored file comes from its bytes, and a file over the limit, of a type the module does not take, or empty is refused", async () => {
+    const upload = (body: string | Buffer, headers: Record<string, string> = {}, query = "") =>
+      callRaw("POST", `/e2e-fixture/upload${query}`, { cookie, origin: origin(), ...headers }, body);
+    const rows = async () => (await db!.query("select count(*)::int as n from core.files where module_id = $1", [FIXTURE_ID])).rows[0].n as number;
+    const before = await rows();
+
+    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32, 7)]);
+    const sent = await upload(png, { "x-file-name": "looks-like-text.txt" });
+    assert.equal(sent.status, 200, sent.body);
+    const pngMeta = JSON.parse(sent.body) as { id: string; contentType: string };
+    assert.equal(pngMeta.contentType, "image/png", "not what the name says");
+    const fetched = await call("GET", `/api/files/${FIXTURE_ID}/${pngMeta.id}`, { cookie });
+    assert.equal(fetched.headers["content-type"], "image/png");
+    assert.equal(fetched.headers["content-length"], String(png.length));
+
+    const html = await upload("<script>alert(1)</script>", { "x-file-name": "page.html" });
+    assert.equal(JSON.parse(html.body).contentType, "text/plain", "markup is never announced as a page");
+
+    const big = await upload("x".repeat(3000), { "x-file-name": "big.txt" });
+    assert.equal(big.status, 422);
+    assert.match(big.body, /over the limit of 2048 bytes/);
+    const pdf = await upload("%PDF-1.4 not accepted", { "x-file-name": "doc.pdf" });
+    assert.equal(pdf.status, 422);
+    assert.match(pdf.body, /does not accept application\/pdf files/);
+    const empty = await upload("", { "x-file-name": "empty.txt" });
+    assert.ok(empty.status === 400 || empty.status === 422, `empty body answered ${empty.status}`);
+    assert.equal(await rows(), before + 2, "only the two accepted files were stored");
+  });
+
+  test("a file written in a transaction that rolls back has no row, cannot be downloaded, and its bytes wait for the sweep", async () => {
+    const reply = await callRaw("POST", `/e2e-fixture/upload?rollback=1`, { cookie, origin: origin(), "x-file-name": "ghost.txt" }, "never committed");
+    assert.equal(reply.status, 200, reply.body);
+    const { id } = JSON.parse(reply.body) as { id: string };
+    assert.match(id, /^[0-9a-f-]{36}$/);
+    assert.equal((await db!.query("select 1 from core.files where id = $1", [id])).rowCount, 0);
+    assert.equal((await call("GET", `/api/files/${FIXTURE_ID}/${id}`, { cookie })).status, 404);
+    assert.equal(existsSync(join(dataDir, "files", FIXTURE_ID, id.slice(0, 2), id)), true, "the bytes were written before the transaction ended");
+  });
+
   test("uninstalling the module with purge removes its settings and its appearance, and keeps the audit trail", async () => {
     await put(`/api/settings/modules/${FIXTURE_ID}`, { values: { "site.title": "Again" } }, { cookie });
     await put(`/api/settings/modules/${FIXTURE_ID}/appearance`, { accentHue: 30 }, { cookie });
+    assert.ok(((await db!.query("select 1 from core.files where module_id = $1", [FIXTURE_ID])).rowCount ?? 0) > 0, "the module has stored files");
     const removed = await run(["--import", "tsx", CLI, "modules", "uninstall", FIXTURE_ID, "--purge"], appEnv);
     assert.equal(removed.code, 0, removed.output);
+    assert.equal((await db!.query("select 1 from core.files where module_id = $1", [FIXTURE_ID])).rowCount, 0, "its files are gone");
+    assert.equal(existsSync(join(dataDir, "files", FIXTURE_ID)), false, "and their bytes");
     assert.equal((await db!.query("select 1 from core.module_settings where module_id = $1", [FIXTURE_ID])).rowCount, 0);
     assert.equal((await db!.query("select 1 from core.service_tokens where module_id = $1", [FIXTURE_ID])).rowCount, 0, "its tokens go with it");
     assert.equal((await db!.query("select 1 from core.jobs where module_id = $1", [FIXTURE_ID])).rowCount, 0, "and its jobs");
