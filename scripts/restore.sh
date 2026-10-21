@@ -4,7 +4,7 @@
 #   scripts/restore.sh <backup-dir> [--database-url <url>] [--modules-dir <dir>] [--data-dir <dir>]
 #
 # Refuses, before changing anything, a backup whose files do not match SHA256SUMS, a database that already has
-# tables, and a modules folder that already holds modules. It never overwrites. The database must already exist
+# tables, a modules folder that already holds modules, and a data folder that already holds packages or files. It never overwrites. The database must already exist
 # (create it empty first).
 #
 # After a restore on a new machine: copy your .env (with the SAME MODUNEXO_MASTER_KEY), then
@@ -49,11 +49,16 @@ fi
 if [ -d "$data/packages" ] && [ -n "$(find "$data/packages" -mindepth 1 -print -quit)" ]; then
   fail "$data/packages already holds packages; restore only into an empty folder"
 fi
+if [ -d "$data/files" ] && [ -n "$(find "$data/files" -mindepth 1 -print -quit)" ]; then
+  fail "$data/files already holds files; restore only into an empty folder"
+fi
 
 PG_MODE_CACHE="$(pg_mode)"
 pg_restore_db "$url" < "$backup/database.dump" || fail "the database restore stopped at an error; drop and recreate the database, then run again"
 mkdir -p "$modules" "$data"
 tar -xzf "$backup/modules.tar.gz" -C "$modules"
 tar -xzf "$backup/packages.tar.gz" -C "$data"
+# A backup made before modules could store files has no files.tar.gz.
+if [ -f "$backup/files.tar.gz" ]; then tar -xzf "$backup/files.tar.gz" -C "$data"; fi
 echo "restored $(cat "$backup/BACKUP_INFO" | head -n 1) into $(db_part "$url" name)"
 echo "next: copy your .env (same MODUNEXO_MASTER_KEY), then: npm install && npm run registry:generate && npm run web:build"

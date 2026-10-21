@@ -17,6 +17,8 @@ export interface WorkerDeps {
   loadHandler: (moduleId: string, entry: string) => Promise<JobHandler>;
   /** Old events are deleted on the same schedule as old jobs. Optional: a worker can run without the event log. */
   events?: { prune(): Promise<number> };
+  /** Stray file bytes are swept on the same schedule. Optional: a worker can run without the file store. */
+  files?: { sweep(): Promise<{ removed: number }> };
   workerId: string;
   log: WorkerLog;
   /** Jobs running at once. Default 4. */
@@ -92,6 +94,13 @@ export class Worker {
       if (pruned > 0) this.deps.log.info("worker.jobs_pruned", { count: pruned });
       const events = (await this.deps.events?.prune()) ?? 0;
       if (events > 0) this.deps.log.info("worker.events_pruned", { count: events });
+      try {
+        const swept = (await this.deps.files?.sweep())?.removed ?? 0;
+        if (swept > 0) this.deps.log.info("worker.files_swept", { count: swept });
+      } catch (error) {
+        // A folder that cannot be read must not stop the jobs from running.
+        this.deps.log.warn("worker.files_sweep_failed", { error });
+      }
     }
 
     // A stop was asked for while this tick was working: leave what is due for the next worker.

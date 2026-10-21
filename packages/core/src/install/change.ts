@@ -3,9 +3,10 @@ import type pg from "pg";
 import { readPackageName, registrationModulesFor } from "../codegen/enabled.ts";
 import { DEFAULT_WEB_ROOT } from "../codegen/generate.ts";
 import type { RegistrationModule } from "../codegen/render.ts";
+import { DiskStorage, FileService } from "../files/index.ts";
 import { LifecycleService, type UninstallMode, fileHookLoader, planTransition, readStates } from "../lifecycle/index.ts";
 import { OperationBusyError, finishOperation, setStep, startOperation } from "../operations/index.ts";
-import { DATA_DIR } from "../packages/paths.ts";
+import { DATA_DIR, filesDir } from "../packages/paths.ts";
 import { REPO_ROOT } from "../packages/context.ts";
 import { ApplyFailedError, ApplyRefusedError } from "./apply.ts";
 import { BuildFailedError, type BuildHandle, type BuildRunner, buildWithRollback } from "./build.ts";
@@ -161,6 +162,14 @@ export async function changeModule(options: ChangeOptions): Promise<ChangeResult
       if (kept !== null) warnings.push(`the folder of ${moduleId} was kept at ${kept}`);
     } catch (error) {
       warnings.push(`the folder modules/${moduleId} could not be moved away, so it cannot be installed again until it is: ${message(error)}`);
+    }
+    if (options.mode === "purge") {
+      // The purge deleted the rows with the schema; the bytes are the database's no more, so they go once it has committed.
+      try {
+        await new FileService(pool, before, new DiskStorage(filesDir(dataDir))).removeModuleBytes(moduleId);
+      } catch (error) {
+        warnings.push(`the stored files of ${moduleId} could not be removed from ${filesDir(dataDir)}: ${message(error)}`);
+      }
     }
   }
   let restart = "no restart was requested";

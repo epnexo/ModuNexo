@@ -148,6 +148,25 @@ describe("changeModule", () => {
     assert.equal(await schemaExists("purged"), false);
   });
 
+  test("uninstall purge removes the module's stored files, rows and bytes; keep leaves them", async () => {
+    const stored = [["keeper", "11111111-1111-4111-8111-111111111111"], ["purged", "22222222-2222-4222-8222-222222222222"]] as const;
+    for (const [id, file] of stored) {
+      await install(id);
+      mkdirSync(join(work, "var", "files", id, file.slice(0, 2)), { recursive: true });
+      writeFileSync(join(work, "var", "files", id, file.slice(0, 2), file), "stored bytes");
+      await pool.query("insert into core.files (id, module_id, name, content_type, size, sha256) values ($1, $2, 'a.txt', 'text/plain', 12, $3)", [file, id, "0".repeat(64)]);
+    }
+    await change("uninstall", { id: "keeper", mode: "keep" });
+    assert.equal(existsSync(join(work, "var", "files", "keeper")), true);
+    assert.equal((await pool.query("select 1 from core.files where module_id = 'keeper'")).rowCount, 1);
+
+    const result = await change("uninstall", { id: "purged", mode: "purge" });
+    assert.equal(existsSync(join(work, "var", "files", "purged")), false);
+    assert.equal(existsSync(join(work, "var", "files", "keeper")), true, "another module's bytes stay");
+    assert.equal((await pool.query("select 1 from core.files where module_id = 'purged'")).rowCount, 0);
+    assert.deepEqual(result.warnings.filter((w) => /files/.test(w)), []);
+  });
+
   test("a build that fails changes nothing and restores the previous build", async () => {
     await install();
     const before = readFileSync(join(work, "web", ".next", "BUILD_ID"), "utf8");

@@ -1,6 +1,19 @@
 /** How many leading bytes decide a file's type. */
 export const SNIFF_BYTES = 8192;
 
+/** Every type `sniffContentType` can answer; nothing a browser would run as a page or a script is among them. */
+export const SNIFFED_TYPES: readonly string[] = [
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "application/pdf",
+  "application/zip",
+  "application/gzip",
+  "text/plain",
+  "application/octet-stream",
+];
+
 const startsWith = (head: Uint8Array, prefix: readonly number[], at = 0): boolean => prefix.every((byte, i) => head[at + i] === byte);
 const ascii = (text: string): number[] => Array.from(text, (char) => char.charCodeAt(0));
 
