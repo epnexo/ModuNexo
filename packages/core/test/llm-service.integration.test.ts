@@ -243,6 +243,23 @@ describe("LlmService.chat", { concurrency: false }, () => {
     assert.equal(seen.length, 2, "the limits themselves are allowed");
   });
 
+  it("refuses a list of messages with holes, and sends what it checked and nothing more", async (t) => {
+    if (skipReason) return t.skip(skipReason);
+    await wipe();
+    await configure();
+    // eslint-disable-next-line no-sparse-arrays
+    const sparse: unknown[] = [{ messages: new Array(1) }, { messages: [{ role: "user", content: "a" }, , { role: "user", content: "b" }] }, { messages: Object.assign([{ role: "user", content: "a" }], { length: 3 }) }];
+    for (const request of sparse) {
+      assert.equal((await refused(service.chat(agentId, request as ChatRequest))).code, "invalid_request", JSON.stringify(request));
+    }
+    assert.equal(seen.length, 0, "no call was made");
+
+    let reads = 0;
+    const shifting = { role: "user", get content() { return reads++ === 0 ? "as checked" : ""; }, name: "extra", tool_calls: [{ id: "x" }] };
+    await service.chat(agentId, { messages: [shifting as never] });
+    assert.deepEqual(JSON.parse(seen[0]!.body).messages, [{ role: "user", content: "as checked" }]);
+  });
+
   it("asks to set a key again when the stored one cannot be read, without saying what it was", async (t) => {
     if (skipReason) return t.skip(skipReason);
     await wipe();
