@@ -1,6 +1,6 @@
 # ADR-001: Modules become active participants of the runtime
 
-Status: proposed
+Status: accepted
 Date: 2026-10-20
 
 ## 1. Focus
@@ -87,7 +87,7 @@ modules as jobs and to browsers as server-sent events with a cursor.
    (Originally: installing or enabling a module needed a cold build during which pages failed, acceptable for passive
    modules and not for modules receiving live traffic.)
 2. Do jobs and events persist in Postgres or stay in memory?
-3. Is the AI agent a module, or an external service reached with a service token?
+3. Is the AI agent a module, or an external service reached with a service token? Answered: an external service. It calls the platform with a service token (`/svc/<module-id>/`) and receives work as events; the platform hosts no agent loop. The model adapter (capability 6) stays for modules that call a model themselves.
 
 ## 8. First step
 
