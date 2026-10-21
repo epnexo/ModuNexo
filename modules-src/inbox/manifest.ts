@@ -1,4 +1,5 @@
 import { SDK_VERSION, defineModule } from "@modunexo/sdk";
+import { DELIVER_ATTEMPTS } from "./lib/limits.ts";
 
 export default defineModule({
   id: "inbox",
@@ -18,7 +19,7 @@ export default defineModule({
     { key: "outbound_secret", label: "Outbound secret", type: "secret", description: "Shared key that signs the replies sent to the outbound URL." },
   ],
   events: [{ name: "message.received", permission: "inbox.read" }],
-  jobs: [{ name: "deliver", entry: "./jobs/deliver.ts", timeoutSeconds: 30, maxAttempts: 5 }],
+  jobs: [{ name: "deliver", entry: "./jobs/deliver.ts", timeoutSeconds: 30, maxAttempts: DELIVER_ATTEMPTS }],
   nav: [{ label: "Inbox", href: "/inbox", icon: "app", permission: "inbox.read" }],
   pages: [
     { path: "/inbox", entry: "./web/page.tsx", kind: "page", dynamic: "force-dynamic", permission: "inbox.read" },
