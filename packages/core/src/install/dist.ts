@@ -4,7 +4,13 @@ import { dirname, join } from "node:path";
 /** The directory `next build` writes when nothing says otherwise, and the one a deployment that never changed a module serves. */
 export const DEFAULT_DIST = ".next";
 const DIST_NAME = /^\.next(-[a-zA-Z0-9]{1,24})?$/;
-const DIST_TSCONFIG = /^tsconfig(\.next-[a-zA-Z0-9]{1,24})\.json$/;
+/**
+ * The shape of the names `newDistName` makes: a time and a few random characters, lowercase. Only a directory with this shape
+ * (or `.next` itself) is ever removed as a stray: a folder of yours called `.next-backup` is valid as a build name and is
+ * still never touched.
+ */
+const GENERATED_DIST = /^\.next-[a-z0-9]{8,16}$/;
+const GENERATED_TSCONFIG = /^tsconfig(\.next-[a-z0-9]{8,16})\.json$/;
 /** A server that has just been replaced may still be draining for this long and reading its own directory. */
 export const SWITCH_GRACE_MS = 60_000;
 
@@ -45,7 +51,7 @@ export function readLiveDist(webRoot: string, dataDir: string): LiveDist {
   }
   const fallback = (reason: string): LiveDist => ({ name: DEFAULT_DIST, recorded: true, reason });
   if (text === "") return fallback("the record is empty");
-  if (!isDistName(text)) return fallback(`"${text}" is not a build directory name`);
+  if (!isDistName(text)) return fallback(`"${text.length > 40 ? `${text.slice(0, 40)}…` : text}" is not a build directory name`);
   if (!existsSync(join(webRoot, text))) return fallback(`${text} does not exist`);
   if (!existsSync(join(webRoot, text, "BUILD_ID"))) return fallback(`${text} has no BUILD_ID: it is an unfinished build`);
   return { name: text, recorded: true, reason: null };
@@ -56,7 +62,8 @@ export function writeLiveDist(dataDir: string, name: string): void {
   assertDistName(name);
   const file = distRecordPath(dataDir);
   mkdirSync(dirname(file), { recursive: true });
-  const partial = `${file}.part`;
+  // Its own name for the partial file, so two processes writing at once cannot share one.
+  const partial = `${file}.${process.pid}.part`;
   writeFileSync(partial, `${name}\n`);
   renameSync(partial, file);
 }
@@ -87,7 +94,8 @@ export interface StrayOptions {
 }
 
 /**
- * Removes the build directories (and their tsconfig files) that are not in `keep`. Returns what it removed. A link is
+ * Removes the build directories (and their tsconfig files) that are not in `keep`. Only `.next` and names of the shape
+ * `newDistName` makes are candidates, so anything else that starts like a build is left alone. Returns what it removed. A link is
  * removed, never followed. After a switch it removes nothing for a minute: the server that was replaced may still be
  * draining and reading its own files.
  */
@@ -102,8 +110,8 @@ export function removeStrayDists(webRoot: string, keep: readonly string[], optio
   }
   const removed: string[] = [];
   for (const name of readdirSync(webRoot)) {
-    const tsconfig = DIST_TSCONFIG.exec(name);
-    const stray = tsconfig === null ? isDistName(name) && !keep.includes(name) : !keep.includes(tsconfig[1]!);
+    const tsconfig = GENERATED_TSCONFIG.exec(name);
+    const stray = tsconfig === null ? (name === DEFAULT_DIST || GENERATED_DIST.test(name)) && !keep.includes(name) : !keep.includes(tsconfig[1]!);
     if (!stray) continue;
     rmSync(join(webRoot, name), { recursive: true, force: true });
     removed.push(name);

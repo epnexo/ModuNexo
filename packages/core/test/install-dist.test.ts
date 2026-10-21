@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
@@ -75,6 +75,11 @@ describe("readLiveDist", () => {
       assert.equal(live.name, ".next", JSON.stringify(text));
       assert.match(String(live.reason), why, JSON.stringify(text));
     }
+    const huge = "x".repeat(5000);
+    record(huge);
+    const echoed = readLiveDist(webRoot, dataDir);
+    assert.equal(echoed.name, ".next");
+    assert.ok(String(echoed.reason).length < 200, `the reason is short: ${String(echoed.reason).length} characters`);
     mkdirSync(join(webRoot, ".next-half"));
     record(".next-half");
     const half = readLiveDist(webRoot, dataDir);
@@ -89,7 +94,7 @@ describe("writeLiveDist", () => {
     assert.equal(readFileSync(distRecordPath(dataDir), "utf8"), ".next-one\n");
     writeLiveDist(dataDir, ".next-two");
     assert.equal(readFileSync(distRecordPath(dataDir), "utf8"), ".next-two\n");
-    assert.deepEqual(existsSync(`${distRecordPath(dataDir)}.part`), false);
+    assert.deepEqual(readdirSync(join(dataDir, "run")), ["web.dist"], "no partial file is left beside the record");
   });
 
   it("refuses a name that is not a build directory name, and records nothing", () => {
@@ -123,45 +128,63 @@ describe("writeDistTsconfig", () => {
 });
 
 describe("removeStrayDists", () => {
-  const strays = () => ["", "-old", "-older", "-live"].map((suffix) => `.next${suffix}`);
+  // Names of the shape `newDistName` makes: a time and a few random characters, lowercase.
+  const OLD = ".next-stray0001";
+  const OLDER = ".next-stray0002";
+  const LIVE = ".next-live0001";
+  const strays = () => [".next", OLD, OLDER, LIVE];
 
   it("removes every build directory and tsconfig that is neither kept nor the live one's, and nothing else", () => {
     for (const name of strays()) build(name);
-    writeFileSync(join(webRoot, "tsconfig.next-old.json"), "{}");
-    writeFileSync(join(webRoot, "tsconfig.next-live.json"), "{}");
+    writeFileSync(join(webRoot, `tsconfig${OLD}.json`), "{}");
+    writeFileSync(join(webRoot, `tsconfig${LIVE}.json`), "{}");
     writeFileSync(join(webRoot, "tsconfig.json"), "{}");
     mkdirSync(join(webRoot, ".next.rollback"));
     mkdirSync(join(webRoot, ".nextra"));
     mkdirSync(join(webRoot, "node_modules"));
-    const removed = removeStrayDists(webRoot, [".next-live"]);
-    assert.deepEqual(removed.sort(), [".next", ".next-old", ".next-older", "tsconfig.next-old.json"].sort());
-    for (const kept of [".next-live", "tsconfig.next-live.json", "tsconfig.json", ".next.rollback", ".nextra", "node_modules"]) {
+    const removed = removeStrayDists(webRoot, [LIVE]);
+    assert.deepEqual(removed.sort(), [".next", OLD, OLDER, `tsconfig${OLD}.json`].sort());
+    for (const kept of [LIVE, `tsconfig${LIVE}.json`, "tsconfig.json", ".next.rollback", ".nextra", "node_modules"]) {
       assert.equal(existsSync(join(webRoot, kept)), true, kept);
     }
-    for (const gone of [".next", ".next-old", ".next-older", "tsconfig.next-old.json"]) assert.equal(existsSync(join(webRoot, gone)), false, gone);
+    for (const gone of [".next", OLD, OLDER, `tsconfig${OLD}.json`]) assert.equal(existsSync(join(webRoot, gone)), false, gone);
+  });
+
+  it("never removes what the platform did not make: a folder, a file or a tsconfig of yours that merely starts like a build", () => {
+    mkdirSync(join(webRoot, ".next-backup"));
+    writeFileSync(join(webRoot, ".next-backup", "precious.txt"), "keep");
+    writeFileSync(join(webRoot, ".next-notes"), "keep");
+    mkdirSync(join(webRoot, ".next-UPPERCASE0001"));
+    mkdirSync(join(webRoot, ".next-short"));
+    writeFileSync(join(webRoot, "tsconfig.next-mine.json"), "{}");
+    build(OLD);
+    assert.deepEqual(removeStrayDists(webRoot, []), [OLD]);
+    for (const kept of [".next-backup/precious.txt", ".next-notes", ".next-UPPERCASE0001", ".next-short", "tsconfig.next-mine.json"]) {
+      assert.equal(existsSync(join(webRoot, kept)), true, kept);
+    }
   });
 
   it("keeps several directories when asked to (the live one and the one being built)", () => {
     for (const name of strays()) build(name);
-    assert.deepEqual(removeStrayDists(webRoot, [".next-live", ".next-old"]).sort(), [".next", ".next-older"]);
+    assert.deepEqual(removeStrayDists(webRoot, [LIVE, OLD]).sort(), [".next", OLDER]);
   });
 
   it("removes nothing right after a switch, because the server it replaced may still be draining", () => {
     for (const name of strays()) build(name);
-    writeLiveDist(dataDir, ".next-live");
-    assert.deepEqual(removeStrayDists(webRoot, [".next-live"], { recordPath: distRecordPath(dataDir) }), []);
+    writeLiveDist(dataDir, LIVE);
+    assert.deepEqual(removeStrayDists(webRoot, [LIVE], { recordPath: distRecordPath(dataDir) }), []);
     for (const name of strays()) assert.equal(existsSync(join(webRoot, name)), true, name);
     const earlier = new Date(Date.now() - 120_000);
     utimesSync(distRecordPath(dataDir), earlier, earlier);
-    assert.equal(removeStrayDists(webRoot, [".next-live"], { recordPath: distRecordPath(dataDir) }).length, 3);
+    assert.equal(removeStrayDists(webRoot, [LIVE], { recordPath: distRecordPath(dataDir) }).length, 3);
   });
 
   it("follows no link out of the web folder", () => {
     const outside = join(root, "outside");
     mkdirSync(outside);
     writeFileSync(join(outside, "precious.txt"), "keep");
-    symlinkSync(outside, join(webRoot, ".next-link"));
-    assert.deepEqual(removeStrayDists(webRoot, []), [".next-link"]);
+    symlinkSync(outside, join(webRoot, ".next-link00001"));
+    assert.deepEqual(removeStrayDists(webRoot, []), [".next-link00001"]);
     assert.equal(readFileSync(join(outside, "precious.txt"), "utf8"), "keep");
   });
 

@@ -33,7 +33,7 @@ Branch: feat/install-without-downtime (from main c2d7b78). Delivery strategy: as
 - [x] T2 (S1, S3) `buildWithRollback` builds into a new directory; commit and rollback; journal and recovery. Route: inline. Commit: next commit (RED observed; install suites 63/63)
 - [x] T3 (S2, S5) `run.ts start` reads the record for each (re)start; `web:build` writes it; the supervisor passes the directory to the server. Route: inline. Commit: next commit (RED observed for the supervisor and the start preparation; 31 tests)
 - [x] T4 (S1, S2, S3) apply and change integration; end-to-end: a real build while the server answers continuously. Route: inline. Commit: next commit (e2e 9/9; mutation check red)
-- [ ] T5 (S6) docs, full suite, independent verifier. Route: inline then verifier.
+- [x] T5 (S6) docs, full suite (1396/1396), independent verifier (no blockers; two advisories fixed). Route: inline then verifier. Commit: next commit
 
 ## Log
 
@@ -87,3 +87,17 @@ Branch: feat/install-without-downtime (from main c2d7b78). Delivery strategy: as
   on "the server answered every request while the build ran", so the probe can see the defect this feature removes. The unit-level
   red was observed earlier (install-build tests: the runner asserts the serving build is untouched while it runs).
   Documented in the README (the downtime paragraphs) and the HANDOFF; ADR-001 open question 1 now points here.
+- L10: Full suite 1396/1396. Independent verifier (scratch copy; it also ran the install e2e once: 9/9): S1-S6 pass, no blockers. Five
+  advisories. Fixed here, with tests that failed first where it mattered: (1) `removeStrayDists` deleted any `.next-<letters>`, so a
+  folder or file of the owner's named like `.next-backup` or `tsconfig.next-mine.json` was destroyed once the record was a minute
+  old; now only `.next` and the shape `newDistName` makes (`.next-` and 8 to 16 lowercase letters or digits) are candidates;
+  (3) recovery removed the journal's directory even when it was the one serving (only a forged or damaged journal does that), now it
+  leaves it and says so (red without the guard, green with it); (5) a 1 MB record was echoed whole into the warning (cut to 40
+  characters), and two processes writing the record shared one `.part` name (now per process id).
+- L11: Advisories left, not fixed: (2) the 60 s grace starts at the record's mtime and protects a draining server only if the restart
+  was really requested; when `requestRestart` fails or a process dies after the journal is cleared, the old server keeps serving
+  the replaced directory and a later run can remove it (the old code broke the server earlier in the same cases); (4) a record
+  that names a lost directory falls back to `.next` without checking that `.next` exists, and after the first switch `.next` is
+  itself a stray, so a lost recorded directory leaves a server with no build (in Docker a recreated container ships a fresh `.next`);
+  (5, rest) `commit()` can throw after the lifecycle step succeeded, outside the try block (the journal stays and the next recovery
+  reports it), and `prepare` clears directories with `rmSync` on the supervisor thread before a start.

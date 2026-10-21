@@ -23,7 +23,7 @@ const module_ = (id: string): RegistrationModule => ({
 });
 const before = [module_("alpha")];
 const after = [module_("alpha"), module_("beta")];
-const DIST = ".next-new1";
+const DIST = ".next-newbuild01";
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "modunexo-build-"));
@@ -137,26 +137,26 @@ describe("buildWithRollback", () => {
   });
 
   it("clears out directories that no longer serve, but not the live one, and not right after a switch", async () => {
-    put(".next-stray/BUILD_ID", "stray");
-    put("tsconfig.next-stray.json", "{}");
+    put(".next-stray00001/BUILD_ID", "stray");
+    put("tsconfig.next-stray00001.json", "{}");
     await buildWithRollback(options(succeeds));
-    assert.equal(existsSync(join(root, ".next-stray")), false);
-    assert.equal(existsSync(join(root, "tsconfig.next-stray.json")), false);
+    assert.equal(existsSync(join(root, ".next-stray00001")), false);
+    assert.equal(existsSync(join(root, "tsconfig.next-stray00001.json")), false);
     assert.equal(existsSync(join(root, ".next")), true, "the live build stays");
 
     // A switch has just been recorded: the server it replaced (.next) may still be draining, so it is not removed yet.
     rmSync(join(root, DIST), { recursive: true });
-    put(".next-draining/BUILD_ID", "serving");
-    writeLiveDist(dataDir, ".next-draining");
-    await buildWithRollback({ ...options(quick), dist: ".next-new2" });
+    put(".next-draining01/BUILD_ID", "serving");
+    writeLiveDist(dataDir, ".next-draining01");
+    await buildWithRollback({ ...options(quick), dist: ".next-newbuild02" });
     assert.equal(existsSync(join(root, ".next")), true, "the record is fresh");
 
     const earlier = new Date(Date.now() - 120_000);
     utimesSync(distRecordPath(dataDir), earlier, earlier);
-    await buildWithRollback({ ...options(quick), dist: ".next-new4" });
+    await buildWithRollback({ ...options(quick), dist: ".next-newbuild04" });
     assert.equal(existsSync(join(root, ".next")), false, "a minute later it is stray");
-    assert.equal(existsSync(join(root, ".next-new2")), false, "so is a build nobody committed");
-    assert.equal(existsSync(join(root, ".next-draining")), true, "the live one stays");
+    assert.equal(existsSync(join(root, ".next-newbuild02")), false, "so is a build nobody committed");
+    assert.equal(existsSync(join(root, ".next-draining01")), true, "the live one stays");
   });
 
   it("will not commit a directory that is not a finished build, so the record can never name one", async () => {

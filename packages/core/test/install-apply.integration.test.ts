@@ -429,6 +429,18 @@ describe("recoverInterrupted", () => {
     assert.equal(existsSync(join(paths().dataDir, "previous", "reports-1.0.0")), false);
   });
 
+  test("a journal that names the build directory that is serving never makes recovery remove it", async () => {
+    await crashedUpgrade("building");
+    const serving = readLiveDist(join(work, "web"), paths().dataDir).name;
+    // Not something a crash produces: a journal that was written by hand, or damaged, naming the live build.
+    writeJournal(paths().dataDir, { ...readJournal(paths().dataDir)!, dist: serving });
+    const notes = await recover();
+    assert.equal(existsSync(join(work, "web", serving, "BUILD_ID")), true, "the serving build is still there");
+    assert.equal(readLiveDist(join(work, "web"), paths().dataDir).name, serving);
+    assert.match(notes.join("\n"), /serving/);
+    assert.equal(readJournal(paths().dataDir), null);
+  });
+
   test("does nothing while a run with a live process is in progress", async () => {
     await crashedUpgrade("building");
     await startOperation(pool, { moduleId: "reports", version: "1.1.0", sha256: "d".repeat(64), kind: "upgrade", actor: "apply-test" });

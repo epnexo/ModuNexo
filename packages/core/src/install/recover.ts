@@ -7,7 +7,7 @@ import { discoverModules } from "../discovery.ts";
 import { LifecycleService } from "../lifecycle/index.ts";
 import { closeStaleOperations, liveOperation } from "../operations/index.ts";
 import { Registry } from "../registry.ts";
-import { distTsconfigName, writeLiveDist } from "./dist.ts";
+import { distTsconfigName, readLiveDist, writeLiveDist } from "./dist.ts";
 import { clearJournal, isChange, readJournal } from "./journal.ts";
 import { undoPlacement } from "./place.ts";
 
@@ -58,7 +58,10 @@ export async function recoverInterrupted(options: RecoverOptions): Promise<strin
         keep = found === current.expected;
       } else keep = rows[0]?.installed_version === current.version;
     }
-    const dist = current.dist;
+    // A journal that names the build that is serving (a forged or damaged one: a run never names it) must not take it away.
+    const serving = readLiveDist(options.webRoot, options.dataDir).name;
+    const dist = current.dist === serving ? undefined : current.dist;
+    if (current.dist !== undefined && dist === undefined) notes.push(`the journal named ${serving}, which is the build that is serving, so it was left alone`);
     if (keep) {
       if (dist === undefined) {
         // A journal from before builds had directories of their own: the kept previous build is no longer needed.
