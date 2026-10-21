@@ -37,7 +37,7 @@ Branch: feat/llm-adapter (from main e1b350e). Delivery strategy: ask-on-risk; th
 ## Tasks
 
 - [x] T1 (S1, S3, S4, S6 SDK side) manifest `llm`, `llm.ts` (types, symbol, `LlmError`, `chat`, `probeLlm`). Route: inline. Commit: next commit (RED observed; SDK 124/124)
-- [ ] T2 (S2, S3, S4, S5, S6) OpenAI-compatible provider, `LlmService`, tests against a local HTTP server. Route: inline.
+- [x] T2 (S2, S3, S4, S5, S6) OpenAI-compatible provider, `LlmService`, tests against a local HTTP server. Route: inline. Commit: next commit (RED observed; 26 tests twice green)
 - [ ] T3 (S4 CLI, S7, S8 review) register in web and worker, `llm probe`, install review. Route: inline.
 - [ ] T4 (S8 docs) README, skill, ADR; full suite; independent verifier. Route: inline then verifier.
 
