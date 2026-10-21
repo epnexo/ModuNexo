@@ -30,7 +30,7 @@ export function ProbeButton({ moduleId, name }: { moduleId: string; name: string
           type="button"
           onClick={test}
           disabled={pending}
-          aria-label={`Test the model connection of ${name}`}
+          aria-label={`Test connection for ${name}`}
           className="inline-flex h-9 items-center gap-2 rounded-md border border-border-strong px-3 text-sm transition-colors duration-150 hover:bg-panel-hover disabled:cursor-not-allowed disabled:opacity-60"
         >
           {pending ? <LoaderCircle aria-hidden className="size-4 animate-spin motion-reduce:animate-none" /> : null}

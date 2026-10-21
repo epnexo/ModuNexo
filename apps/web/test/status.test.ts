@@ -32,6 +32,11 @@ describe("formatBytes", () => {
     assert.deepEqual([1073741824, 5 * 1099511627776].map(formatBytes), ["1.0 GB", "5.0 TB"]);
   });
 
+  it("moves up a unit when rounding reaches the next one, instead of writing 1024 KB", () => {
+    assert.deepEqual([1048575, 1024 * 1024 - 100, 1024 ** 3 - 1, 1024 ** 4 - 1].map(formatBytes), ["1.0 MB", "1.0 MB", "1.0 GB", "1.0 TB"]);
+    assert.equal(formatBytes(1024 * 1023 + 100), "1023 KB", "and stays when it does not");
+  });
+
   it("does not break on what is not a size", () => {
     for (const bad of [-5, Number.NaN, Number.POSITIVE_INFINITY]) assert.equal(formatBytes(bad), "0 B", String(bad));
   });
@@ -43,6 +48,10 @@ describe("formatWait and formatAgo", () => {
     assert.deepEqual([60, 125, 3599].map(formatWait), ["1 min", "2 min", "59 min"]);
     assert.deepEqual([3600, 7300, 86399].map(formatWait), ["1 h", "2 h", "23 h"]);
     assert.deepEqual([86400, 200000].map(formatWait), ["1 d", "2 d"]);
+  });
+
+  it("reads what is not a number as no time at all", () => {
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, -30]) assert.equal(formatWait(bad), "0 s", String(bad));
   });
 
   it("says how long ago something happened", () => {

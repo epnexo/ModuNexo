@@ -19,18 +19,24 @@ const UNITS = ["B", "KB", "MB", "GB", "TB"] as const;
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 1) return "0 B";
   if (bytes < 1024) return `${Math.floor(bytes)} B`;
+  const write = (value: number): string => (value < 10 ? value.toFixed(1) : String(Math.round(value)));
   let value = bytes;
   let unit = 0;
   while (value >= 1024 && unit < UNITS.length - 1) {
     value /= 1024;
     unit += 1;
   }
-  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${UNITS[unit]}`;
+  // 1,048,575 bytes is 1023.999 KB, which writes as "1024 KB": say 1.0 MB instead.
+  if (Number(write(value)) >= 1024 && unit < UNITS.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${write(value)} ${UNITS[unit]}`;
 }
 
 /** A length of time in the largest unit that fits: 45 s, 2 min, 3 h, 1 d. */
 export function formatWait(seconds: number): string {
-  const s = Math.max(0, Math.floor(seconds));
+  const s = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
   if (s < 60) return `${s} s`;
   if (s < 3600) return `${Math.floor(s / 60)} min`;
   if (s < 86400) return `${Math.floor(s / 3600)} h`;
