@@ -27,14 +27,24 @@ export interface HeaderRule {
 }
 
 /**
- * What `next.config` applies. A header set there replaces one the route set itself, so the stored files, whose route
- * sends a policy of its own (`default-src 'none'; sandbox`), are left out of the first rule and get the same headers
- * without the content policy in the second.
+ * Paths whose route sends a content policy of its own (`default-src 'none'; sandbox`, so what it serves cannot run
+ * anything): a stored file and the logo. `skip` is what the first rule must not match for that path.
+ */
+const OWN_POLICY = [
+  { source: "/api/files/:path*", skip: "api/files/" },
+  { source: "/api/brand/logo", skip: "api/brand/logo$" },
+] as const;
+
+/**
+ * What `next.config` applies. A header set there replaces one the route set itself, so the paths in `OWN_POLICY` are left out
+ * of the first rule and get the same headers without the content policy in a rule of their own, which lets the route's
+ * policy reach the browser.
  */
 export function headerRules(https: boolean): HeaderRule[] {
   const all = securityHeaders(https);
+  const withoutPolicy = all.filter((header) => header.key !== "Content-Security-Policy");
   return [
-    { source: "/:path((?!api/files/).*)", headers: all },
-    { source: "/api/files/:path*", headers: all.filter((header) => header.key !== "Content-Security-Policy") },
+    { source: `/:path((?!${OWN_POLICY.map((path) => path.skip).join("|")}).*)`, headers: all },
+    ...OWN_POLICY.map((path) => ({ source: path.source, headers: withoutPolicy })),
   ];
 }

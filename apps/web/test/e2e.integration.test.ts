@@ -1149,6 +1149,22 @@ describe("web app: with a module installed", () => {
     }
   });
 
+  test("the logo is served as an image that cannot run anything: its own policy reaches the browser next to the shell's other protections", async () => {
+    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(40, 3)]);
+    const brand = new BrandService(db!);
+    await brand.setLogo(png, "e2e");
+    try {
+      const logo = await call("GET", "/api/brand/logo");
+      assert.equal(logo.status, 200, "it is public: the sign-in page shows it");
+      assert.equal(logo.headers["content-type"], "image/png");
+      assert.equal(logo.headers["content-security-policy"], "default-src 'none'; sandbox");
+      assert.equal(logo.headers["x-content-type-options"], "nosniff");
+      assert.equal(logo.headers["x-frame-options"], "DENY");
+    } finally {
+      await brand.clearLogo("e2e");
+    }
+  });
+
   test("a route stores a file through the SDK; a viewer with the permission downloads it as an attachment and everyone else is refused", async () => {
     const upload = (body: string | Buffer, headers: Record<string, string> = {}, query = "") =>
       callRaw("POST", `/e2e-fixture/upload${query}`, { cookie, origin: origin(), ...headers }, body);
