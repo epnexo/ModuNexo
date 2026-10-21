@@ -9,6 +9,8 @@ var
 node_modules
 **/node_modules
 **/.next
+**/.next-*
+**/tsconfig.next-*.json
 **/*.log
 modules/*
 !modules/.gitkeep
