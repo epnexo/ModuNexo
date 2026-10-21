@@ -287,6 +287,33 @@ export class JobService {
     return result.rows.map(toRecord);
   }
 
+  /** For each module that has jobs, how many are in each status. Ordered by module. */
+  async counts(): Promise<{ moduleId: string; counts: Record<JobStatus, number> }[]> {
+    const { rows } = await this.pool.query("select module_id, status, count(*)::int as n from core.jobs group by module_id, status order by module_id");
+    const byModule = new Map<string, Record<JobStatus, number>>();
+    for (const row of rows) {
+      const entry = byModule.get(row.module_id as string) ?? { queued: 0, running: 0, succeeded: 0, dead: 0, cancelled: 0 };
+      entry[row.status as JobStatus] = row.n as number;
+      byModule.set(row.module_id as string, entry);
+    }
+    return [...byModule].map(([moduleId, counts]) => ({ moduleId, counts }));
+  }
+
+  /** The newest jobs that need a look: the dead, and the queued ones that failed and wait for a retry. Never the payload. At most 100. */
+  async troubled(limit = 20): Promise<JobRecord[]> {
+    const n = Math.min(Math.max(Number.isFinite(limit) ? Math.trunc(limit) : 20, 1), 100);
+    const result = await this.pool.query(`select ${ROW} from core.jobs where status = 'dead' or (status = 'queued' and last_error is not null) order by id desc limit ${n}`);
+    return result.rows.map(toRecord);
+  }
+
+  /** How many queued jobs are due now, and how many seconds the oldest of them has been waiting (null when none is). */
+  async dueWaiting(): Promise<{ count: number; waitingSeconds: number | null }> {
+    const now = this.now();
+    const { rows } = await this.pool.query("select count(*)::int as n, min(run_at) as oldest from core.jobs where status = 'queued' and run_at <= $1::timestamptz", [now]);
+    const count = rows[0].n as number;
+    return { count, waitingSeconds: count === 0 ? null : Math.max(0, Math.floor((now.getTime() - (rows[0].oldest as Date).getTime()) / 1000)) };
+  }
+
   /** Cancels a job that has not started. */
   async cancel(id: number): Promise<JobRecord> {
     const cancelled = await this.pool.query(

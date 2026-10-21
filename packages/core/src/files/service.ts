@@ -182,6 +182,12 @@ export class FileService implements FilesService {
     return rows.map((row) => ({ ...toMeta(row), moduleId: row.module_id as string }));
   }
 
+  /** For each module that has files, how many and how many bytes in all. Ordered by module. Names, refs and hashes are not read. */
+  async totals(): Promise<{ moduleId: string; files: number; bytes: number }[]> {
+    const { rows } = await this.pool.query("select module_id, count(*)::int as files, coalesce(sum(size), 0) as bytes from core.files group by module_id order by module_id");
+    return rows.map((row) => ({ moduleId: row.module_id as string, files: row.files as number, bytes: Number(row.bytes) }));
+  }
+
   /** Deletes the module's own file: the row first, then the bytes (what remains of them is swept). */
   async remove(moduleId: string, id: string): Promise<boolean> {
     if (!UUID.test(id)) return false;

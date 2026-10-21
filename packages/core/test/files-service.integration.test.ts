@@ -402,3 +402,21 @@ describe("FileService.removeModuleBytes", { concurrency: false }, () => {
     await assert.rejects(() => service.removeModuleBytes("../x"), FileError);
   });
 });
+
+describe("FileService.totals", { concurrency: false }, () => {
+  it("counts the files and adds up the bytes of each module that has any", async (t) => {
+    if (skipReason) return t.skip(skipReason);
+    await wipe();
+    assert.deepEqual(await service.totals(), []);
+    await service.put(docsId, { name: "a.txt", data: ascii("12345") }, {});
+    await service.put(docsId, { name: "b.txt", data: ascii("1234567") }, {});
+    await service.put(otherId, { name: "c.txt", data: ascii("123") }, {});
+    const totals = await service.totals();
+    assert.deepEqual(totals.find((entry) => entry.moduleId === docsId), { moduleId: docsId, files: 2, bytes: 12 });
+    assert.deepEqual(totals.find((entry) => entry.moduleId === otherId), { moduleId: otherId, files: 1, bytes: 3 });
+    assert.deepEqual(totals.map((entry) => entry.moduleId), [...totals.map((entry) => entry.moduleId)].sort(), "ordered by module");
+    assert.equal(totals.some((entry) => entry.moduleId === plainId), false, "a module with no files is not listed");
+    for (const entry of totals) assert.deepEqual(Object.keys(entry).sort(), ["bytes", "files", "moduleId"], "no name, ref or hash");
+  });
+});
+

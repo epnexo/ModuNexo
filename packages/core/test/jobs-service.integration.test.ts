@@ -458,3 +458,78 @@ describe("JobService.list, cancel, retry and prune", () => {
     assert.ok(await row(stuck.id));
   });
 });
+
+describe("JobService.counts, troubled and dueWaiting: what a status screen reads", () => {
+  /** Runs a job of module `id` to its end the way the worker would: claimed, then completed or failed until it is dead. */
+  const claimOne = async (id = moduleId) => {
+    const [job] = await service.claim("w1", 1, [id]);
+    return job!;
+  };
+
+  test("counts the jobs of each module by status, for the modules that have any", async () => {
+    assert.deepEqual(await service.counts(), []);
+    await enqueue(null, { delaySeconds: 7200 });
+    const done = await enqueue();
+    const dead = await enqueue(null, {}, "fast");
+    const cancelled = await enqueue();
+    await enqueue(null, {}, "sync", otherId);
+    await service.cancel(cancelled.id);
+    await pool!.query("update core.jobs set run_at = $2 where id = any($1)", [[done.id], at(-100)]);
+    await service.complete(await claimOne(), "w1");
+    await pool!.query("update core.jobs set run_at = $2 where id = $1", [dead.id, at(-50)]);
+    let job = await claimOne();
+    assert.equal(job.id, dead.id);
+    await service.fail(job, "w1", new Error("first"));
+    advance(3600);
+    job = await claimOne();
+    assert.equal(await service.fail(job, "w1", new Error("second")), "dead");
+
+    const counts = await service.counts();
+    const mine = counts.find((entry) => entry.moduleId === moduleId)!;
+    const other = counts.find((entry) => entry.moduleId === otherId)!;
+    assert.deepEqual(mine.counts, { queued: 1, running: 0, succeeded: 1, dead: 1, cancelled: 1 });
+    assert.deepEqual(other.counts, { queued: 1, running: 0, succeeded: 0, dead: 0, cancelled: 0 });
+    assert.deepEqual(counts.map((entry) => entry.moduleId), [...counts.map((entry) => entry.moduleId)].sort(), "ordered by module");
+    assert.equal(counts.some((entry) => entry.moduleId === offId), false, "a module with no jobs is not listed");
+  });
+
+  test("lists the jobs that need a look, newest first: the dead and those waiting for a retry, never the payload", async () => {
+    const quiet = await enqueue({ secret: "never shown" }, { delaySeconds: 7200 });
+    const finished = await enqueue({ secret: "never shown" });
+    const retrying = await enqueue({ secret: "never shown" });
+    const dead = await enqueue({ secret: "never shown" }, {}, "fast");
+    await pool!.query("update core.jobs set run_at = $2 where id = any($1)", [[finished.id, retrying.id, dead.id], at(-100)]);
+    const byId = (jobs: { id: number }[], id: number) => jobs.find((job) => job.id === id) as Awaited<ReturnType<typeof service.claim>>[number];
+    const first = await service.claim("w1", 3, [moduleId]);
+    await service.complete(byId(first, finished.id), "w1");
+    assert.equal(await service.fail(byId(first, retrying.id), "w1", new Error("temporary trouble")), "retry");
+    assert.equal(await service.fail(byId(first, dead.id), "w1", new Error("first")), "retry");
+    advance(3600);
+    const second = await service.claim("w1", 2, [moduleId]);
+    assert.equal(await service.fail(byId(second, dead.id), "w1", new Error("gave up")), "dead");
+    assert.equal(await service.fail(byId(second, retrying.id), "w1", new Error("temporary trouble")), "retry");
+
+    const troubled = await service.troubled();
+    const kinds = troubled.map((job) => [job.status, job.lastError]);
+    assert.ok(kinds.some(([status, error]) => status === "dead" && error === "gave up"), JSON.stringify(kinds));
+    assert.ok(kinds.some(([status, error]) => status === "queued" && error === "temporary trouble"), JSON.stringify(kinds));
+    assert.equal(troubled.some((job) => job.id === quiet.id || job.id === finished.id), false, "a queued job with no error and a finished one are not trouble");
+    assert.deepEqual(troubled.map((job) => job.id), [...troubled.map((job) => job.id)].sort((a, b) => b - a), "newest first");
+    for (const job of troubled) assert.equal("payload" in job, false, "the payload is never read");
+    assert.equal((await service.troubled(1)).length, 1);
+    assert.equal((await service.troubled(0)).length, 1, "a limit below 1 is 1");
+    assert.ok((await service.troubled(100000)).length >= 2, "and an absurd one is capped, not refused");
+  });
+
+  test("says how many jobs are due and how long the oldest has waited, which is how a missing worker shows", async () => {
+    assert.deepEqual(await service.dueWaiting(), { count: 0, waitingSeconds: null });
+    await enqueue();
+    await enqueue(null, { delaySeconds: 3600 });
+    advance(90);
+    await enqueue();
+    assert.deepEqual(await service.dueWaiting(), { count: 2, waitingSeconds: 90 }, "the delayed one is not due yet");
+    await service.claim("w1", 2, [moduleId]);
+    assert.deepEqual(await service.dueWaiting(), { count: 0, waitingSeconds: null }, "a job a worker holds is not waiting");
+  });
+});
+
