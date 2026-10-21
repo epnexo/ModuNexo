@@ -12,7 +12,10 @@ export interface Inbound {
 
 export type Parsed = { ok: true; value: Inbound } | { ok: false; error: string };
 
-const refOf = (value: unknown): string | null => (typeof value === "string" && value.trim() !== "" && value.length <= MAX_REF_CHARS ? value : null);
+/** Postgres cannot store a NUL character in text, so it is refused here, as a bad request, instead of failing the write. */
+export const hasNul = (value: string): boolean => value.includes("\u0000");
+
+const refOf = (value: unknown): string | null => (typeof value === "string" && value.trim() !== "" && value.length <= MAX_REF_CHARS && !hasNul(value) ? value : null);
 
 /** Checks the body a channel posts to the webhook; the error names the first field that cannot be used. */
 export function parseInbound(raw: unknown): Parsed {
@@ -23,7 +26,7 @@ export function parseInbound(raw: unknown): Parsed {
   if (threadRef === null) return { ok: false, error: `"threadRef" must be a text of 1 to ${MAX_REF_CHARS} characters.` };
   const messageId = refOf(body.messageId);
   if (messageId === null) return { ok: false, error: `"messageId" must be a text of 1 to ${MAX_REF_CHARS} characters.` };
-  if (typeof body.text !== "string" || body.text.trim() === "" || body.text.length > MAX_TEXT_CHARS) return { ok: false, error: `"text" must be a text of 1 to ${MAX_TEXT_CHARS} characters that is not blank.` };
+  if (typeof body.text !== "string" || body.text.trim() === "" || body.text.length > MAX_TEXT_CHARS || hasNul(body.text)) return { ok: false, error: `"text" must be a text of 1 to ${MAX_TEXT_CHARS} characters that is not blank.` };
 
   let contact = { ref: threadRef, name: null as string | null };
   if (body.contact !== undefined) {
@@ -31,7 +34,7 @@ export function parseInbound(raw: unknown): Parsed {
     const given = body.contact as Record<string, unknown>;
     const ref = refOf(given.ref);
     if (ref === null) return { ok: false, error: `"contact.ref" must be a text of 1 to ${MAX_REF_CHARS} characters.` };
-    if (given.name !== undefined && given.name !== null && (typeof given.name !== "string" || given.name.length > MAX_REF_CHARS)) return { ok: false, error: `"contact.name" must be a text of up to ${MAX_REF_CHARS} characters.` };
+    if (given.name !== undefined && given.name !== null && (typeof given.name !== "string" || given.name.length > MAX_REF_CHARS || hasNul(given.name))) return { ok: false, error: `"contact.name" must be a text of up to ${MAX_REF_CHARS} characters.` };
     const name = typeof given.name === "string" && given.name.trim() !== "" ? given.name.trim() : null;
     contact = { ref, name };
   }

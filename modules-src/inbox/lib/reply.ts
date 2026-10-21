@@ -1,5 +1,5 @@
 import { enqueueJob, getDb, getSetting } from "@modunexo/sdk";
-import { MAX_TEXT_CHARS } from "./payload.ts";
+import { MAX_TEXT_CHARS, hasNul } from "./payload.ts";
 
 export type Replied = { found: false } | { found: true; messageId: number };
 
@@ -7,7 +7,7 @@ export type Replied = { found: false } | { found: true; messageId: number };
 export function replyText(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const text = raw.trim();
-  return text === "" || text.length > MAX_TEXT_CHARS ? null : text;
+  return text === "" || text.length > MAX_TEXT_CHARS || hasNul(text) ? null : text;
 }
 
 /**

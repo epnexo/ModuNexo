@@ -10,6 +10,16 @@ type Pending = {
   contact_ref: string;
 };
 
+/** `fetch` also accepts other schemes (a `data:` address answers ok without sending anything), so only http and https are used. */
+function isHttpAddress(value: string): boolean {
+  try {
+    const { protocol } = new URL(value);
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 const textOf = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
 
 /**
@@ -30,6 +40,10 @@ export default async function deliver(ctx: JobContext): Promise<void> {
 
   const url = textOf(await getSetting("inbox", "outbound_url"));
   if (url === "") return;
+  if (!isHttpAddress(url)) {
+    await db.query("update messages set status = 'failed', error = $2 where id = $1", [messageId, "The setting outbound_url must be an http or https address."]);
+    return;
+  }
   const secret = textOf(await getSetting("inbox", "outbound_secret"));
   if (secret === "") {
     await db.query("update messages set status = 'failed', error = $2 where id = $1", [messageId, "The setting outbound_secret is not set."]);
