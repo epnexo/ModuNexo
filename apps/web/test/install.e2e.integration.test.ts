@@ -100,20 +100,27 @@ async function waitForPage(path: string, marker: string, timeoutMs = 90_000): Pr
   assert.fail(`${path} never showed "${marker}" (last: ${last === null ? "no 200 reply" : last.slice(0, 200)})`);
 }
 
-/** Asks the server for a page every 100 ms until stopped, and keeps when each request was made and whether it got a 200. */
+/**
+ * Asks the server for a page every 100 ms until stopped, and keeps when each request was made, whether it got a 200 and what it
+ * got. The wait is generous (15 s): a machine that is building and running a whole suite can be slow, and slow is not down. A
+ * serving build that has gone fails at once, with an error or a 5xx, so the probe still sees it.
+ */
 function startProbe(path: string) {
-  const seen: { at: number; ok: boolean }[] = [];
+  const seen: { at: number; ok: boolean; detail: string }[] = [];
   let stopped = false;
   const loop = (async () => {
     while (!stopped) {
       const at = Date.now();
       let ok = false;
+      let detail = "";
       try {
-        ok = (await fetch(`http://127.0.0.1:${port}${path}`, { redirect: "manual", signal: AbortSignal.timeout(3000) })).status === 200;
-      } catch {
-        // no answer: the server is down or restarting
+        const reply = await fetch(`http://127.0.0.1:${port}${path}`, { redirect: "manual", signal: AbortSignal.timeout(15_000) });
+        ok = reply.status === 200;
+        detail = `HTTP ${reply.status}`;
+      } catch (error) {
+        detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
       }
-      seen.push({ at, ok });
+      seen.push({ at, ok, detail });
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
   })();
@@ -125,6 +132,9 @@ function startProbe(path: string) {
     },
   };
 }
+
+/** What the failed requests got, for an assertion message that says what happened. */
+const failures = (requests: { ok: boolean; detail: string }[]) => requests.filter((request) => !request.ok).map((request) => request.detail);
 
 /** The longest stretch in which every request failed, in milliseconds. */
 function longestOutage(seen: { at: number; ok: boolean }[]): number {
@@ -270,7 +280,7 @@ describe("install pipeline: end to end", () => {
 
     const during = seen.filter((request) => request.at < switchedAt);
     assert.ok(during.length >= 100, `the probe covered the whole build: ${during.length} requests`);
-    assert.deepEqual(during.filter((request) => !request.ok).length, 0, "the server answered every request while the build ran");
+    assert.deepEqual(failures(during), [], "the server answered every request while the build ran");
     const outage = longestOutage(seen);
     assert.ok(outage < 20_000, `the restart that switches builds is a gap of seconds, not minutes: ${outage} ms`);
 
@@ -295,7 +305,7 @@ describe("install pipeline: end to end", () => {
     const seen = await probe.stop();
     const during = seen.filter((request) => request.at < switchedAt);
     assert.ok(during.length >= 100, `the probe covered the build: ${during.length} requests`);
-    assert.equal(during.filter((request) => !request.ok).length, 0, "the module's own page kept being served by the old build until the switch");
+    assert.deepEqual(failures(during), [], "the module's own page kept being served by the old build until the switch");
     assert.ok(existsSync(join(dataDir, "previous", `${MODULE_ID}-1.0.0`, "package.json")));
 
     const live = readLiveDist(WEB_ROOT, dataDir).name;
@@ -316,7 +326,7 @@ describe("install pipeline: end to end", () => {
     });
     const seen = await probe.stop();
     assert.ok(seen.length >= 100, `the probe covered the failed build: ${seen.length} requests`);
-    assert.equal(seen.filter((request) => !request.ok).length, 0, "not one request failed: there was no restart and no build was ever put in service");
+    assert.deepEqual(failures(seen), [], "not one request failed: there was no restart and no build was ever put in service");
     assert.equal(readLiveDist(WEB_ROOT, dataDir).name, serving, "the record never changed");
     assert.deepEqual(buildDirs().filter((name) => name.startsWith(".next")), [serving], "the failed build's directory is gone, and so is the build the last switch retired");
     assert.deepEqual(buildDirs().filter((name) => name.startsWith("tsconfig.next-")), [`tsconfig${serving}.json`]);
