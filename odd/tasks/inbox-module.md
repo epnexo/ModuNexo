@@ -21,7 +21,7 @@ Branch: feat/inbox-module (local; only `main` is published, no push without the 
 - [x] T2 (S2, S3, S7) the inbound route and its store. Route: inline. Commit: e54cb51 (RED: module missing; 9 tests)
 - [x] T3 (S5) reply and the `deliver` job. Route: inline. Commit: 4754d36 (RED: module missing; 10 tests)
 - [x] T4 (S4, S6) the page and live updates. Route: inline. Commit: 3fb13a9 (RED: module missing; 6 tests for the reads; the page itself is proved on a real build)
-- [ ] T5 (S1, S8) pack, add and apply on a real build; docs; full suite; independent verifier. Route: inline then verifier.
+- [x] T5 (S1, S8) pack, add and apply on a real build; docs; full suite; independent verifier. Route: inline then verifier. Commit: 2c86df9, df31c0c (suite 1452/1452; verifier: no blockers)
 
 ## Log
 
@@ -32,3 +32,4 @@ Branch: feat/inbox-module (local; only `main` is published, no push without the 
 - L4: Installed on the dev server with `modules add` and `modules apply`. The first apply failed at the build and was rolled back without touching the serving build (169 probes during it, all 200). Two causes: the archive predated a type fix of mine (`interface` does not satisfy `Record<string, unknown>`; now `type`), and a core bug: the generated public route wrote `const rule = {...}` and TypeScript widened `"hex"` to `string`, so any public route declaring `encoding` could not build. Fixed in the core with a test that failed first (the "fix(core)" commit). The second apply succeeded (148 probes, all 200). Live: `/inbox` 200, a POST with no signature 401, GET 405.
 - L5: Findings for the core, not fixed here: a module page cannot ask who is viewing (so S6 is enforced only at the gate: the reply form is shown to every reader and the send is refused to those without `inbox.write`); replies queued before an outbound URL is set are not sent when it is; the SDK has no helper for the same-origin rule, so the module copies it.
 - L6 (2026-10-21, user, verbatim, answering a versioning proposal): "si el plan esta bien" — the platform versioning is the next feature, after this one closes.
+- L7: Independent verifier (S1-S8, security focus, probes in a scratch copy): no blockers. S4 and S6 unproven by it (page and gate are proved by the install on a real build, L4). Advisories fixed with tests that failed first (df31c0c): a NUL character in a signed body or a reply gave a 500, now 400; `data:` and other non-http outbound URLs reported `sent` without sending, now the reply fails at once. Documented: delivery is at-least-once, and the outbound URL is an administrator's choice (an internal address would be called). Left: the origin check compares Host literally (safe direction).
