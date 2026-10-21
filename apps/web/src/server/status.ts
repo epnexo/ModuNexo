@@ -112,3 +112,31 @@ export function probeError(error: unknown): { code: string; message: string } {
   if (error instanceof LlmError) return { code: error.code, message: error.message };
   return { code: "unexpected", message: "The test failed for a reason the platform did not expect; the server log has the details." };
 }
+
+export interface ProbeDeps {
+  service: { probe(moduleId: string): Promise<LlmProbeResult> };
+  manifests: readonly Pick<ModuleManifest, "id" | "llm">[];
+  enabled: ReadonlySet<string>;
+  /** Told about an error the platform did not raise itself, which the browser is not: the log has to have it. */
+  onUnexpected?: (error: unknown) => void;
+}
+
+export type ProbeReply = { status: 200; body: { lines: string[] } } | { status: 404 | 422 | 500 | 502; body: { error: string; code: string } };
+
+/**
+ * The connection test for one module, as the route answers it. Only an enabled module that declares `llm` is tested; anything
+ * else is 404 and nothing is called. A module that is not set up is 422, a provider that refuses is 502, and an error nobody
+ * expected is 500 with nothing of what it said.
+ */
+export async function runProbe(deps: ProbeDeps, moduleId: string): Promise<ProbeReply> {
+  const manifest = deps.manifests.find((candidate) => candidate.id === moduleId);
+  if (manifest?.llm === undefined || !deps.enabled.has(moduleId)) return { status: 404, body: { error: "this module does not call a model", code: "not_found" } };
+  try {
+    return { status: 200, body: { lines: probeSummary(await deps.service.probe(moduleId)) } };
+  } catch (error) {
+    const refusal = probeError(error);
+    if (refusal.code === "unexpected") deps.onUnexpected?.(error);
+    const status = refusal.code === "unexpected" ? 500 : refusal.code === "not_configured" ? 422 : 502;
+    return { status, body: { error: refusal.message, code: refusal.code } };
+  }
+}

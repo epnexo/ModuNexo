@@ -1243,6 +1243,74 @@ describe("web app: with a module installed", () => {
     assert.equal(existsSync(join(dataDir, "files", FIXTURE_ID, id.slice(0, 2), id)), true, "the bytes were written before the transaction ended");
   });
 
+  test("the Status screen shows the background work to an administrator and a refusal to anyone else, and never a payload, a file name or a key", async () => {
+    await db!.query(
+      "insert into core.jobs (module_id, name, payload, status, run_at, attempts, max_attempts, timeout_seconds, last_error, enqueued_by, finished_at) values ($1, 'record', $2::jsonb, 'dead', now(), 5, 5, 60, $3, 'test', now())",
+      [FIXTURE_ID, JSON.stringify({ password: "payload-secret-value" }), "boom ".repeat(100)],
+    );
+    const never = ["payload-secret-value", "notes ñ.txt", "looks-like-text.txt", "ghost.txt", "hello file", "message:7", "sk-e2e-llm-key"];
+
+    assert.equal((await call("GET", "/status")).status, 307, "it is behind the gate like any page");
+    const viewer = await call("GET", "/status", { cookie: userCookie });
+    assert.equal(viewer.status, 200);
+    assert.match(html(viewer), /Only an administrator can view the platform.s status\./);
+    assert.ok(!html(viewer).includes("E2E Fixture") && !html(viewer).includes("boom"), "and nothing was read for them");
+
+    const admin = await call("GET", "/status", { cookie });
+    assert.equal(admin.status, 200);
+    const page = html(admin);
+    for (const text of ["Jobs", "Events", "Files", "Model", "E2E Fixture", "dead", "e2e-fixture.pinged", "Total size", "Test connection", "llm.url"]) assert.ok(page.includes(text), `the page shows "${text}"`);
+    assert.ok(page.includes("boom ".repeat(30)), "the last error is shown");
+    assert.ok(!page.includes("boom ".repeat(45)), "but cut to 200 characters");
+    for (const text of never) assert.ok(!page.includes(text), `the page never shows "${text}"`);
+    assert.match(html(await call("GET", "/", { cookie })), /href="\/status"/, "and the sidebar links to it");
+  });
+
+  test("the connection test asks the provider the module's settings name, for an administrator from this site only, and never returns the key", async () => {
+    let status = 200;
+    const provider = createHttpServer((request, response) => {
+      request.resume();
+      request.on("end", () => {
+        response.writeHead(status, { "content-type": "application/json" });
+        response.end(JSON.stringify(status === 200 ? { data: [{ id: "e2e-model" }, { id: "other" }] } : { error: { message: "Incorrect API key provided: sk-e2e-llm-key" } }));
+      });
+    });
+    await new Promise<void>((resolve) => provider.listen(0, "127.0.0.1", resolve));
+    try {
+      const endpoint = `http://127.0.0.1:${(provider.address() as { port: number }).port}/v1`;
+      const saved = await put(`/api/settings/modules/${FIXTURE_ID}`, { values: { "llm.url": endpoint, "llm.model": "e2e-model", "api.token": "sk-e2e-llm-key" } }, { cookie });
+      assert.equal(saved.status, 200, saved.body);
+      const probe = (headers: Record<string, string>, module = FIXTURE_ID) => call("POST", `/api/status/llm/${module}`, headers);
+
+      const ok = await probe({ cookie, origin: origin() });
+      assert.equal(ok.status, 200, ok.body);
+      const lines = (JSON.parse(ok.body) as { lines: string[] }).lines;
+      assert.match(lines[0]!, new RegExp(`^Reached http://127\\.0\\.0\\.1:\\d+/v1 in \\d+ ms\\.$`));
+      assert.deepEqual(lines.slice(1), ["The provider lists 2 models.", 'The model "e2e-model" is listed.']);
+
+      assert.equal((await probe({ origin: origin() })).status, 401, "a visitor is refused");
+      assert.equal((await probe({ cookie: userCookie, origin: origin() })).status, 403, "so is a signed-in user who is not an administrator");
+      assert.equal((await probe({ cookie, origin: "http://evil.example" })).status, 403, "and another site");
+      assert.equal((await probe({ cookie })).status, 403, "and a request that says where it comes from nowhere");
+      const unknown = await probe({ cookie, origin: origin() }, "nobody");
+      assert.deepEqual([unknown.status, JSON.parse(unknown.body).code], [404, "not_found"]);
+
+      status = 401;
+      const refused = await probe({ cookie, origin: origin() });
+      assert.equal(refused.status, 502);
+      assert.equal(JSON.parse(refused.body).code, "unauthorized");
+      assert.ok(!refused.body.includes("sk-e2e-llm-key"), "the key is not in what comes back");
+
+      const cleared = await put(`/api/settings/modules/${FIXTURE_ID}`, { values: {}, clear: ["llm.url"] }, { cookie });
+      assert.equal(cleared.status, 200, cleared.body);
+      const missing = await probe({ cookie, origin: origin() });
+      assert.deepEqual([missing.status, JSON.parse(missing.body).code], [422, "not_configured"]);
+    } finally {
+      provider.closeAllConnections();
+      await new Promise((resolve) => provider.close(resolve));
+    }
+  });
+
   test("uninstalling the module with purge removes its settings and its appearance, and keeps the audit trail", async () => {
     await put(`/api/settings/modules/${FIXTURE_ID}`, { values: { "site.title": "Again" } }, { cookie });
     await put(`/api/settings/modules/${FIXTURE_ID}/appearance`, { accentHue: 30 }, { cookie });

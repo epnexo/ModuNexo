@@ -332,7 +332,7 @@ deleted, and a needed path held by a hand-written file is an error. Conflicts ar
 written: two modules declaring the same normalised path, dynamic segments of one kind with different parameter
 names at the same position under the same parent (`/items/[id]` and `/items/[itemId]/notes`: Next.js rejects
 sibling dynamic folders with different names; the same name is fine), a dynamic segment whose brackets are not
-balanced (only `[x]`, `[...x]` and `[[...x]]` exist), a path at or below a reserved shell path (`RESERVED_PATHS`: `/`, `/apps`, `/settings`, `/login`,
+balanced (only `[x]`, `[...x]` and `[[...x]]` exist), a path at or below a reserved shell path (`RESERVED_PATHS`: `/`, `/apps`, `/settings`, `/status`, `/login`,
 `/logout`, `/api`, `/_next`; `/hooks` is reserved for public routes), and segments that cannot be a folder name. `--dry-run` prints the planned writes
 and deletions and touches nothing.
 
@@ -798,6 +798,30 @@ npm run modunexo -- llm probe agent [--json]    # reached http://127.0.0.1:11434
 - **Not here yet.** Streaming, tools or function calling, embeddings, images, retries with backoff, a usage or cost log and
   quotas, several providers per module, and a provider that does not speak the OpenAI format (the provider sits behind a small
   interface, so one can be added).
+
+### The Status screen
+
+`/status` ("Status" in the sidebar) shows an administrator what the background capabilities are doing, so the work of jobs,
+events, files and models can be seen without the command line. Anyone else who opens it is told that only an administrator
+can, and nothing is read for them. With sign-in off, the local operator is the administrator. It has four tabs, one concern at
+a time:
+
+- **Jobs.** For each module that has jobs: how many are queued, running, succeeded, dead and cancelled. Under it, the newest 20
+  jobs that need a look: the dead ones and those waiting for a retry, with the module, the job, attempts, when, and what the
+  job last reported (cut to 200 characters). When jobs have been due for a minute and nobody took them, a line asks whether the
+  worker is running and says how to start it (`npm run modunexo -- worker`); that is an inference, since nothing records that a
+  worker is alive.
+- **Events.** The newest 50 (id, module, type, when). Events are kept 7 days.
+- **Files.** For each module that stores files, how many and their total size.
+- **Model.** For each enabled module that declares `llm`: which settings configure it, and a **Test connection** button that
+  asks the provider for its models and shows where it went, how long it took, how many models it lists and whether the module's
+  model is among them, or the refusal with its code. The button is `POST /api/status/llm/<module>`: administrators only, from
+  this site only. It changes nothing here.
+
+What it does not show, on purpose: the data a job was given, what an event carries, a file's name, ref or hash, and any key. What a
+job "last reported" is the message of whatever its code threw; it is shown as plain text and may be more than you wish to share,
+so look before you share a screenshot. It does not refresh by itself (reload), and it offers no retry or cancel yet. `/status`
+is reserved for the shell: a module cannot declare a page there.
 
 ### Secrets
 

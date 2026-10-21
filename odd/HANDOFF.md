@@ -36,6 +36,10 @@ All six capabilities, each opt-in per module through its manifest, each with a f
 5. Files behind a storage adapter (disk first; `GET /api/files/<module>/<id>`): `files-attachments.md`.
 6. Chat model through an OpenAI-compatible adapter, configured by the module's own settings (`llm probe`): `llm-adapter.md`.
 
+Built on top of them: installing a module no longer takes the site down (the build is made beside the serving one and the
+restart is the switch: `install-without-downtime.md`), and the Status screen at `/status` makes jobs, events, files and the model
+test visible to an administrator (`status-screen.md`).
+
 The README has a section for each ("Public routes", "Service tokens", "Background jobs", "Events and realtime", "Stored files",
 "Language models") and the module skill (`.claude/skills/modunexo-module/SKILL.md`) has the rule for each.
 
@@ -52,11 +56,10 @@ Owner-visible:
    build serves against the new schema; in Docker the builds live in the container, not in a volume, so a recreated
    container serves the image's `.next` again.
 4. Better Auth logs "Base URL is not set" without `WEB_PUBLIC_URL`; only matters behind a domain.
-5. Nothing exercises the new capabilities from the screen yet: the only installed module (`hello`) uses none, so a module
-   that uses events, files and a model is the natural next piece (the end-to-end fixture in
-   `apps/web/test/e2e.integration.test.ts` shows one).
-
-Engineering:
+5. The new capabilities can now be seen at `/status` (jobs, events, files, model test; `odd/tasks/status-screen.md`), but nothing
+   exercises them in the app yet: the only installed module (`hello`) uses none, so a module that uses events, files and a
+   model is the natural next piece (the end-to-end fixture in `apps/web/test/e2e.integration.test.ts` shows one). The screen has
+   no retry or cancel for a job, no paging or filters, and does not refresh by itself.
 6. `--rebuild` and `apply` have no `--web-root` option: they always act on this repository's `apps/web`.
 7. Linux only (`/proc` to recognise the launcher).
 8. Users have two roles (`admin`, `operator`); only they hold module permissions. A real users-and-roles feature does not exist.

@@ -28,8 +28,8 @@ Branch: feat/status-screen (from feat/install-without-downtime, so the chain int
 ## Tasks
 
 - [x] T1 (S3, S5) the queries: job counts per module and status, dead and retrying jobs, how long the oldest due job has waited, file counts and sizes per module. Route: inline. Commit: next commit (RED observed; 58 tests)
-- [ ] T2 (S1, S3-S6) the status shaping in `apps/web/src/server/status.ts` (pure): wording, byte sizes, cut errors, the worker line. Route: inline.
-- [ ] T3 (S1, S2, S6) the page, its tabs, the sidebar entry, the model test route and button. Route: inline.
+- [x] T2 (S1, S3-S6) the status shaping in `apps/web/src/server/status.ts` (pure): wording, byte sizes, cut errors, the worker line. Route: inline. Commit: 96bbf7f (RED observed; 19 tests)
+- [x] T3 (S1, S2, S6) the page, its tabs, the sidebar entry, the model test route and button. Route: inline. Commit: next commit (e2e 49/49 on a real build)
 - [ ] T4 (S8) end-to-end check on a real build, docs, full suite, independent verifier. Route: inline then verifier.
 
 ## Log
@@ -47,3 +47,13 @@ Branch: feat/status-screen (from feat/install-without-downtime, so the chain int
 - L4: Decisions taken without asking, per the standing instruction: show `last_error` (the screen is for the administrator, and the
   CLI shows it too) but cut to 200 characters, as text, and say on the tab that it is what the job reported; no payload, file name,
   ref or hash anywhere; the worker line is an inference and says so.
+- L5: T3 observed. `/status` is a server component after Settings' pattern: it gates on `viewer.canWrite` before reading anything, reads the
+  jobs, events and files services and the registry, and renders four tabs. The connection test is `POST /api/status/llm/<module>`,
+  `authorizeWrite` first (session, administrator, same origin), then `runProbe` (pure, unit tested): 404 for a module that is not
+  enabled or declares no `llm`, 422 not configured, 502 for a provider that refuses, 500 with nothing of the cause for the
+  unexpected (the log gets it). `/status` is now a reserved shell path (a module that declared a page there would be refused by
+  `pack`, `add` and the registry): a contract change for module authors, recorded in the README. Real build, end to end (49/49): a
+  visitor is redirected, a non-administrator is told no and nothing is read, the administrator sees the dead job with its error
+  cut to 200 characters, the events, the files total and the model test, and the page never contains the job's payload, a file's
+  name, a ref, the file's content or the key; the test route refuses a visitor (401), a non-administrator (403), another site (403),
+  a request with no origin (403), an unknown module (404), a refusing provider (502, key not in the answer) and an unset endpoint (422).
