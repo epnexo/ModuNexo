@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { after, before, describe, it } from "node:test";
 import { createAdministrator, createAuth, setSignInMode, setTrustedProxies } from "@modunexo/core/auth";
 import { BrandService } from "@modunexo/core/settings";
+import { CORE_VERSION } from "@modunexo/core/version";
 import { createPool } from "@modunexo/core/pool";
 import { Registry, migrate } from "@modunexo/core";
 import { createScratchDatabase } from "@modunexo/core/testing";
@@ -1260,6 +1261,7 @@ describe("web app: with a module installed", () => {
     assert.equal(admin.status, 200);
     const page = html(admin);
     for (const text of ["Jobs", "Events", "Files", "Model", "E2E Fixture", "dead", "e2e-fixture.pinged", "Total size", "Test connection", "llm.url"]) assert.ok(page.includes(text), `the page shows "${text}"`);
+    assert.ok(page.includes(`Modunexo ${CORE_VERSION}`), "the page says which version of the platform this is");
     assert.ok(page.includes("boom ".repeat(30)), "the last error is shown");
     assert.ok(!page.includes("boom ".repeat(45)), "but cut to 200 characters");
     for (const text of never) assert.ok(!page.includes(text), `the page never shows "${text}"`);

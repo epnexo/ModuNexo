@@ -59,7 +59,23 @@ No server answering, or neither variable set, **skips** the integration tests wi
 that answers but refuses (bad credentials, missing permission) **fails** the suite. With the database up,
 `npm test` reports 0 skipped.
 
-## The module contract
+## Versioning
+
+The platform has **one version**, written as the same number in `package.json`, `packages/core/package.json`,
+`apps/web/package.json` and `CORE_VERSION` (`packages/core/src/version.ts`); a test fails if they differ. Find it with
+`npm run modunexo -- --version` (it prints `modunexo 0.2.0 (sdk 0.1.0)`) or at the top of the Status screen.
+
+The **SDK has its own number**, `SDK_VERSION`, because it is the contract with modules: a module's `platform` range is checked
+against it. It rises only when that contract changes, and then on the usual rules for a `0.x` version: a new optional
+capability raises the patch or minor, a break raises the minor (`^0.1.0` does not accept `0.2.0`). The platform can go from
+`0.2.0` to `0.5.0` without any module being asked to change.
+
+Releases follow [Semantic Versioning](https://semver.org/) and are written in `CHANGELOG.md`, newest first. To release:
+
+1. Move what is new into a `## [x.y.z] - date` section of `CHANGELOG.md`.
+2. Set `x.y.z` in the four places above (and `SDK_VERSION` with the SDK packages, only if the module contract changed).
+3. Run `npm test`, merge to `main`, and tag the commit `vx.y.z`.
+
 
 A module is a package under `modules/<id>/` with a `manifest.ts` that default-exports its manifest:
 

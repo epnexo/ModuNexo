@@ -1,6 +1,7 @@
 import { EventService } from "@modunexo/core/events";
 import { FileService, defaultFileStorage } from "@modunexo/core/files";
 import { JOB_STATUSES, JobService } from "@modunexo/core/jobs";
+import { CORE_VERSION } from "@modunexo/core/version";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -70,6 +71,7 @@ export default async function StatusPage() {
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-tight">Status</h1>
         <p className="text-muted">What the platform is doing in the background. Reload the page to see it again.</p>
+        <p className="text-sm text-muted">Modunexo {CORE_VERSION}</p>
       </div>
 
       <Tabs
