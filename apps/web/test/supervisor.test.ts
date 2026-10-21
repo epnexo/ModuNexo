@@ -105,4 +105,67 @@ describe("superviseChild: a child that will not stop", () => {
     bus.emit("SIGTERM");
     await running;
   });
+
 });
+
+describe("superviseChild: which build the server serves", () => {
+  /** A child that records each start together with the build directory it was told to serve. */
+  const envChild = (starts: string) => {
+    const file = join(dir, `env-child-${Math.random().toString(36).slice(2)}.mjs`);
+    writeFileSync(
+      file,
+      `import { appendFileSync } from "node:fs";
+appendFileSync(${JSON.stringify(starts)}, "start " + process.env.MODUNEXO_DIST_DIR + "\\n");
+process.on("SIGTERM", () => process.exit(0));
+setInterval(() => {}, 1000);
+`,
+    );
+    return file;
+  };
+  const linesOf = (file: string) => (existsSync(file) ? readFileSync(file, "utf8").trim().split("\n").filter(Boolean) : []);
+
+  it("starts the first child and every restart with the environment prepare answers at that moment", async () => {
+    const starts = join(dir, "starts");
+    const live = join(dir, "live");
+    writeFileSync(live, ".next-one");
+    const bus = new EventEmitter();
+    let prepared = 0;
+    const running = superviseChild({
+      args: [envChild(starts)],
+      cwd: dir,
+      pidFile: join(dir, "web.pid"),
+      signals: bus,
+      prepare: () => {
+        prepared += 1;
+        return { MODUNEXO_DIST_DIR: readFileSync(live, "utf8") };
+      },
+    });
+    await until(() => linesOf(starts).length === 1);
+    writeFileSync(live, ".next-two");
+    bus.emit("SIGUSR2");
+    await until(() => linesOf(starts).length === 2);
+    bus.emit("SIGTERM");
+    assert.equal(await running, 0);
+    assert.deepEqual(linesOf(starts), ["start .next-one", "start .next-two"], "a restart serves what the record names by then");
+    assert.equal(prepared, 2, "asked once per start, not once per supervisor");
+  });
+
+  it("a prepare that fails is logged and the server still starts, with the environment it had", async () => {
+    const starts = join(dir, "starts");
+    const lines: string[] = [];
+    const original = console.error;
+    console.error = (line: unknown) => void lines.push(String(line));
+    const bus = new EventEmitter();
+    try {
+      const running = superviseChild({ args: [envChild(starts)], cwd: dir, pidFile: join(dir, "web.pid"), signals: bus, prepare: () => { throw new Error("disk full"); } });
+      await until(() => linesOf(starts).length === 1);
+      bus.emit("SIGTERM");
+      assert.equal(await running, 0);
+    } finally {
+      console.error = original;
+    }
+    assert.deepEqual(linesOf(starts), ["start undefined"]);
+    assert.ok(lines.some((line) => line.includes("web.prepare_failed") && line.includes("disk full")), lines.join(" | "));
+  });
+});
+

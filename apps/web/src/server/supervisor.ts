@@ -20,6 +20,12 @@ export interface SuperviseOptions {
   signals: SignalSource;
   /** How long a child that was asked to stop may take before it is killed. Default 15 seconds. */
   killAfterMs?: number;
+  /**
+   * Asked before every start of the child, the first and each restart; what it answers is added to the child's
+   * environment. This is how a restart serves the build that was put in service meanwhile. If it throws, the child still
+   * starts, with the environment it would have had.
+   */
+  prepare?: () => Record<string, string>;
 }
 
 /**
@@ -47,8 +53,18 @@ export function superviseChild(options: SuperviseOptions): Promise<number> {
       target.once("exit", () => clearTimeout(timer));
     };
 
+    const environment = (): NodeJS.ProcessEnv => {
+      if (options.prepare === undefined) return process.env;
+      try {
+        return { ...process.env, ...options.prepare() };
+      } catch (error) {
+        log.error("web.prepare_failed", { error });
+        return process.env;
+      }
+    };
+
     const start = () => {
-      const next = spawn(process.execPath, options.args, { cwd: options.cwd, stdio: "inherit" });
+      const next = spawn(process.execPath, options.args, { cwd: options.cwd, stdio: "inherit", env: environment() });
       child = next;
       next.on("error", (error) => {
         log.error("web.start_failed", { script: options.args[1] ?? "the web app", error });
