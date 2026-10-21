@@ -94,11 +94,11 @@ export class LlmService implements LlmClient {
 
   async probe(moduleId: string): Promise<LlmProbeResult> {
     const declaration = await this.declaration(moduleId);
-    const { provider, model } = await this.connect(moduleId, declaration);
+    const { provider, model, endpoint } = await this.connect(moduleId, declaration);
     const started = performance.now();
     const ids = await provider.models();
     const latencyMs = Math.round(performance.now() - started);
-    return { latencyMs, models: ids.slice(0, MAX_PROBE_MODELS), model, modelAvailable: model === null ? null : ids.includes(model) };
+    return { endpoint, latencyMs, models: ids.slice(0, MAX_PROBE_MODELS), model, modelAvailable: model === null ? null : ids.includes(model) };
   }
 
   private async declaration(moduleId: string): Promise<LlmDeclaration> {
@@ -124,7 +124,7 @@ export class LlmService implements LlmClient {
     return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
   }
 
-  private async connect(moduleId: string, declaration: LlmDeclaration): Promise<{ provider: LlmProvider; model: string | null }> {
+  private async connect(moduleId: string, declaration: LlmDeclaration): Promise<{ provider: LlmProvider; model: string | null; endpoint: string }> {
     const raw = await this.text(moduleId, declaration.baseUrlSetting);
     if (raw === null) throw new LlmError("not_configured", `set the setting "${declaration.baseUrlSetting}" of module "${moduleId}" to the provider's base URL`);
     let baseUrl: string;
@@ -135,6 +135,6 @@ export class LlmService implements LlmClient {
     }
     const apiKey = declaration.apiKeySetting === undefined ? null : await this.text(moduleId, declaration.apiKeySetting);
     const model = declaration.modelSetting === undefined ? null : await this.text(moduleId, declaration.modelSetting);
-    return { provider: this.makeProvider({ baseUrl, apiKey }), model };
+    return { provider: this.makeProvider({ baseUrl, apiKey }), model, endpoint: baseUrl };
   }
 }

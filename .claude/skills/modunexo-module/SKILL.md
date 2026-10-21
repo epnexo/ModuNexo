@@ -78,6 +78,11 @@ The user wants a new module (documents, contacts, anything), a change to one, or
   body in your route (the platform has no multipart parser). The type is decided from the bytes, not the name. Only a file
   of a module with `files.permission` can be downloaded by a browser, at `GET /api/files/<module>/<id>`, always as an
   attachment. See the README section "Stored files".
+- To call a chat model, declare the three settings (`string` endpoint, `secret` key, `string` model) and
+  `llm: { baseUrlSetting, apiKeySetting?, modelSetting? }`, then use `chat(moduleId, { messages, ... })` and `probeLlm`; never
+  use `fetch` or a provider SDK, and never read the key yourself. Catch `LlmError` and branch on `error.code`. The wire format
+  is OpenAI-compatible, so a local server works too. Do not build the endpoint from user input. See the README section
+  "Language models".
 - UI: reuse the shell's tokens and classes (`bg-surface`, `border-border`, `text-muted`, `bg-accent`), English copy,
   one concern per screen (tabs or on-demand panels, not a stack of sections).
 - Code, comments, UI text and commits are in English.

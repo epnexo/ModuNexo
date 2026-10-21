@@ -42,6 +42,8 @@ export interface ChatResult {
 }
 
 export interface LlmProbeResult {
+  /** The base URL the call went to, as the platform validated it: no user name, query or fragment. */
+  endpoint: string;
   /** How long the provider took to list its models, in milliseconds. */
   latencyMs: number;
   /** Up to 50 model ids the provider lists. */
@@ -63,14 +65,26 @@ export type LlmErrorCode =
   | "bad_response"
   | "too_large";
 
-/** What the platform raises when a call cannot be made or the provider refuses it. `code` says which; the message never holds the key. */
+/** Marks an error as an `LlmError` whichever copy of the SDK made it. */
+const LLM_ERROR: unique symbol = Symbol.for("modunexo.llm.error") as never;
+
+/**
+ * What the platform raises when a call cannot be made or the provider refuses it. `code` says which; the message never
+ * holds the key. A bundler may load the SDK more than once, so the platform and a module can hold different copies of this
+ * class: `instanceof` therefore looks for the mark every copy puts on its errors, not for the class it was made from.
+ */
 export class LlmError extends Error {
   readonly code: LlmErrorCode;
+  readonly [LLM_ERROR] = true;
 
   constructor(code: LlmErrorCode, message: string) {
     super(message);
     this.name = "LlmError";
     this.code = code;
+  }
+
+  static override [Symbol.hasInstance](value: unknown): boolean {
+    return typeof value === "object" && value !== null && (value as { [LLM_ERROR]?: unknown })[LLM_ERROR] === true;
   }
 }
 

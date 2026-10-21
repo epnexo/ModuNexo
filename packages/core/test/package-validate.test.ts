@@ -129,6 +129,32 @@ describe("validatePackageTree: files", () => {
   });
 });
 
+describe("validatePackageTree: llm", () => {
+  const settings = [
+    { key: "llm.url", label: "Endpoint", type: "string" },
+    { key: "llm.key", label: "API key", type: "secret" },
+    { key: "llm.model", label: "Model", type: "string" },
+  ];
+
+  it("shows which settings hold the endpoint, the key and the model", () => {
+    writeGood({ manifest: { settings, llm: { baseUrlSetting: "llm.url", apiKeySetting: "llm.key", modelSetting: "llm.model" } } });
+    const full = validatePackageTree(root, context());
+    assert.equal(full.ok, true, full.ok ? "" : full.problems.join("\n"));
+    if (full.ok) assert.deepEqual(full.review.llm, { baseUrlSetting: "llm.url", apiKeySetting: "llm.key", modelSetting: "llm.model" });
+    writeGood({ manifest: { settings, llm: { baseUrlSetting: "llm.url" } } });
+    const minimal = validatePackageTree(root, context());
+    assert.equal(minimal.ok, true);
+    if (minimal.ok) assert.deepEqual(minimal.review.llm, { baseUrlSetting: "llm.url", apiKeySetting: null, modelSetting: null });
+  });
+
+  it("shows nothing for a module that calls no model", () => {
+    writeGood();
+    const result = validatePackageTree(root, context());
+    assert.equal(result.ok, true);
+    if (result.ok) assert.equal(result.review.llm, null);
+  });
+});
+
 describe("validatePackageTree: public routes", () => {
   it("shows a public route in the review, so the person who installs sees what opens", () => {
     writeGood({

@@ -17,8 +17,8 @@ Branch: feat/llm-adapter (from main e1b350e). Delivery strategy: ask-on-risk; th
   holds 1 to 200 items with a role of `system`, `user` or `assistant` and a non-empty string `content`, at most 200,000
   characters in all; `temperature` is 0 to 2; `maxTokens` is a whole number 1 to 32768. The platform POSTs JSON to
   `<base URL>/chat/completions` with `stream: false` and reads `choices[0].message.content`. [decision]
-- S4. Probe: `probeLlm(moduleId)` does `GET <base URL>/models` and resolves to `{ latencyMs, models, model, modelAvailable }`
-  (at most 50 model ids; `modelAvailable` is true or false when a model is configured, else null). The CLI has
+- S4. Probe: `probeLlm(moduleId)` does `GET <base URL>/models` and resolves to `{ endpoint, latencyMs, models, model, modelAvailable }`
+  (at most 50 model ids; `modelAvailable` is true or false when a model is configured, else null; `endpoint` is the validated base URL the call went to). The CLI has
   `llm probe <module>`; a refusal exits 3, a usage error 2. [decision]
 - S5. Safety of the call: the base URL must be `http:` or `https:`, with no user name or password, no query and no fragment;
   a redirect is never followed (a 3xx is an error, so the key cannot be sent to another host); the call times out after 60 s
@@ -38,7 +38,7 @@ Branch: feat/llm-adapter (from main e1b350e). Delivery strategy: ask-on-risk; th
 
 - [x] T1 (S1, S3, S4, S6 SDK side) manifest `llm`, `llm.ts` (types, symbol, `LlmError`, `chat`, `probeLlm`). Route: inline. Commit: next commit (RED observed; SDK 124/124)
 - [x] T2 (S2, S3, S4, S5, S6) OpenAI-compatible provider, `LlmService`, tests against a local HTTP server. Route: inline. Commit: next commit (RED observed; 26 tests twice green)
-- [ ] T3 (S4 CLI, S7, S8 review) register in web and worker, `llm probe`, install review. Route: inline.
+- [x] T3 (S4 CLI, S7, S8 review) register in web and worker, `llm probe`, install review. Route: inline. Commit: next commit (RED observed; CLI regression 135/135; e2e 46/46)
 - [ ] T4 (S8 docs) README, skill, ADR; full suite; independent verifier. Route: inline then verifier.
 
 ## Log
@@ -53,3 +53,9 @@ Branch: feat/llm-adapter (from main e1b350e). Delivery strategy: ask-on-risk; th
   configuration screen and no new storage is needed; private and loopback addresses are allowed on purpose (a local model is the
   main use) because the URL is set by an administrator, not by a caller; `LlmError` lives in the SDK so a module can catch it with
   `instanceof` across the globalThis boundary; no database table (no usage log yet).
+- L4: Refinement while wiring the CLI: the probe result also carries `endpoint` (the validated base URL, which cannot hold
+  credentials, a query or a fragment), so `llm probe` can say which server it reached.
+- L5: Found by the end-to-end test on a production build, not by a unit test: a route got an `LlmError` that failed
+  `instanceof LlmError`, because the bundle holds more than one copy of the SDK. L3's claim that putting the class in the SDK
+  makes `instanceof` work across the globalThis boundary was wrong. `LlmError` now marks its instances with a
+  `Symbol.for("modunexo.llm.error")` property and answers `instanceof` by that mark (SDK test written first, red before the fix).

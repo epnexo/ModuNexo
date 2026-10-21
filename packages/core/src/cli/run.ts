@@ -15,11 +15,13 @@ import { MigrationRunError, migrate, pendingMigrations } from "../runner.ts";
 import { SettingValueError, SettingsError } from "../settings/service.ts";
 import { EventError } from "../events/index.ts";
 import { FileError, defaultFileStorage } from "../files/index.ts";
+import { LlmError } from "@modunexo/sdk";
 import { JOB_STATUSES, JobError, type JobStatus } from "../jobs/index.ts";
 import { TokenError } from "../tokens/errors.ts";
 import { DATA_DIR } from "../packages/paths.ts";
 import { runEventsCommand } from "./events.ts";
 import { runFilesCommand } from "./files.ts";
+import { runLlmCommand } from "./llm.ts";
 import { runJobsCommand, runWorkerCommand } from "./jobs.ts";
 import { runNewCommand } from "./new.ts";
 import { runAddCommand, runApplyCommand, runChangeCommand, runPackCommand } from "./packages.ts";
@@ -101,6 +103,7 @@ commands:
   files list [<module>] [--limit <n>] [--json]
                                    the newest stored files; the content is never printed
   files delete <module> <file-id>  delete a file's row and bytes (files live under MODUNEXO_DATA_DIR/files)
+  llm probe <module> [--json]      ask the provider the module's model settings name for its models; never prints the key
   auth status                      whether the shell asks for a sign-in
   auth require                     ask for a sign-in (refused while no administrator exists)
   auth disable                     serve local requests without a sign-in
@@ -179,6 +182,7 @@ const COMMAND_OPTIONS: Record<string, readonly string[]> = {
   "events publish": ["payload"],
   "files list": ["limit", "json"],
   "files delete": [],
+  "llm probe": ["json"],
   "auth status": [],
   "auth require": [],
   "auth disable": [],
@@ -282,6 +286,10 @@ function checkFilesArguments(command: string, ids: string[], values: Parsed["val
   if (!UUID.test(ids[1]!)) throw new UsageError("files delete takes a module id and a file id (a UUID)");
 }
 
+function checkLlmArguments(command: string, ids: string[]): void {
+  if (ids.length !== 1) throw new UsageError(`${command} takes one module id`);
+}
+
 function parse(argv: string[]): Parsed | "help" {
   let parsed;
   try {
@@ -330,6 +338,10 @@ function parse(argv: string[]): Parsed | "help" {
     }
     command = `files ${second}`;
     ids = rest;
+  } else if (first === "llm") {
+    if (second !== "probe") throw new UsageError(second === undefined ? "no llm command given" : `unknown llm command "${second}"`);
+    command = "llm probe";
+    ids = rest;
   } else if (first === "auth") {
     if (second !== "status" && second !== "require" && second !== "disable") {
       throw new UsageError(second === undefined ? "no auth command given" : `unknown auth command "${second}"`);
@@ -367,9 +379,10 @@ function parse(argv: string[]): Parsed | "help" {
   if (command.startsWith("jobs ")) checkJobsArguments(command, ids, parsed.values);
   if (command.startsWith("events ")) checkEventsArguments(command, ids, parsed.values);
   if (command.startsWith("files ")) checkFilesArguments(command, ids, parsed.values);
+  if (command.startsWith("llm ")) checkLlmArguments(command, ids);
   if (command === "worker") checkWorkerOptions(parsed.values);
   const takesId = command !== "modules list" && command.startsWith("modules ");
-  if (!command.startsWith("settings ") && !command.startsWith("tokens ") && !command.startsWith("jobs ") && !command.startsWith("events ") && !command.startsWith("files ")) {
+  if (!command.startsWith("settings ") && !command.startsWith("tokens ") && !command.startsWith("jobs ") && !command.startsWith("events ") && !command.startsWith("files ") && !command.startsWith("llm ")) {
     const noun = command === "modules pack" ? "a folder" : command === "modules add" ? "an archive" : command === "modules apply" ? "a package SHA-256" : "a module id";
     if (takesId && ids.length === 0) throw new UsageError(`${command} needs ${noun}`);
     if (takesId ? ids.length !== 1 : ids.length > 0) throw new UsageError(takesId ? `${command} takes exactly one ${noun.slice(2)}` : `${command} takes no arguments`);
@@ -674,7 +687,7 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
       );
       return EXIT_OK;
     }
-    if (parsed.command.startsWith("jobs ") || parsed.command.startsWith("events ") || parsed.command.startsWith("files ") || parsed.command === "worker") {
+    if (parsed.command.startsWith("jobs ") || parsed.command.startsWith("events ") || parsed.command.startsWith("files ") || parsed.command.startsWith("llm ") || parsed.command === "worker") {
       let modulesDir: string;
       try {
         modulesDir = resolveModulesDir(typeof parsed.values["modules-dir"] === "string" ? parsed.values["modules-dir"] : undefined);
@@ -724,6 +737,10 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
           },
           { pool, registry: context.registry, io },
         );
+        return EXIT_OK;
+      }
+      if (parsed.command.startsWith("llm ")) {
+        await runLlmCommand({ action: "probe", args: parsed.ids, json: parsed.values.json === true }, { pool, registry: context.registry, io });
         return EXIT_OK;
       }
       if (parsed.command.startsWith("files ")) {
@@ -860,7 +877,7 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
       io.err(`${USAGE.split("\n")[0]} (run with --help for the commands)`);
       return EXIT_USAGE;
     }
-    if (error instanceof Refusal || error instanceof LifecycleRefusedError || error instanceof RegistrationError || error instanceof AdminRefusedError || error instanceof ModeRefusedError || error instanceof SettingsError || error instanceof SettingValueError || error instanceof TokenError || error instanceof JobError || error instanceof EventError || error instanceof FileError) {
+    if (error instanceof Refusal || error instanceof LifecycleRefusedError || error instanceof RegistrationError || error instanceof AdminRefusedError || error instanceof ModeRefusedError || error instanceof SettingsError || error instanceof SettingValueError || error instanceof TokenError || error instanceof JobError || error instanceof EventError || error instanceof FileError || error instanceof LlmError) {
       io.err(`refused: ${error.message}`);
       return EXIT_REFUSED;
     }
