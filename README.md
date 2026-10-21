@@ -1024,7 +1024,9 @@ would need a proxy in front, which the platform does not have).
   recorded one. `npm run web:build` by hand builds `.next` (or `MODUNEXO_DIST_DIR`) and records it.
 - **Disk.** A build directory is about 150 MB. The live one and the one being built exist together; the one a switch
   replaced stays until the next run or the next start of the server, at least a minute later (the old server may still be
-  draining), and is then removed. A directory a running install names in its journal is never removed.
+  draining), and is then removed. Only `.next` and names the platform generates (`.next-` and 8 to 16 lowercase letters or digits)
+  are ever removed: a folder of yours called `.next-backup` is left alone. A directory a running install names in its journal is never
+  removed, and recovery never removes the build that is serving.
 - **Not covered.** Between the database step and the restart the old build serves against the new schema, for as long
   as the restart takes to be requested (seconds). Running the end-to-end tests builds in the repository's own
   `apps/web`, so do not run them while a server you care about serves from that folder.
