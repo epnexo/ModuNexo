@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { type ChildProcess, spawn } from "node:child_process";
 import { createHmac } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { request as httpRequest } from "node:http";
+import { createServer as createHttpServer, request as httpRequest } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -383,6 +383,7 @@ export default defineModule({
   events: [{ name: "pinged", permission: "reports.read" }, { name: "private.note" }],
   subscriptions: [{ event: "${FIXTURE_ID}.pinged", job: "on_pinged" }],
   files: { maxBytes: 2048, accept: ["image/png", "text/plain"], permission: "reports.read" },
+  llm: { baseUrlSetting: "llm.url", apiKeySetting: "api.token", modelSetting: "llm.model" },
   scopes: [
     { key: "messages.read", label: "Read messages" },
     { key: "messages.send", label: "Send messages" },
@@ -400,6 +401,7 @@ export default defineModule({
     { path: "/e2e-fixture/enqueue", entry: "./web/enqueue.ts", kind: "route", methods: ["POST"], permission: "reports.read" },
     { path: "/e2e-fixture/publish", entry: "./web/publish.ts", kind: "route", methods: ["POST"], permission: "reports.read" },
     { path: "/e2e-fixture/upload", entry: "./web/upload.ts", kind: "route", methods: ["POST"], permission: "reports.read" },
+    { path: "/e2e-fixture/ask", entry: "./web/ask.ts", kind: "route", methods: ["POST"], permission: "reports.read" },
     {
       path: "/hooks/e2e-fixture/events",
       entry: "./web/hook.ts",
@@ -416,6 +418,8 @@ export default defineModule({
     { key: "report.format", label: "Report format", type: "select", options: ["pdf", "csv"], default: "pdf" },
     { key: "export.dir", label: "Export directory", type: "path", required: true },
     { key: "api.token", label: "API token", type: "secret", required: true },
+    { key: "llm.url", label: "Model endpoint", type: "string" },
+    { key: "llm.model", label: "Model", type: "string" },
     { key: "hook.secret", label: "Webhook secret", type: "secret" },
   ],
 });
@@ -481,6 +485,21 @@ export async function POST(request: Request) {
     return Response.json(result);
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
+  }
+}
+`,
+  );
+  // Asks the module's configured model; a refusal comes back as its code and message.
+  writeFileSync(
+    join(FIXTURE_DIR, "web", "ask.ts"),
+    `import { LlmError, chat } from "@modunexo/sdk";
+export async function POST(request: Request) {
+  const { prompt } = await request.json();
+  try {
+    return Response.json(await chat("${FIXTURE_ID}", { messages: [{ role: "user", content: prompt }] }));
+  } catch (error) {
+    if (error instanceof LlmError) return Response.json({ code: error.code, message: error.message }, { status: 502 });
+    throw error;
   }
 }
 `,
@@ -1077,6 +1096,56 @@ describe("web app: with a module installed", () => {
     } finally {
       worker.kill("SIGKILL");
       stream.close();
+    }
+  });
+
+  test("a route asks the model the module's settings name, with the key from the secret store, and a refusal never shows the key", async () => {
+    const seen: { auth: string | undefined; body: string }[] = [];
+    let status = 200;
+    const provider = createHttpServer((request, response) => {
+      let body = "";
+      request.on("data", (chunk) => (body += chunk));
+      request.on("end", () => {
+        seen.push({ auth: request.headers.authorization, body });
+        response.writeHead(status, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify(status === 200 ? { model: "e2e-model", choices: [{ message: { content: "from the fake model" }, finish_reason: "stop" }], usage: { prompt_tokens: 3, completion_tokens: 4, total_tokens: 7 } } : { error: { message: "Incorrect API key provided: sk-e2e-llm-key" } }),
+        );
+      });
+    });
+    await new Promise<void>((resolve) => provider.listen(0, "127.0.0.1", resolve));
+    try {
+      const endpoint = `http://127.0.0.1:${(provider.address() as { port: number }).port}/v1`;
+      const saved = await put(`/api/settings/modules/${FIXTURE_ID}`, { values: { "llm.url": endpoint, "llm.model": "e2e-model", "api.token": "sk-e2e-llm-key" } }, { cookie });
+      assert.equal(saved.status, 200, saved.body);
+      const ask = (headers: Record<string, string>) => call("POST", "/e2e-fixture/ask", { origin: origin(), ...headers }, { prompt: "say hi" });
+
+      const reply = await ask({ cookie });
+      assert.equal(reply.status, 200, reply.body);
+      assert.deepEqual(JSON.parse(reply.body), { content: "from the fake model", model: "e2e-model", finishReason: "stop", usage: { promptTokens: 3, completionTokens: 4, totalTokens: 7 } });
+      assert.equal(seen[0]!.auth, "Bearer sk-e2e-llm-key", "the stored secret was decrypted and sent to the configured host");
+      assert.deepEqual(JSON.parse(seen[0]!.body), { model: "e2e-model", messages: [{ role: "user", content: "say hi" }], stream: false });
+
+      assert.equal((await ask({})).status, 307, "the route is behind the gate like any other");
+      const viewer = await ask({ cookie: userCookie });
+      assert.notEqual(viewer.status, 200);
+      assert.equal(seen.length, 1, "a viewer without the permission reached no model");
+
+      status = 401;
+      const refused = await ask({ cookie });
+      assert.equal(refused.status, 502);
+      assert.equal(JSON.parse(refused.body).code, "unauthorized");
+      assert.ok(!refused.body.includes("sk-e2e-llm-key"), "the key is not in what the route returns");
+
+      const cleared = await put(`/api/settings/modules/${FIXTURE_ID}`, { values: {}, clear: ["llm.url"] }, { cookie });
+      assert.equal(cleared.status, 200, cleared.body);
+      const missing = await ask({ cookie });
+      assert.equal(missing.status, 502);
+      assert.equal(JSON.parse(missing.body).code, "not_configured");
+      assert.match(JSON.parse(missing.body).message, /llm\.url/);
+    } finally {
+      provider.closeAllConnections();
+      await new Promise((resolve) => provider.close(resolve));
     }
   });
 

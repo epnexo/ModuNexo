@@ -5,7 +5,8 @@ import { ModuleDbService } from "@modunexo/core/data";
 import { EventService } from "@modunexo/core/events";
 import { FileService, defaultFileStorage } from "@modunexo/core/files";
 import { JobService } from "@modunexo/core/jobs";
-import { DB_READER, EVENTS_PUBLISHER, FILES_SERVICE, JOBS_ENQUEUER, SETTINGS_READER, type DbReader, type EventsPublisher, type FilesService, type JobsEnqueuer, type SettingsReader } from "@modunexo/sdk";
+import { LlmService } from "@modunexo/core/llm";
+import { DB_READER, EVENTS_PUBLISHER, FILES_SERVICE, JOBS_ENQUEUER, LLM_CLIENT, SETTINGS_READER, type DbReader, type EventsPublisher, type FilesService, type JobsEnqueuer, type LlmClient, type SettingsReader } from "@modunexo/sdk";
 import type pg from "pg";
 import { resolvePublicUrl } from "./launch.ts";
 import { CLOSED, STORE, closePlatform, holder, reopenPlatform } from "./platform-lifecycle.ts";
@@ -91,3 +92,13 @@ const filesService: FilesService = {
   remove: (moduleId, id) => files().remove(moduleId, id),
 };
 (globalThis as typeof globalThis & { [FILES_SERVICE]?: FilesService })[FILES_SERVICE] = filesService;
+
+/**
+ * What `chat` and `probeLlm` in the SDK call. The endpoint, key and model are the module's settings, read on each call, so
+ * a change on the settings screen applies at once; the key is decrypted here and goes nowhere but to the configured host.
+ */
+const llmClient: LlmClient = {
+  chat: (moduleId, request) => new LlmService(platform().pool, webRegistry()).chat(moduleId, request),
+  probe: (moduleId) => new LlmService(platform().pool, webRegistry()).probe(moduleId),
+};
+(globalThis as typeof globalThis & { [LLM_CLIENT]?: LlmClient })[LLM_CLIENT] = llmClient;

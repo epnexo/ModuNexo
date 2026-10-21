@@ -76,7 +76,7 @@ describe("llm functions", () => {
   });
 
   const result = { content: "hi", model: "m", finishReason: "stop", usage: null };
-  const probe = { latencyMs: 3, models: ["m"], model: "m", modelAvailable: true };
+  const probe = { endpoint: "http://127.0.0.1:1/v1", latencyMs: 3, models: ["m"], model: "m", modelAvailable: true };
 
   it("fail clearly where the platform registered no client", async () => {
     await assert.rejects(() => chat("agent", { messages: [{ role: "user", content: "x" }] }), LlmUnavailableError);
@@ -99,6 +99,16 @@ describe("llm functions", () => {
     assert.deepEqual(await chat("agent", request), result);
     assert.deepEqual(await probeLlm("agent"), probe);
     assert.deepEqual(calls, [["chat", "agent", request], ["probe", "agent"]]);
+  });
+
+  it("is recognised by instanceof even when it was raised by another copy of the SDK", () => {
+    // A bundler may load the SDK twice: the platform raises the error from one copy and the module catches it with the other.
+    const fromAnotherCopy = Object.assign(new Error("the provider answered HTTP 401"), { name: "LlmError", code: "unauthorized", [Symbol.for("modunexo.llm.error")]: true });
+    assert.ok(fromAnotherCopy instanceof LlmError);
+    assert.ok(new LlmError("timeout", "slow") instanceof LlmError);
+    for (const other of [new Error("x"), Object.assign(new Error("x"), { name: "LlmError", code: "timeout" }), null, undefined, "LlmError", { code: "timeout" }, 5]) {
+      assert.equal(other instanceof LlmError, false, String(other));
+    }
   });
 
   it("carries a code on the error the platform raises", () => {

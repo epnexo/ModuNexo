@@ -19,6 +19,7 @@ interface Review {
   events: { name: string; streamed: boolean }[];
   subscriptions: { event: string; job: string }[];
   files: { maxBytes: number; accept: string[] | null; downloadable: boolean } | null;
+  llm: { baseUrlSetting: string; apiKeySetting: string | null; modelSetting: string | null } | null;
   settings: { key: string }[];
   migrations: string[];
   runsHooks: boolean;
@@ -404,6 +405,15 @@ export function AppsManager({ initial, installed, modules }: { initial: AppsStat
                     <span className="block text-xs text-muted">
                       {staged.review.files.downloadable ? "Signed-in browsers that hold its permission can download them." : "No browser can download them."}
                     </span>
+                  </dd>
+                </>
+              ) : null}
+              {staged.review.llm !== null ? (
+                <>
+                  <dt className="text-muted">Language model</dt>
+                  <dd>
+                    {`endpoint from ${staged.review.llm.baseUrlSetting}${staged.review.llm.apiKeySetting === null ? "" : `, key from ${staged.review.llm.apiKeySetting}`}${staged.review.llm.modelSetting === null ? "" : `, model from ${staged.review.llm.modelSetting}`}`}
+                    <span className="block text-xs text-muted">The module sends its prompts to the endpoint you set; the key goes only there.</span>
                   </dd>
                 </>
               ) : null}

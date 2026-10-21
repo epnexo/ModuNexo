@@ -1,9 +1,10 @@
-import { DB_READER, type DbReader, EVENTS_PUBLISHER, type EventsPublisher, FILES_SERVICE, type FilesService, JOBS_ENQUEUER, type JobsEnqueuer, SETTINGS_READER, type SettingsReader } from "@modunexo/sdk";
+import { DB_READER, type DbReader, EVENTS_PUBLISHER, type EventsPublisher, FILES_SERVICE, type FilesService, JOBS_ENQUEUER, LLM_CLIENT, type LlmClient, type JobsEnqueuer, SETTINGS_READER, type SettingsReader } from "@modunexo/sdk";
 import type pg from "pg";
 import { resolveMasterKey } from "../auth/master-key.ts";
 import { ModuleDbService } from "../data/module-db.ts";
 import { EventService } from "../events/service.ts";
 import { FileService } from "../files/service.ts";
+import { LlmService } from "../llm/service.ts";
 import { defaultFileStorage } from "../files/index.ts";
 import type { Registry } from "../registry.ts";
 import { SettingsService } from "../settings/service.ts";
@@ -16,7 +17,7 @@ export interface RegistryHolder {
 
 /**
  * Registers, in this process, what a module's server code reaches through the SDK: `getDb`, `getSetting`,
- * `enqueueJob`, `publishEvent` and the file functions. The web app does the same for requests; a worker does it so a job handler can do what a request can.
+ * `enqueueJob`, `publishEvent`, the file functions and `chat`. The web app does the same for requests; a worker does it so a job handler can do what a request can.
  * The master key is read only when a setting is, so a worker that never reads a secret does not need one.
  */
 export function registerModuleRuntime(pool: pg.Pool, holder: RegistryHolder): void {
@@ -26,6 +27,7 @@ export function registerModuleRuntime(pool: pg.Pool, holder: RegistryHolder): vo
     [JOBS_ENQUEUER]?: JobsEnqueuer;
     [EVENTS_PUBLISHER]?: EventsPublisher;
     [FILES_SERVICE]?: FilesService;
+    [LLM_CLIENT]?: LlmClient;
   };
   slot[DB_READER] = { forModule: (moduleId) => new ModuleDbService(pool, holder.current).forModule(moduleId) };
   slot[SETTINGS_READER] = { get: (moduleId, key) => new SettingsService(pool, holder.current, { masterKey: resolveMasterKey() }).get(moduleId, key) };
@@ -39,5 +41,10 @@ export function registerModuleRuntime(pool: pg.Pool, holder: RegistryHolder): vo
     stat: (moduleId, id) => files().stat(moduleId, id),
     list: (moduleId, options) => files().list(moduleId, options),
     remove: (moduleId, id) => files().remove(moduleId, id),
+  };
+  // Built on each call so the settings, and the master key that opens a secret, are read when a model is used.
+  slot[LLM_CLIENT] = {
+    chat: (moduleId, request) => new LlmService(pool, holder.current).chat(moduleId, request),
+    probe: (moduleId) => new LlmService(pool, holder.current).probe(moduleId),
   };
 }

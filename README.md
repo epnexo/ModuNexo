@@ -754,6 +754,51 @@ npm run modunexo -- files delete inbox <file-id>
 - **Not here yet.** An object-storage adapter, thumbnails, a virus-scan hook, quotas on a module's total, expiring links for
   callers outside the platform, and an upload route owned by the platform.
 
+### Language models
+
+A module asks a chat model through the SDK and holds no HTTP, no provider code and no key. The endpoint, the key and the
+model are the module's own settings, so the settings screen is the configuration screen and the key is a stored secret. The
+wire format is OpenAI-compatible, which also covers local servers (Ollama, vLLM, LM Studio, llama.cpp).
+
+```ts
+settings: [
+  { key: "llm.url", label: "Model endpoint", type: "string" },       // https://api.openai.com/v1  or  http://127.0.0.1:11434/v1
+  { key: "llm.key", label: "API key", type: "secret" },               // optional: a local server needs none
+  { key: "llm.model", label: "Model", type: "string" },               // the default; a call may name another
+],
+llm: { baseUrlSetting: "llm.url", apiKeySetting: "llm.key", modelSetting: "llm.model" },   // only the first is required
+```
+
+```ts
+import { LlmError, chat, probeLlm } from "@modunexo/sdk";
+try {
+  const reply = await chat("agent", { messages: [{ role: "system", content: "Answer briefly." }, { role: "user", content: text }], temperature: 0.2, maxTokens: 300 });
+  reply.content;       // the text; also reply.model, reply.finishReason and reply.usage ({ promptTokens, completionTokens, totalTokens } or null)
+} catch (error) {
+  if (error instanceof LlmError) error.code;   // not_configured | invalid_request | unreachable | timeout | unauthorized | rejected | rate_limited | bad_response | too_large
+}
+const check = await probeLlm("agent");   // { endpoint, latencyMs, models (at most 50), model, modelAvailable }
+```
+
+```sh
+npm run modunexo -- llm probe agent [--json]    # reached http://127.0.0.1:11434/v1 in 12 ms / models (3): ... / model "x": available
+```
+
+- **Settings are read on every call.** Changing the endpoint, the key or the model on the settings screen applies at once, in
+  the web app and in the worker. A call from a route or from a job is the same call.
+- **Limits.** 1 to 200 messages and at most 200,000 characters; `temperature` 0 to 2; `maxTokens` 1 to 32768. A request that
+  breaks them is refused as `invalid_request` before any network call. A call times out after 60 s (pass a `signal` to stop
+  sooner) and a reply is read up to 2 MiB.
+- **The key.** It is decrypted only when a call is made and goes only to the configured host as `Authorization: Bearer`. It is
+  never logged, never in an error (the provider's own error text is cut to 200 characters and has the key removed) and never
+  in a result. A redirect is never followed, so a server cannot bounce the key to another host. The URL must be `http` or
+  `https` with no user name, query or fragment.
+- **Private addresses are allowed on purpose.** A local model is the main use, and the URL is set by an administrator on the
+  settings screen, not by a caller. Do not let module code build the URL from user input.
+- **Not here yet.** Streaming, tools or function calling, embeddings, images, retries with backoff, a usage or cost log and
+  quotas, several providers per module, and a provider that does not speak the OpenAI format (the provider sits behind a small
+  interface, so one can be added).
+
 ### Secrets
 
 A `secret` is stored encrypted with AES-256-GCM under a key derived from `MODUNEXO_MASTER_KEY`, bound to its module

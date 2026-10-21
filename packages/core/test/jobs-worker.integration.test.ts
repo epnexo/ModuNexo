@@ -1,14 +1,17 @@
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import type pg from "pg";
-import { EVENTS_PUBLISHER, type EventsPublisher, FILES_SERVICE, type FilesService, type JobContext, type JobHandler, JOBS_ENQUEUER, type JobsEnqueuer, enqueueJob, publishEvent, putFile } from "@modunexo/sdk";
+import { EVENTS_PUBLISHER, type EventsPublisher, FILES_SERVICE, type FilesService, LLM_CLIENT, type LlmClient, chat, type JobContext, type JobHandler, JOBS_ENQUEUER, type JobsEnqueuer, enqueueJob, publishEvent, putFile } from "@modunexo/sdk";
 import { EventService } from "../src/events/index.ts";
 import { JobService, Worker, type WorkerDeps, registerModuleRuntime } from "../src/jobs/index.ts";
 import { migrate } from "../src/runner.ts";
 import { createPool } from "../src/pool.ts";
+import { SettingsService } from "../src/settings/service.ts";
 import { createScratchDatabase } from "../src/testing.ts";
 import { Sandbox } from "./sandbox.ts";
 
@@ -563,4 +566,52 @@ describe("registerModuleRuntime", () => {
       await rm(dataDir, { recursive: true, force: true });
     }
   });
+
+  test("lets a handler call a model through the SDK, with the endpoint and key from the module's settings", async () => {
+    const manifest = box.modules.find((m) => m.manifest.id === moduleId)!.manifest;
+    manifest.settings = [
+      { key: "llm.url", label: "Endpoint", type: "string" },
+      { key: "llm.key", label: "API key", type: "secret" },
+      { key: "llm.model", label: "Model", type: "string" },
+    ];
+    manifest.llm = { baseUrlSetting: "llm.url", apiKeySetting: "llm.key", modelSetting: "llm.model" };
+    const seen: { auth: string | undefined; body: string }[] = [];
+    const server = createServer((request, response) => {
+      let body = "";
+      request.on("data", (chunk) => (body += chunk));
+      request.on("end", () => {
+        seen.push({ auth: request.headers.authorization, body });
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({ model: "m", choices: [{ message: { content: "from the model" }, finish_reason: "stop" }] }));
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const masterKey = "w".repeat(40);
+    const previous = process.env.MODUNEXO_MASTER_KEY;
+    process.env.MODUNEXO_MASTER_KEY = masterKey;
+    const store = new SettingsService(pool!, box.registry(), { masterKey });
+    await store.set(moduleId, "llm.url", `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`, "test");
+    await store.set(moduleId, "llm.key", "sk-worker-key", "test");
+    await store.set(moduleId, "llm.model", "worker-model", "test");
+    registerModuleRuntime(pool!, { current: box.registry() });
+    try {
+      let answer = "";
+      const { worker } = makeWorker({ sync: async (ctx) => void (answer = (await chat(ctx.moduleId, { messages: [{ role: "user", content: "ping" }] })).content) });
+      await enqueue("sync");
+      await worker.runOnce();
+      assert.equal(answer, "from the model");
+      assert.equal(seen[0]!.auth, "Bearer sk-worker-key");
+      assert.equal(JSON.parse(seen[0]!.body).model, "worker-model");
+    } finally {
+      delete manifest.llm;
+      delete manifest.settings;
+      delete (globalThis as typeof globalThis & { [LLM_CLIENT]?: LlmClient })[LLM_CLIENT];
+      if (previous === undefined) delete process.env.MODUNEXO_MASTER_KEY;
+      else process.env.MODUNEXO_MASTER_KEY = previous;
+      await pool!.query("delete from core.module_settings where module_id = $1", [moduleId]);
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
 });
+
