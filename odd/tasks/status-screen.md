@@ -30,7 +30,7 @@ Branch: feat/status-screen (from feat/install-without-downtime, so the chain int
 - [x] T1 (S3, S5) the queries: job counts per module and status, dead and retrying jobs, how long the oldest due job has waited, file counts and sizes per module. Route: inline. Commit: next commit (RED observed; 58 tests)
 - [x] T2 (S1, S3-S6) the status shaping in `apps/web/src/server/status.ts` (pure): wording, byte sizes, cut errors, the worker line. Route: inline. Commit: 96bbf7f (RED observed; 19 tests)
 - [x] T3 (S1, S2, S6) the page, its tabs, the sidebar entry, the model test route and button. Route: inline. Commit: next commit (e2e 49/49 on a real build)
-- [ ] T4 (S8) end-to-end check on a real build, docs, full suite, independent verifier. Route: inline then verifier.
+- [x] T4 (S8) end-to-end check on a real build, docs, full suite, independent verifier. Route: inline then verifier. Commit: next commit
 
 ## Log
 
@@ -57,3 +57,14 @@ Branch: feat/status-screen (from feat/install-without-downtime, so the chain int
   cut to 200 characters, the events, the files total and the model test, and the page never contains the job's payload, a file's
   name, a ref, the file's content or the key; the test route refuses a visitor (401), a non-administrator (403), another site (403),
   a request with no origin (403), an unknown module (404), a refusing provider (502, key not in the answer) and an unset endpoint (422).
+- L6: Independent verifier (it read the code and ran the small test files only, while the suite ran): S1-S8 pass, no blockers. Advisories
+  fixed with tests that failed first: `formatBytes` wrote "1024 KB" for 1,048,575 bytes (now "1.0 MB"); `formatWait(NaN)` wrote "NaN d"
+  (now "0 s"); the test button's accessible name did not contain its visible text (now "Test connection for <module>"). Left, not fixed:
+  the model-test route has no rate limit or concurrency control, so a stolen administrator session can hold many 60 s outbound
+  requests open (only against the endpoint the administrator configured); `counts()`, `totals()` and `troubled()` scan whole tables
+  (`core.jobs` is pruned after 14 days and `core.events` after 7, so they stay small; files are not pruned).
+- L7: The first full-suite run had one failure, in the INSTALL end-to-end file (not in this feature): the continuous probe counted one
+  request as failed while the machine was building and running the whole suite. The probe waited 3 s per request; it now waits 15 s
+  and the assertion says what each failed request got (a build that has gone fails at once with an error or a 5xx, so the probe still
+  sees it). Reproduced under load: four processes burning the four cores, the test passes. Fixed on the install branch (9e6f962), which
+  this branch is rebased on.
