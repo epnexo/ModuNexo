@@ -137,6 +137,11 @@ describe("POST /hooks/inbox/messages", { concurrency: false }, () => {
       message({ contact: "Ada" }),
       message({ contact: { ref: "" } }),
       message({ contact: { ref: "c-1", name: 5 } }),
+      message({ text: "a\u0000b" }),
+      message({ threadRef: "t\u0000" }),
+      message({ messageId: "\u0000" }),
+      message({ contact: { ref: "c\u0000" } }),
+      message({ contact: { ref: "c-1", name: "A\u0000" } }),
     ];
     for (const body of bad) {
       const response = await post(body);

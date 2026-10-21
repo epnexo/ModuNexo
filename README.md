@@ -839,7 +839,10 @@ a job, an event, secret settings and a live page. Pack and install it like any o
 - **Reply.** The form posts to `/inbox/reply` (permission `inbox.write`, same site only). The reply is stored as `queued`
   and the job `deliver` posts it, signed with `outbound_secret` in the same way, to the setting `outbound_url`; it becomes
   `sent`, or `failed` with the reason after 5 attempts. The reason is the HTTP status or a fixed phrase, never the URL or
-  the provider's answer. Without an outbound URL a reply stays `queued` and the page says so.
+  the provider's answer. Without an outbound URL a reply stays `queued` and the page says so. The URL must be `http` or `https`
+  (any other scheme fails the reply at once), and it is whatever an administrator sets, so point it only at a service you trust.
+  Delivery is at-least-once: if the worker stops after the provider accepted a reply and before it was marked `sent`, the reply is
+  sent again, so the receiving side should ignore a `messageId` it has already seen.
 - **Permissions.** `inbox.read` opens the page and receives the event; `inbox.write` can reply. A page cannot ask the SDK
   who is looking, so the reply form is shown to everyone who can read and the gate refuses the send to the rest.
 - **Not yet.** Attachments, adapters for WhatsApp, Instagram or Messenger (their `GET` handshake cannot be a public route

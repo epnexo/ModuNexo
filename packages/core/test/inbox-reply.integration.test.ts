@@ -115,6 +115,7 @@ describe("POST /inbox/reply", { concurrency: false }, () => {
       [form({ conversationId: "abc", text: "x" }), 400],
       [form({ conversationId: id, text: "   " }), 400],
       [form({ conversationId: id, text: "x".repeat(4001) }), 400],
+      [form({ conversationId: id, text: "a\u0000b" }), 400],
       [form({ text: "x" }), 400],
     ];
     for (const [request, status] of cases) assert.equal((await reply(request)).status, status);
@@ -176,6 +177,21 @@ describe("the deliver job", { concurrency: false }, () => {
     const [row] = await outbound();
     assert.equal(row.status, "failed");
     assert.match(row.error, /outbound_secret/);
+  });
+
+  it("fails at once, without sending, when the outbound URL is not an http or https address", async (t) => {
+    if (skipReason) return t.skip(skipReason);
+    for (const url of ["data:text/plain,x", "file:///etc/passwd", "ftp://host/x", "not a url"]) {
+      await pool!.query("delete from inbox.messages");
+      await settings.set("inbox", "outbound_url", url, "test");
+      const id = await queue();
+      await deliver(ctx(id));
+      const [row] = await outbound();
+      assert.equal(row.status, "failed", url);
+      assert.match(row.error, /http/, url);
+      assert.equal(`${row.error}`.includes(url), false, url);
+    }
+    assert.equal(seen.length, 0);
   });
 
   it("leaves the reply queued, without error and without sending, when there is no outbound URL", async (t) => {
