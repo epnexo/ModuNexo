@@ -2,13 +2,13 @@ import { getDb, getSetting, type JobContext } from "@modunexo/sdk";
 import { DELIVER_ATTEMPTS } from "../lib/limits.ts";
 import { signature } from "../lib/sign.ts";
 
-interface Pending {
+type Pending = {
   id: string;
   text: string;
   channel: string;
   thread_ref: string;
   contact_ref: string;
-}
+};
 
 const textOf = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
 
