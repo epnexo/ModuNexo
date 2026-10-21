@@ -176,10 +176,11 @@ function renderRoute({ moduleId, path, page, packageName }: RoutePlan): string {
     lines.splice(
       1,
       1,
-      'import { publicRoute } from "@/server/public-route";',
+      'import { publicRoute, type PublicRouteRule } from "@/server/public-route";',
       `import * as handlers from ${from};`,
       "",
-      `const rule = ${rule};`,
+      // Typed, because an untyped literal widens `"hex"` to `string` and the route file would not compile.
+      `const rule: PublicRouteRule = ${rule};`,
       "",
       ...exported.map((method) => `export const ${method} = publicRoute(rule, handlers.${method});`),
     );

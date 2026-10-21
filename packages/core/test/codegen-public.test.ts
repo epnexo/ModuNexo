@@ -44,7 +44,7 @@ describe("renderRegistration: public routes", () => {
     const files = render([fixture("inbox", [publicRoute("/hooks/inbox/messages")])]);
     const content = files.get("src/app/(shell)/hooks/inbox/messages/route.ts");
     assert.ok(content !== undefined, [...files.keys()].join("\n"));
-    assert.match(content, /import \{ publicRoute \} from "@\/server\/public-route";/);
+    assert.match(content, /import \{ publicRoute, type PublicRouteRule \} from "@\/server\/public-route";/);
     assert.match(content, /import \* as handlers from "@fixture\/inbox\/web\/hook";/);
     assert.match(content, /export const POST = publicRoute\(/);
     assert.match(content, /handlers\.POST/);
@@ -59,6 +59,15 @@ describe("renderRegistration: public routes", () => {
     assert.match(content, /"header":"x-hub"/);
     assert.match(content, /"prefix":"sha256="/);
     assert.match(content, /"ratePerMinute":5/);
+  });
+
+  it("types the rule, so a declared encoding stays \"hex\" or \"base64\" and the route file still compiles", () => {
+    const content = render([
+      fixture("inbox", [publicRoute("/hooks/inbox/messages", { public: { signature: { secret: "webhook_secret", header: "x-signature", encoding: "hex" } } })]),
+    ]).get("src/app/(shell)/hooks/inbox/messages/route.ts")!;
+    assert.match(content, /import \{ publicRoute, type PublicRouteRule \} from "@\/server\/public-route";/);
+    assert.match(content, /const rule: PublicRouteRule = \{/);
+    assert.match(content, /"encoding":"hex"/);
   });
 
   it("wraps every declared method", () => {
