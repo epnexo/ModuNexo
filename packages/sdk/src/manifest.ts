@@ -158,6 +158,16 @@ export interface FilesDeclaration {
   permission?: string;
 }
 
+/** Opts the module in to calling a language model. Each value is the key of a setting the module declares itself. */
+export interface LlmDeclaration {
+  /** A `string` setting holding the provider's base URL, for example `https://api.openai.com/v1` or `http://127.0.0.1:11434/v1`. */
+  baseUrlSetting: string;
+  /** A `secret` setting holding the API key. Leave it out for a server that needs none. */
+  apiKeySetting?: string;
+  /** A `string` or `select` setting holding the default model. */
+  modelSetting?: string;
+}
+
 /** The contract every module declares in its `manifest.ts` (manifest v2). */
 export interface ModuleManifest {
   /** Unique kebab-case identifier. */
@@ -188,6 +198,8 @@ export interface ModuleManifest {
   subscriptions?: SubscriptionDeclaration[];
   /** Present: the module may store files with `putFile`. */
   files?: FilesDeclaration;
+  /** Present: the module may call a language model with `chat`; the endpoint, key and model are the settings it names. */
+  llm?: LlmDeclaration;
   /** Relative path (starting with "./") to a file exporting `onInstall`, `onEnable`, `onDisable`, `onUpgrade`, `onUninstall`. */
   hooks?: string;
 }
@@ -212,7 +224,7 @@ const SCHEMA_NAME = /^[a-z][a-z0-9_]{0,62}$/;
 // "core" belongs to the platform itself.
 const RESERVED_SCHEMAS = new Set(["public", "information_schema", "core"]);
 const KNOWN_FIELDS = new Set([
-  "id", "version", "name", "platform", "dependsOn", "schema", "migrationsDir", "nav", "pages", "settings", "permissions", "scopes", "jobs", "events", "subscriptions", "files", "hooks",
+  "id", "version", "name", "platform", "dependsOn", "schema", "migrationsDir", "nav", "pages", "settings", "permissions", "scopes", "jobs", "events", "subscriptions", "files", "llm", "hooks",
 ]);
 const KNOWN_NAV_FIELDS = new Set(["label", "href", "icon", "group", "order", "permission"]);
 const KNOWN_PAGE_FIELDS = new Set(["path", "entry", "kind", "dynamic", "methods", "permission", "public", "scope"]);
@@ -231,6 +243,7 @@ const KNOWN_JOB_FIELDS = new Set(["name", "entry", "every", "timeoutSeconds", "m
 const MAX_EVENT_NAME_CHARS = 100;
 const KNOWN_EVENT_FIELDS = new Set(["name", "permission"]);
 const KNOWN_SUBSCRIPTION_FIELDS = new Set(["event", "job"]);
+const KNOWN_LLM_FIELDS = new Set(["baseUrlSetting", "apiKeySetting", "modelSetting"]);
 const KNOWN_FILES_FIELDS = new Set(["maxBytes", "accept", "permission"]);
 const MAX_ACCEPT_ENTRIES = 20;
 const CONTENT_TOKEN = "[a-z0-9][a-z0-9!#$&^_.+-]*";
@@ -615,6 +628,36 @@ function checkFiles(files: unknown, permissionKeys: Set<string>, problems: strin
   }
 }
 
+/** The type of each setting the manifest declares, by key; entries that are not well formed are left out. */
+function settingTypes(settings: unknown): Map<string, string> {
+  const types = new Map<string, string>();
+  if (!Array.isArray(settings)) return types;
+  for (const setting of settings) {
+    if (isPlainObject(setting) && typeof setting.key === "string" && typeof setting.type === "string") types.set(setting.key, setting.type);
+  }
+  return types;
+}
+
+function checkLlm(llm: unknown, types: Map<string, string>, problems: string[]): void {
+  if (!isPlainObject(llm)) {
+    problems.push("llm must be an object");
+    return;
+  }
+  checkUnknownFields(llm, KNOWN_LLM_FIELDS, "llm", problems);
+  const roles: [string, unknown, readonly string[], boolean][] = [
+    ["baseUrlSetting", llm.baseUrlSetting, ["string"], true],
+    ["apiKeySetting", llm.apiKeySetting, ["secret"], false],
+    ["modelSetting", llm.modelSetting, ["string", "select"], false],
+  ];
+  for (const [name, value, accepted, required] of roles) {
+    if (value === undefined && !required) continue;
+    const type = typeof value === "string" ? types.get(value) : undefined;
+    if (type === undefined || !accepted.includes(type)) {
+      problems.push(`llm.${name} must name a setting this module declares, of type ${accepted.join(" or ")}`);
+    }
+  }
+}
+
 interface SubscriptionContext {
   moduleId: string | undefined;
   dependsOn: string[];
@@ -700,6 +743,7 @@ export function validateManifest(input: unknown, options: ValidateOptions = {}):
   if (raw.jobs !== undefined) checkJobs(raw.jobs, problems);
   if (raw.events !== undefined) checkEvents(raw.events, permissionKeys, problems);
   if (raw.files !== undefined) checkFiles(raw.files, permissionKeys, problems);
+  if (raw.llm !== undefined) checkLlm(raw.llm, settingTypes(raw.settings), problems);
   if (raw.subscriptions !== undefined) {
     const jobNames = new Set(Array.isArray(raw.jobs) ? raw.jobs.flatMap((job) => (isPlainObject(job) && typeof job.name === "string" ? [job.name] : [])) : []);
     const ctx: SubscriptionContext = {
