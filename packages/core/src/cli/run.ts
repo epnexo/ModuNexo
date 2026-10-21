@@ -14,7 +14,7 @@ import { Registry } from "../registry.ts";
 import { MigrationRunError, migrate, pendingMigrations } from "../runner.ts";
 import { SettingValueError, SettingsError } from "../settings/service.ts";
 import { EventError } from "../events/index.ts";
-import { FileError } from "../files/index.ts";
+import { FileError, defaultFileStorage } from "../files/index.ts";
 import { JOB_STATUSES, JobError, type JobStatus } from "../jobs/index.ts";
 import { TokenError } from "../tokens/errors.ts";
 import { DATA_DIR } from "../packages/paths.ts";
@@ -482,6 +482,14 @@ async function modulesCommand(parsed: Parsed, service: LifecycleService, io: Cli
       const mode = parsed.values.keep ? "keep" : parsed.values.purge ? "purge" : undefined;
       const plan = await service.uninstall(id!, mode);
       line = `uninstalled "${id}" (${plan.mode})`;
+      if (plan.mode === "purge") {
+        // The purge deleted the rows with the schema; the bytes are not the database's, so they go once it has committed.
+        try {
+          await defaultFileStorage().removePrefix(id!);
+        } catch (error) {
+          io.err(`warning: the stored files of "${id}" could not be removed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
       break;
     }
   }

@@ -42,7 +42,7 @@ The only environment variables are infrastructure ones:
 - `MODUNEXO_MASTER_KEY` - the one secret the platform reads from the environment, at least 32 characters
   (`openssl rand -base64 48`). The sign-in secret is derived from it, so there is no separate variable for it.
   Changing it signs every user out. Only the commands that touch authentication need it.
-- `MODUNEXO_DATA_DIR` - optional: where received packages are kept (default `var/`).
+- `MODUNEXO_DATA_DIR` - optional: where received packages and the files modules store are kept (default `var/`). The web app and the worker must share it.
 
 The project was called epnexo before it was renamed. `EPNEXO_MASTER_KEY` and `EPNEXO_DATA_DIR` still work as aliases
 (the new name wins when both are set), and `npm run epnexo` still runs the CLI, so an existing `.env` and existing
@@ -700,6 +700,60 @@ npm run modunexo -- events publish inbox message.received --payload '{"body":"hi
 - **Not here yet.** A React hook for the stream, delivery receipts per subscriber beyond the job's own, replaying events to
   a module that was disabled, wildcard types, and a screen for the stream.
 
+### Stored files
+
+A module keeps files (attachments, exports, images) through the SDK instead of writing to the disk itself. The bytes sit
+behind a storage adapter (a folder on disk today, object storage later), so no module changes when the adapter does.
+
+```ts
+permissions: [{ key: "inbox.read", label: "Read the inbox" }],
+files: { maxBytes: 5 * 1024 * 1024, accept: ["image/*", "application/pdf"], permission: "inbox.read" },
+// maxBytes: default 10 MiB, at most 50 MiB. accept: up to 20 types or families, default any.
+// permission: who may download from a browser. Without it no browser can.
+```
+
+```ts
+import { deleteFile, getFile, listFiles, putFile, statFile } from "@modunexo/sdk";
+// In a route: the request body is the file. Pass the stream; it is never held in memory whole.
+const meta = await putFile("inbox", { name: "invoice.pdf", data: request.body!, ref: "message:42" });   // { id, name, contentType, size, sha256, ref, createdAt }
+// Inside a transaction, so the file exists exactly when your row does:
+await getDb("inbox").transaction(async (tx) => {
+  const file = await putFile("inbox", { name, data }, { tx });
+  await tx.query("insert into attachments (message_id, file_id) values ($1, $2)", [messageId, file.id]);
+});
+const found = await getFile("inbox", id);        // { meta, stream } or null; another module's id is null too
+await listFiles("inbox", { ref: "message:42" }); // newest first, default 100, at most 500
+await deleteFile("inbox", id);                   // true, or false when the module has no such file
+```
+
+```sh
+npm run modunexo -- files list [inbox] [--limit 50] [--json]   # never the content
+npm run modunexo -- files delete inbox <file-id>
+```
+
+- **The type comes from the bytes.** The platform looks at the first bytes (PNG, JPEG, GIF, WebP, PDF, ZIP, gzip, plain
+  UTF-8 text, else `application/octet-stream`); a name or a type the caller claims is never believed. HTML, SVG and script
+  are plain text to it, so nothing a browser would run is ever announced as such. `accept` filters on that type.
+- **Names are never paths.** The name you give is kept only for display and for the download; separators, control and
+  invisible characters are removed and it is cut to 200 characters. Bytes live under `<module>/<two characters>/<uuid>`.
+- **Limits.** The body is counted as it is written; a file over the limit, empty, or of a type the module does not take is
+  refused and nothing is left behind. The platform has no multipart parser: your route reads its own body and decides its
+  own protocol (a raw body with the name in a header is the simplest).
+- **Download.** `GET /api/files/<module>/<id>` is behind the gate like any `/api` path and also needs the module's
+  `files.permission` (administrators and the local operator hold every module permission). It is always sent as an
+  attachment, with `X-Content-Type-Options: nosniff` and `Content-Security-Policy: default-src 'none'; sandbox`; a module that
+  is unknown, stores no files or is disabled answers 404 like a missing file. Machine callers get a file through a route of
+  yours that checks its own token.
+- **Rows and bytes are two stores.** `core.files` (migration 0013) holds the row, the data directory holds the bytes
+  (`MODUNEXO_DATA_DIR/files`, shared by the web app and the worker: give both the same directory, as the compose file does).
+  With `tx`, the bytes are written first and the row commits with your transaction; if it rolls back the bytes are left
+  without a row, and the worker removes bytes older than a day that no row describes (and half-written uploads older than an
+  hour) every hour. `deleteFile` removes the row, then the bytes.
+- **Lifecycle and backup.** `uninstall --purge` deletes the module's rows and its folder of bytes (`--keep` leaves both).
+  `scripts/backup.sh` saves `files.tar.gz` and `restore.sh` brings it back.
+- **Not here yet.** An object-storage adapter, thumbnails, a virus-scan hook, quotas on a module's total, expiring links for
+  callers outside the platform, and an upload route owned by the platform.
+
 ### Secrets
 
 A `secret` is stored encrypted with AES-256-GCM under a key derived from `MODUNEXO_MASTER_KEY`, bound to its module
@@ -955,7 +1009,7 @@ scripts/restore.sh backups/modunexo-backup-20261018T120000Z --database-url postg
 ```
 
 A backup folder holds `database.dump` (PostgreSQL custom format), `modules.tar.gz` (installed modules, without
-`node_modules` or `.next`), `packages.tar.gz` (received packages), `BACKUP_INFO` and `SHA256SUMS`. It is readable by its
+`node_modules` or `.next`), `packages.tar.gz` (received packages), `files.tar.gz` (the files modules stored), `BACKUP_INFO` and `SHA256SUMS`. It is readable by its
 owner only: the dump contains every password hash and every encrypted secret. Options: `--out`, `--database-url`
 (default `DATABASE_URL`), `--modules-dir`, `--data-dir`. The scripts use the PostgreSQL client tools from the `PATH` or,
 if they are not installed, run them inside the compose `db` service.
@@ -964,8 +1018,12 @@ if they are not installed, run them inside the compose `db` service.
 your `.env`) somewhere else, such as a password manager. A restore without it works, but the stored secrets have to be
 typed again.
 
+The files are read after the database, so a file stored in between has bytes without a row (the worker removes those after a
+day); stop the web app and the worker first if the backup must match to the second. A backup made before modules could store
+files has no `files.tar.gz` and restores as before.
+
 Restore never overwrites: it checks `SHA256SUMS` first and refuses a database that already has tables or folders that
-already hold modules or packages, changing nothing. Create an empty database, restore, copy your `.env` with the same
+already hold modules, packages or files, changing nothing. Create an empty database, restore, copy your `.env` with the same
 master key, then `npm install && npm run registry:generate && npm run web:build`. Test a restore on a scratch database
 before you need one, and copy the backup folders off the machine.
 

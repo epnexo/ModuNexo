@@ -1,6 +1,6 @@
 import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
-import { ManifestError, type ModuleManifest, validateManifest } from "@modunexo/sdk";
+import { DEFAULT_FILE_MAX_BYTES, ManifestError, type ModuleManifest, validateManifest } from "@modunexo/sdk";
 import semver from "semver";
 import { RESERVED_PATHS, isReserved } from "../codegen/render.ts";
 import { readMigrationFiles } from "../migrations.ts";
@@ -31,6 +31,8 @@ export interface PackageReview {
   /** `streamed` is true when the event is tied to a permission, which is what lets a signed-in browser follow it. */
   events: { name: string; streamed: boolean }[];
   subscriptions: { event: string; job: string }[];
+  /** Null when the module stores no files. `downloadable` is true when its files are tied to a permission, which is what lets a signed-in browser download them. */
+  files: { maxBytes: number; accept: string[] | null; downloadable: boolean } | null;
   settings: { key: string; type: string; required: boolean; hasDefault: boolean }[];
   migrations: string[];
   runsHooks: boolean;
@@ -233,6 +235,10 @@ export function validatePackageTree(root: string, context: PackageContext): Pack
       jobs: (manifest.jobs ?? []).map((job) => ({ name: job.name, ...(job.every === undefined ? {} : { every: job.every }) })),
       events: (manifest.events ?? []).map((event) => ({ name: event.name, streamed: event.permission !== undefined })),
       subscriptions: (manifest.subscriptions ?? []).map((subscription) => ({ event: subscription.event, job: subscription.job })),
+      files:
+        manifest.files === undefined
+          ? null
+          : { maxBytes: manifest.files.maxBytes ?? DEFAULT_FILE_MAX_BYTES, accept: manifest.files.accept ?? null, downloadable: manifest.files.permission !== undefined },
       settings: (manifest.settings ?? []).map((setting) => ({ key: setting.key, type: setting.type, required: setting.required === true, hasDefault: setting.default !== undefined })),
       migrations,
       runsHooks,

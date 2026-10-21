@@ -150,4 +150,23 @@ describe("cli: files list and delete", () => {
       assert.equal(existsSync(bytesOf("alpha", OLD)), true, "nothing was deleted");
     });
   });
+
+  it("modules uninstall --purge removes a module's files, rows and bytes; --keep leaves them", async (t) => {
+    await inScratchDatabase(t, async (db, cli) => {
+      assert.equal((await cli(["modules", "install", "beta"])).code, 0);
+      await seed(db, "alpha", OLD, "old.txt", "2026-10-01T10:00:00Z");
+      await seed(db, "beta", OTHER, "other.txt", "2026-10-03T10:00:00Z");
+      const kept = await cli(["modules", "uninstall", "beta", "--keep"]);
+      assert.equal(kept.code, 0, kept.stderr);
+      assert.equal(existsSync(bytesOf("beta", OTHER)), true);
+      assert.equal((await db.query("select 1 from core.files where module_id = 'beta'")).rowCount, 1);
+
+      const purged = await cli(["modules", "uninstall", "alpha", "--purge"]);
+      assert.equal(purged.code, 0, purged.stderr);
+      assert.equal(existsSync(join(dataDir, "files", "alpha")), false);
+      assert.equal((await db.query("select 1 from core.files where module_id = 'alpha'")).rowCount, 0);
+      assert.equal(existsSync(bytesOf("beta", OTHER)), true, "another module's bytes stay");
+    });
+  });
 });
+

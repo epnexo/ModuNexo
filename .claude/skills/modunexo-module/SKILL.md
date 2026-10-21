@@ -72,6 +72,12 @@ The user wants a new module (documents, contacts, anything), a change to one, or
   `getDb(...).transaction`). Only an event with a `permission` is streamed to browsers (`GET /api/events`); never put a
   secret in a payload. Another module reacts with `subscriptions: [{ event, job }]` (the module must be in `dependsOn`),
   and the job receives `{ event: { id, type, payload, createdAt } }`. See the README section "Events and realtime".
+- To keep a file (an attachment, an export, an image), declare `files: { maxBytes?, accept?, permission? }` and use
+  `putFile(moduleId, { name, data, ref? }, { tx })`, `getFile`, `statFile`, `listFiles`, `deleteFile`; never write to the
+  disk yourself. Keep the returned `id` in your own table, pass `tx` so the file and your row commit together, and read the
+  body in your route (the platform has no multipart parser). The type is decided from the bytes, not the name. Only a file
+  of a module with `files.permission` can be downloaded by a browser, at `GET /api/files/<module>/<id>`, always as an
+  attachment. See the README section "Stored files".
 - UI: reuse the shell's tokens and classes (`bg-surface`, `border-border`, `text-muted`, `bg-accent`), English copy,
   one concern per screen (tabs or on-demand panels, not a stack of sections).
 - Code, comments, UI text and commits are in English.

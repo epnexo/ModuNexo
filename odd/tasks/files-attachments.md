@@ -44,9 +44,9 @@ Branch: feat/files-attachments (from main). Delivery strategy: ask-on-risk; the 
 
 - [x] T1 (S1, S4-S6 SDK side) manifest `files`, `files.ts` (types, symbol, `putFile`/`getFile`/`statFile`/`listFiles`/`deleteFile`). Route: inline. Commit: c5a4d16 (RED observed)
 - [x] T2 (S2, S3, S4, S5, S6, S9 purge) migration 0013, `FileStorage`, `DiskStorage`, `FileService`, content sniffing, purge. Route: inline. Commit: next commit (RED observed)
-- [ ] T3 (S8, S9, S10) register the service in web and worker, orphan sweep, purge of bytes on uninstall, CLI `files`, backup scripts. Route: inline.
-- [ ] T4 (S7) download route, gate, end-to-end. Route: inline.
-- [ ] T5 (S9 review, S11) install review, README, skill, ADR note. Route: inline.
+- [x] T3 (S8, S9, S10) register the service in web and worker, orphan sweep, purge of bytes on uninstall, CLI `files`, backup scripts. Route: inline. Commit: 5a28f93 (RED observed; the CLI `modules uninstall --purge` path was added later, in the T4/T5 commit)
+- [x] T4 (S7) download route, gate, end-to-end. Route: inline. Commit: next commit (RED observed for the helpers, the header rules and the CLI purge; e2e 45/45 on a production build)
+- [x] T5 (S9 review, S11) install review, README, skill, ADR note. Route: inline. Commit: next commit (RED observed for the review)
 - [ ] T6 full suite, independent verifier. Route: inline then verifier.
 
 ## Log
@@ -71,3 +71,12 @@ Branch: feat/files-attachments (from main). Delivery strategy: ask-on-risk; the 
 - L6: T2 observed: 44 tests of the units and the service on a real database and a real folder (twice green); purge and migration
   lists updated (35 green). One test was wrong, not the code: it wrote an orphan under a folder that is not the first two
   characters of its id, which the sweep rightly ignores.
+- L7: Found by the end-to-end test, not by a unit test: `next.config` applies the page policy to every path and a header set
+  there replaces one the route set, so the download's `Content-Security-Policy: default-src 'none'; sandbox` never reached the
+  browser. Fixed with two header rules (pages unchanged; `/api/files/*` gets the same set without the content policy, which
+  the route sets). The brand logo route sets the same policy and is overridden the same way; it is not part of this
+  feature and was left as it is (advisory for the owner).
+- L8: Also found while writing the e2e: `modules uninstall --purge` through the CLI without `--rebuild` deleted the rows but not
+  the bytes (only `changeModule` removed them). Both paths now remove the module's folder after the purge commits. The e2e
+  runs with its own `MODUNEXO_DATA_DIR` so nothing lands in the repository's `var/`.
+- L9: T4/T5 observed: web unit tests 14 (download helpers, header rules), review tests 31, CLI files tests 6, e2e 45/45.

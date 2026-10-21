@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import type { NextConfig } from "next";
 import { listModulePackages } from "./src/server/module-packages.ts";
-import { securityHeaders } from "./src/server/security-headers.ts";
+import { headerRules } from "./src/server/security-headers.ts";
 
 const repositoryRoot = join(import.meta.dirname, "../..");
 
@@ -19,7 +19,7 @@ const config: NextConfig = {
   // The shell serves no images through the optimizer, and its endpoint sits outside the access gate.
   images: { unoptimized: true },
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders(process.env.WEB_PUBLIC_URL?.trim().startsWith("https://") === true) }];
+    return headerRules(process.env.WEB_PUBLIC_URL?.trim().startsWith("https://") === true);
   },
 };
 

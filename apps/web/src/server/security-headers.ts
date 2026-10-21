@@ -20,3 +20,21 @@ export function securityHeaders(https: boolean): HeaderEntry[] {
   if (https) headers.push({ key: "Strict-Transport-Security", value: "max-age=15552000; includeSubDomains" });
   return headers;
 }
+
+export interface HeaderRule {
+  source: string;
+  headers: HeaderEntry[];
+}
+
+/**
+ * What `next.config` applies. A header set there replaces one the route set itself, so the stored files, whose route
+ * sends a policy of its own (`default-src 'none'; sandbox`), are left out of the first rule and get the same headers
+ * without the content policy in the second.
+ */
+export function headerRules(https: boolean): HeaderRule[] {
+  const all = securityHeaders(https);
+  return [
+    { source: "/:path((?!api/files/).*)", headers: all },
+    { source: "/api/files/:path*", headers: all.filter((header) => header.key !== "Content-Security-Policy") },
+  ];
+}

@@ -18,6 +18,7 @@ interface Review {
   jobs: { name: string; every?: string }[];
   events: { name: string; streamed: boolean }[];
   subscriptions: { event: string; job: string }[];
+  files: { maxBytes: number; accept: string[] | null; downloadable: boolean } | null;
   settings: { key: string }[];
   migrations: string[];
   runsHooks: boolean;
@@ -47,6 +48,7 @@ type Staged = { sha256: string; sizeBytes: number; alreadyStaged: boolean; revie
 
 const when = (iso: string) => new Date(iso).toLocaleString();
 const list = (values: string[]) => (values.length === 0 ? "none" : values.join(", "));
+const formatBytes = (bytes: number): string => (bytes >= 1024 * 1024 ? `${Math.round(bytes / (1024 * 1024))} MB` : bytes >= 1024 ? `${Math.round(bytes / 1024)} KB` : `${bytes} bytes`);
 
 export interface InstalledModule {
   id: string;
@@ -391,6 +393,17 @@ export function AppsManager({ initial, installed, modules }: { initial: AppsStat
                   <dd>
                     {list(staged.review.subscriptions.map((subscription) => `${subscription.event} → ${subscription.job}`))}
                     <span className="block text-xs text-muted">The job runs in the worker process for every such event.</span>
+                  </dd>
+                </>
+              ) : null}
+              {staged.review.files !== null ? (
+                <>
+                  <dt className="text-muted">Stored files</dt>
+                  <dd>
+                    {`up to ${formatBytes(staged.review.files.maxBytes)} each; ${staged.review.files.accept === null ? "any type" : staged.review.files.accept.join(", ")}`}
+                    <span className="block text-xs text-muted">
+                      {staged.review.files.downloadable ? "Signed-in browsers that hold its permission can download them." : "No browser can download them."}
+                    </span>
                   </dd>
                 </>
               ) : null}
