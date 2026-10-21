@@ -178,6 +178,33 @@ describe("FileService.put", { concurrency: false }, () => {
     assert.equal((await keys()).length, 1);
   });
 
+  it("refuses a web stream that fails before anyone reads it, without an uncaught exception", async (t) => {
+    if (skipReason) return t.skip(skipReason);
+    await wipe();
+    const uncaught: unknown[] = [];
+    const listener = (error: unknown) => uncaught.push(error);
+    process.on("uncaughtException", listener);
+    try {
+      const failsAtStart = new ReadableStream<Uint8Array>({ start: (controller) => controller.error(new Error("rsboom-start")) });
+      await assert.rejects(() => service.put(docsId, { name: "a.txt", data: failsAtStart }, {}), /rsboom-start/);
+      let sent = false;
+      const failsLater = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (sent) return controller.error(new Error("rsboom-later"));
+          sent = true;
+          controller.enqueue(ascii("part"));
+        },
+      });
+      await assert.rejects(() => service.put(docsId, { name: "b.txt", data: failsLater }, {}), /rsboom-later/);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.deepEqual(uncaught, []);
+    } finally {
+      process.off("uncaughtException", listener);
+    }
+    assert.equal((await rows()).length, 0);
+    assert.deepEqual(await keys(), []);
+  });
+
   it("refuses a type the module does not accept", async (t) => {
     if (skipReason) return t.skip(skipReason);
     await wipe();
