@@ -32,7 +32,7 @@ Branch: feat/install-without-downtime (from main c2d7b78). Delivery strategy: as
 - [x] T1 (S4) the directory record: names, read and write of `run/web.dist`, fallback to `.next`, removal of stray directories; `next.config` `distDir`. Route: inline. Commit: next commit (RED observed; 18 tests)
 - [x] T2 (S1, S3) `buildWithRollback` builds into a new directory; commit and rollback; journal and recovery. Route: inline. Commit: next commit (RED observed; install suites 63/63)
 - [x] T3 (S2, S5) `run.ts start` reads the record for each (re)start; `web:build` writes it; the supervisor passes the directory to the server. Route: inline. Commit: next commit (RED observed for the supervisor and the start preparation; 31 tests)
-- [ ] T4 (S1, S2, S3) apply and change integration; end-to-end: a real build while the server answers continuously. Route: inline.
+- [x] T4 (S1, S2, S3) apply and change integration; end-to-end: a real build while the server answers continuously. Route: inline. Commit: next commit (e2e 9/9; mutation check red)
 - [ ] T5 (S6) docs, full suite, independent verifier. Route: inline then verifier.
 
 ## Log
@@ -79,3 +79,11 @@ Branch: feat/install-without-downtime (from main c2d7b78). Delivery strategy: as
   environment (a throwing `prepare` is logged and the server still starts). `prepareServerStart` picks the record's directory or `.next`
   and clears directories nobody serves, leaving alone the one a journal names (a restart in the middle of an install must not pull a
   build from under it) and everything for 60 s after a switch. `web:build` by hand writes its tsconfig, builds, and records the directory.
+- L9: T4 observed on real builds (install e2e file, 9/9). A probe asked the server for a page every 100 ms for the whole run: install
+  and upgrade had at least 100 requests during the build and every one was answered; the failing real build had no failed request
+  at all (no restart, no switch); the only gap was the restart, under the 20 s the test allows. Directories did not pile up: after
+  the upgrade only the build it replaced and the live one remained, and after the failed build only the live one. Mutation check
+  (not committed): putting the old behaviour back (the serving build moved aside while the new one is made) made the first test fail
+  on "the server answered every request while the build ran", so the probe can see the defect this feature removes. The unit-level
+  red was observed earlier (install-build tests: the runner asserts the serving build is untouched while it runs).
+  Documented in the README (the downtime paragraphs) and the HANDOFF; ADR-001 open question 1 now points here.

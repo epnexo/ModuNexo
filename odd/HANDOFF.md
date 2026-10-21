@@ -46,8 +46,11 @@ Owner-visible:
 2. Apps screen (from 2026-10-14, not re-checked): uploading needs the file on the browser's machine; a disabled module is
    listed by id; a refusal after the 4 s settle time looks like "started" with no run row; the page does not follow the
    restart smoothly.
-3. While a build runs (minutes) the running server's pages fail. Idea: build in a separate dist directory and swap; blocked
-   by Next baking `distDir` into its manifests.
+3. Installing no longer takes the site down: a module change builds into `apps/web/.next-<id>` while the server keeps serving, and
+   the restart that follows is the switch (seconds; `odd/tasks/install-without-downtime.md`). Left over: the gap of that
+   restart (only a proxy in front would remove it); the seconds between the database step and the restart, when the old
+   build serves against the new schema; in Docker the builds live in the container, not in a volume, so a recreated
+   container serves the image's `.next` again.
 4. Better Auth logs "Base URL is not set" without `WEB_PUBLIC_URL`; only matters behind a domain.
 5. Nothing exercises the new capabilities from the screen yet: the only installed module (`hello`) uses none, so a module
    that uses events, files and a model is the natural next piece (the end-to-end fixture in
@@ -85,6 +88,11 @@ Engineering:
 - `Readable.fromWeb` listens at once: a web stream that fails before anyone reads it raises an uncaught exception. Read
   request bodies through your own lazy reader.
 - `Array.prototype.forEach` skips holes: validate lists with an indexed loop.
+- `tsconfig.json` names `.next/types` by path, so `next build` into another directory type-checks the types of the LIVE build, which
+  name pages a change may have removed (an uninstall would fail its own build). A build into `.next-<id>` therefore gets a tsconfig
+  of its own (`writeDistTsconfig`, named from `typescript.tsconfigPath` in `next.config`).
+- The end-to-end tests build in the repository's own `apps/web` (`.next` and `.next-*`); do not run them while a server you care
+  about is serving from that folder, and rebuild it afterwards.
 - An end-to-end run found three defects that every unit test had missed (header override, cross-copy `instanceof`, a purge
   path that skipped the bytes). Keep that file running for anything that crosses the bundle boundary.
 - The harness refuses to read `.env*` files; never try. `bat` is not installed here; use the Read tool.
