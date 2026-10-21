@@ -15,10 +15,11 @@ import { MigrationRunError, migrate, pendingMigrations } from "../runner.ts";
 import { SettingValueError, SettingsError } from "../settings/service.ts";
 import { EventError } from "../events/index.ts";
 import { FileError, defaultFileStorage } from "../files/index.ts";
-import { LlmError } from "@modunexo/sdk";
+import { LlmError, SDK_VERSION } from "@modunexo/sdk";
 import { JOB_STATUSES, JobError, type JobStatus } from "../jobs/index.ts";
 import { TokenError } from "../tokens/errors.ts";
 import { DATA_DIR } from "../packages/paths.ts";
+import { CORE_VERSION } from "../version.ts";
 import { runEventsCommand } from "./events.ts";
 import { runFilesCommand } from "./files.ts";
 import { runLlmCommand } from "./llm.ts";
@@ -112,6 +113,7 @@ options for every command:
   --modules-dir <path>             where module packages are unpacked (default: modules/ at the repository root)
   --data-dir <path>                where received packages are kept (modules add, apply; default: MODUNEXO_DATA_DIR, else var/ at the repository root)
   --help                           print this text
+  --version                        print the version of the platform and of the SDK
 
 environment: DATABASE_URL (and TEST_DATABASE_URL for the tests); admin create, user create and module settings also need ${MASTER_KEY_ENV}
 exit codes: 0 done, 1 error, 2 usage error, 3 refused by a rule (lifecycle, registration conflict, administrator or sign-in mode)`;
@@ -146,6 +148,7 @@ const OPTIONS = {
   actor: { type: "string" },
   rebuild: { type: "boolean" },
   help: { type: "boolean" },
+  version: { type: "boolean" },
 } as const;
 
 /** The options each command accepts besides `--modules-dir` and `--help`. */
@@ -290,7 +293,7 @@ function checkLlmArguments(command: string, ids: string[]): void {
   if (ids.length !== 1) throw new UsageError(`${command} takes one module id`);
 }
 
-function parse(argv: string[]): Parsed | "help" {
+function parse(argv: string[]): Parsed | "help" | "version" {
   let parsed;
   try {
     parsed = parseArgs({ args: argv, options: OPTIONS, allowPositionals: true });
@@ -298,6 +301,7 @@ function parse(argv: string[]): Parsed | "help" {
     throw new UsageError(error instanceof Error ? error.message : String(error));
   }
   if (parsed.values.help) return "help";
+  if (parsed.values.version) return "version";
   const [first, second, ...rest] = parsed.positionals;
   if (first === undefined) throw new UsageError("no command given");
 
@@ -642,6 +646,10 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
     const parsed = parse(argv);
     if (parsed === "help") {
       io.out(USAGE);
+      return EXIT_OK;
+    }
+    if (parsed === "version") {
+      io.out(`modunexo ${CORE_VERSION} (sdk ${SDK_VERSION})`);
       return EXIT_OK;
     }
     if (parsed.command.startsWith("settings ")) {

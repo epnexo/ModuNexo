@@ -1,6 +1,6 @@
 {
   "name": "@modunexo/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "AGPL-3.0-only",
   "private": true,
   "type": "module",
@@ -17,6 +17,7 @@
     "./llm": "./src/llm/index.ts",
     "./jobs": "./src/jobs/index.ts",
     "./brand": "./src/settings/brand.ts",
+    "./version": "./src/version.ts",
     "./registry": "./src/registry.ts",
     "./packages": "./src/packages/index.ts",
     "./operations": "./src/operations/index.ts",
