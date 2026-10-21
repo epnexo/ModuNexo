@@ -1,17 +1,21 @@
 // End to end for the install pipeline: a module is packed, brought in, applied with a real `next build` while the
 // production server runs, and the server restarts into it; then upgraded; then an upgrade whose build fails is
-// rolled back and the previous version keeps being served. It runs the real build three times (minutes) against a
-// scratch database, and takes the web build lock so it does not collide with the other end-to-end file.
+// rolled back and the previous version keeps being served. A probe asks the server for a page every 100 ms for the whole
+// time: it must answer every request while a build runs (the build is made beside the serving one), and the only gap is
+// the restart that puts the new build in service. It runs the real build three times (minutes) against a scratch
+// database, and takes the web build lock so it does not collide with the other end-to-end file.
+//
+// It builds in the repository's own apps/web, so do not run it while a server you care about is serving from that folder.
 import assert from "node:assert/strict";
 import { type ChildProcess, spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, describe, it } from "node:test";
 import { BrandService } from "@modunexo/core/settings";
 import { createAdministrator, createAuth, setSignInMode } from "@modunexo/core/auth";
-import { ApplyFailedError, applyPackage, requestRestart } from "@modunexo/core/install";
+import { ApplyFailedError, applyPackage, distRecordPath, readLiveDist, requestRestart } from "@modunexo/core/install";
 import { buildPackageContext, intakePackage, packFolder } from "@modunexo/core/packages";
 import { createPool } from "@modunexo/core/pool";
 import { Registry, migrate } from "@modunexo/core";
@@ -96,6 +100,53 @@ async function waitForPage(path: string, marker: string, timeoutMs = 90_000): Pr
   assert.fail(`${path} never showed "${marker}" (last: ${last === null ? "no 200 reply" : last.slice(0, 200)})`);
 }
 
+/** Asks the server for a page every 100 ms until stopped, and keeps when each request was made and whether it got a 200. */
+function startProbe(path: string) {
+  const seen: { at: number; ok: boolean }[] = [];
+  let stopped = false;
+  const loop = (async () => {
+    while (!stopped) {
+      const at = Date.now();
+      let ok = false;
+      try {
+        ok = (await fetch(`http://127.0.0.1:${port}${path}`, { redirect: "manual", signal: AbortSignal.timeout(3000) })).status === 200;
+      } catch {
+        // no answer: the server is down or restarting
+      }
+      seen.push({ at, ok });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  })();
+  return {
+    stop: async () => {
+      stopped = true;
+      await loop;
+      return seen;
+    },
+  };
+}
+
+/** The longest stretch in which every request failed, in milliseconds. */
+function longestOutage(seen: { at: number; ok: boolean }[]): number {
+  let longest = 0;
+  let from: number | null = null;
+  for (const request of seen) {
+    if (request.ok) {
+      if (from !== null) longest = Math.max(longest, request.at - from);
+      from = null;
+    } else if (from === null) from = request.at;
+  }
+  return from === null ? longest : Math.max(longest, (seen.at(-1)?.at ?? from) - from);
+}
+
+/** The build directories and their tsconfig files in the web folder. */
+const buildDirs = () => readdirSync(WEB_ROOT).filter((name) => /^\.next(-|$)/.test(name) || name.startsWith("tsconfig.next-")).sort();
+/** Time passing: the record of the live directory is a minute old, so a directory it replaced is no longer draining. */
+const ageRecord = () => {
+  const earlier = new Date(Date.now() - 120_000);
+  utimesSync(distRecordPath(dataDir), earlier, earlier);
+};
+
 /** A module folder as its author has it. */
 function writeModule(version: string, pageSource: string): string {
   const folder = join(work, `src-${version}`);
@@ -133,10 +184,10 @@ async function bringIn(folder: string): Promise<string> {
   return packed.sha256;
 }
 
-const applyReal = async (sha256: string) => {
+const applyReal = async (sha256: string, onStep?: (step: string) => void) => {
   // The build is a child of this process and inherits its environment.
   Object.assign(process.env, appEnv);
-  return applyPackage({ pool: db!, sha256, actor: "e2e", dataDir, requestRestart: () => requestRestart({ dataDir }) });
+  return applyPackage({ pool: db!, sha256, actor: "e2e", dataDir, requestRestart: () => requestRestart({ dataDir }), ...(onStep === undefined ? {} : { onStep }) });
 };
 
 before(async () => {
@@ -186,6 +237,10 @@ after(async () => {
     rmSync(join(REPO_ROOT, "node_modules", "@applyfix"), { recursive: true, force: true });
     await runNode(["--import", "tsx", CLI, "registry:generate"]).catch(() => undefined);
   }
+  // The builds made beside the serving one are 150 MB each and are not tracked: take away every one this file made.
+  for (const name of readdirSync(WEB_ROOT)) {
+    if (name.startsWith(".next-") || name.startsWith("tsconfig.next-")) rmSync(join(WEB_ROOT, name), { recursive: true, force: true });
+  }
   await db?.end();
   await drop?.();
   if (work !== "") rmSync(work, { recursive: true, force: true });
@@ -199,32 +254,72 @@ describe("install pipeline: end to end", () => {
       await run();
     });
 
-  test("installs a module into the running server, which restarts and serves it", async () => {
+  test("installs a module while the server keeps answering; only the restart that puts the new build in service is a gap", async () => {
     assert.equal(await pageText(`/${MODULE_ID}`), null, "the module is not served before");
     const sha = await bringIn(writeModule("1.0.0", pageWith("apply-marker-v1")));
-    const result = await applyReal(sha);
+    assert.equal(readLiveDist(WEB_ROOT, dataDir).name, ".next");
+    const probe = startProbe("/apps");
+    let switchedAt = Number.POSITIVE_INFINITY;
+    const result = await applyReal(sha, (step) => {
+      if (step === "restart") switchedAt = Date.now();
+    });
     assert.equal(result.kind, "install");
     assert.match(result.restart, /restart requested/);
     await waitForPage(`/${MODULE_ID}`, "apply-marker-v1");
+    const seen = await probe.stop();
+
+    const during = seen.filter((request) => request.at < switchedAt);
+    assert.ok(during.length >= 100, `the probe covered the whole build: ${during.length} requests`);
+    assert.deepEqual(during.filter((request) => !request.ok).length, 0, "the server answered every request while the build ran");
+    const outage = longestOutage(seen);
+    assert.ok(outage < 20_000, `the restart that switches builds is a gap of seconds, not minutes: ${outage} ms`);
+
+    const live = readLiveDist(WEB_ROOT, dataDir);
+    assert.notEqual(live.name, ".next", "the new build is in a directory of its own, and the record names it");
+    assert.equal(existsSync(join(WEB_ROOT, ".next", "BUILD_ID")), true, "the old directory is still there for the server that was draining");
     assert.deepEqual((await db!.query("select id, state, installed_version from core.modules")).rows, [{ id: MODULE_ID, state: "enabled", installed_version: "1.0.0" }]);
     assert.ok(existsSync(join(REPO_ROOT, "modules", MODULE_ID, "manifest.ts")));
   });
 
-  test("upgrades it, keeping the previous version aside", async () => {
+  test("upgrades it with the server answering throughout, keeping the previous version aside and no build directories piled up", async () => {
+    ageRecord();
     const sha = await bringIn(writeModule("1.1.0", pageWith("apply-marker-v2")));
-    const result = await applyReal(sha);
+    const first = readLiveDist(WEB_ROOT, dataDir).name;
+    const probe = startProbe(`/${MODULE_ID}`);
+    let switchedAt = Number.POSITIVE_INFINITY;
+    const result = await applyReal(sha, (step) => {
+      if (step === "restart") switchedAt = Date.now();
+    });
     assert.equal(result.kind, "upgrade");
     await waitForPage(`/${MODULE_ID}`, "apply-marker-v2");
+    const seen = await probe.stop();
+    const during = seen.filter((request) => request.at < switchedAt);
+    assert.ok(during.length >= 100, `the probe covered the build: ${during.length} requests`);
+    assert.equal(during.filter((request) => !request.ok).length, 0, "the module's own page kept being served by the old build until the switch");
     assert.ok(existsSync(join(dataDir, "previous", `${MODULE_ID}-1.0.0`, "package.json")));
+
+    const live = readLiveDist(WEB_ROOT, dataDir).name;
+    assert.notEqual(live, first);
+    const dirs = buildDirs().filter((name) => name.startsWith(".next"));
+    assert.deepEqual(dirs, [first, live].sort(), "the original .next was cleared when this run began; the build it replaced stays until the next run");
   });
 
-  test("an upgrade whose real build fails is rolled back and the previous version keeps being served", async () => {
+  test("an upgrade whose real build fails is rolled back, the server never stops serving, and nothing of the failed build is left", async () => {
+    ageRecord();
     const sha = await bringIn(writeModule("1.2.0", "export default function Page() { return <h1>broken; }\n"));
+    const serving = readLiveDist(WEB_ROOT, dataDir).name;
+    const probe = startProbe(`/${MODULE_ID}`);
     await assert.rejects(applyReal(sha), (error) => {
       assert.ok(error instanceof ApplyFailedError);
       assert.equal(error.step, "build");
       return true;
     });
+    const seen = await probe.stop();
+    assert.ok(seen.length >= 100, `the probe covered the failed build: ${seen.length} requests`);
+    assert.equal(seen.filter((request) => !request.ok).length, 0, "not one request failed: there was no restart and no build was ever put in service");
+    assert.equal(readLiveDist(WEB_ROOT, dataDir).name, serving, "the record never changed");
+    assert.deepEqual(buildDirs().filter((name) => name.startsWith(".next")), [serving], "the failed build's directory is gone, and so is the build the last switch retired");
+    assert.deepEqual(buildDirs().filter((name) => name.startsWith("tsconfig.next-")), [`tsconfig${serving}.json`]);
     assert.equal(JSON.parse(readFileSync(join(REPO_ROOT, "modules", MODULE_ID, "package.json"), "utf8")).version, "1.1.0");
     assert.deepEqual((await db!.query("select installed_version from core.modules")).rows, [{ installed_version: "1.1.0" }]);
     assert.deepEqual(readdirSync(WEB_ROOT).filter((name) => name.includes("rollback")), []);

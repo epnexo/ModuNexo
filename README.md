@@ -971,7 +971,8 @@ npm run modunexo -- modules apply <sha256>     # the SHA-256 that `modules add` 
 ```
 
 `modules apply` installs a new module or upgrades the installed module of the same id to the package's version
-(the version must be greater). It takes minutes, because it builds the web app, and prints each step:
+(the version must be greater). It takes minutes, because it builds the web app, **while the server keeps serving the
+current build**, and prints each step:
 
 1. **Preflight.** The package must have been staged, its tree must still be there and it is validated again against
    the platform as it is now. Anything wrong is refused (exit `3`) before a file is touched.
@@ -980,20 +981,22 @@ npm run modunexo -- modules apply <sha256>     # the SHA-256 that `modules add` 
    replaces to `var/previous/<id>-<version>/`.
 3. **Verify.** The `manifest.ts` that is about to run (it is code) is loaded and must equal the `manifest.json`
    that was reviewed. A package that shows one manifest and runs another is refused and undone.
-4. **Build.** The web app is registered with the module and built with `next build`. The previous `.next` is kept
-   aside, and the new build starts from a clean `.next` (no cache is shared with it). This runs **before** the database is
-   touched, so a build that fails changes nothing in it.
+4. **Build.** The web app is registered with the module and built with `next build` into a directory of its own
+   (`apps/web/.next-<id>`), next to the one that is serving, which is not touched. The new build starts from nothing (no
+   cache is shared with another build). This runs **before** the database is touched, so a build that fails changes nothing
+   in it, and its directory is simply removed.
 5. **Lifecycle.** The module's migrations and hooks run through the same lifecycle as `modules install` or
    `modules upgrade` (dependency, platform and version rules included).
-6. **Restart.** The running server is asked to restart so it serves the new build.
+6. **Switch and restart.** Only now is the new directory recorded as the live one (`var/run/web.dist`), and the running
+   server is asked to restart: the restart is the switch, and it serves the new directory.
 
-If any step fails, the files, the link, the build and the registration are put back and the run ends
-`rolled_back`; the previous build keeps serving. One thing cannot be undone: if the lifecycle fails after some of
+If any step fails, the files, the link, the new build's directory and the registration are put back and the run ends
+`rolled_back`; the build that was serving was never touched and keeps serving. One thing cannot be undone: if the lifecycle fails after some of
 its migrations applied, those stay (the lifecycle's own rule) and a retry continues from there; the run says so.
 A stop signal (Ctrl-C) during the build aborts it and rolls back like any failure. A run that is killed outright
 (power loss, `kill -9`) leaves a journal in `var/run/apply.journal.json`; the next `modules apply` recovers first:
-it puts the files, link, build and registration back, or keeps the result if the database step had completed, and
-says so.
+it puts the files, link and registration back and removes the half build's directory, or keeps the result and puts its
+build in service if the database step had completed, and says so.
 Every run is a row in `core.module_operations` (module, version, package SHA-256, kind, status, the step it is at,
 detail, actor, times); only one runs at a time, and a run whose process died is closed as interrupted by the next
 start.
@@ -1005,10 +1008,27 @@ is the launcher (its command line), so a stale file can never make it signal som
 running it says so and nothing is signalled; start it with `npm run web:start`. `web:dev` is not supervised. A server that ignores the stop request is killed after 15 seconds so a restart
 cannot hang; and only a process whose command line is `apps/web/scripts/run.ts start` is ever signalled.
 
-Things to know. Every build starts from an empty `.next` (the cache is not shared with the kept build, because
-sharing it corrupted builds), so each install, upgrade, enable, disable or uninstall pays a full build; on this class
-of machine that is minutes. While the build runs the server's `.next` has been moved aside, so pages that were not yet loaded
-by the running server fail until the build finishes or is rolled back; do an install when that is acceptable.
+**No downtime while a change is built.** Every build starts from an empty directory (the cache is not shared with another
+build, because sharing it corrupted builds), so each install, upgrade, enable, disable or uninstall pays a full build; on
+this class of machine that is minutes. The server keeps answering for all of it, because the build is made beside the
+serving one. The only gap is the restart that puts the new build in service: the old server stops (up to 5 s to finish
+what it is doing) and the new one starts on the same port, so for some seconds requests are refused. A webhook sender
+that retries, or a browser that reloads, will not notice more than that; it is not a restart with no gap at all (that
+would need a proxy in front, which the platform does not have).
+
+- **Which directory is live.** `var/run/web.dist` holds its name (`.next` or `.next-<letters and digits>`). A missing,
+  empty or invalid record, or a directory that is gone or has no `BUILD_ID`, means `.next`: a deployment that never
+  changed a module, or a container recreated from its image (the builds beside `.next` live in the container, not in a
+  volume, so after a recreation the image's `.next` is served, as it always was). `MODUNEXO_DIST_DIR` is what
+  `next.config` reads the directory from; the launcher sets it on every start of the server, so a restart serves the
+  recorded one. `npm run web:build` by hand builds `.next` (or `MODUNEXO_DIST_DIR`) and records it.
+- **Disk.** A build directory is about 150 MB. The live one and the one being built exist together; the one a switch
+  replaced stays until the next run or the next start of the server, at least a minute later (the old server may still be
+  draining), and is then removed. A directory a running install names in its journal is never removed.
+- **Not covered.** Between the database step and the restart the old build serves against the new schema, for as long
+  as the restart takes to be requested (seconds). Running the end-to-end tests builds in the repository's own
+  `apps/web`, so do not run them while a server you care about serves from that folder.
+
 Installing is code execution with database access: the module's hooks run inside the platform and its pages are
 compiled into the web app. `modules pack` evaluates the author's `manifest.ts`, so it runs where `@modunexo/sdk` can
 be resolved from the module folder (a project with the SDK installed). `MODUNEXO_DATA_DIR` moves `var/`. The pipeline is Linux-only: it uses `/proc/<pid>/cmdline` to recognise the launcher; elsewhere a restart is reported as not requested and the server

@@ -81,9 +81,11 @@ modules as jobs and to browsers as server-sent events with a cursor.
 
 ## 7. Open questions
 
-1. **Install downtime.** Installing or enabling a module needs a cold build and a restart, during which pages
-   fail. Acceptable for passive modules; not for modules receiving live traffic. Either solve it (separate build
-   output with a swap) or require a maintenance window. This must be answered before capability 1 ships.
+1. **Install downtime.** Answered by `odd/tasks/install-without-downtime.md`: a module change builds into a build
+   directory of its own while the server keeps serving the current one, and the restart that follows is the switch. The
+   only gap left is that restart, seconds long; a restart with no gap at all would need a proxy in front of the server.
+   (Originally: installing or enabling a module needed a cold build during which pages failed, acceptable for passive
+   modules and not for modules receiving live traffic.)
 2. Do jobs and events persist in Postgres or stay in memory?
 3. Is the AI agent a module, or an external service reached with a service token?
 
