@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { isDistName } from "./dist.ts";
 import type { PlacementState } from "./place.ts";
 
 export type ApplyPhase = "placing" | "building" | "lifecycle";
@@ -14,6 +15,11 @@ export interface ApplyJournal extends PlacementState {
   version: string;
   phase: ApplyPhase;
   webRoot: string;
+  /**
+   * The build directory this run writes (see dist.ts), so a recovery knows which one to remove, or to put in service.
+   * A journal written before builds had directories of their own has none.
+   */
+  dist?: string;
 }
 
 /** A change of state (enable, disable, uninstall): no files are placed, only the build and the database move. */
@@ -26,6 +32,7 @@ export interface ChangeJournal {
   version: string;
   phase: ApplyPhase;
   webRoot: string;
+  dist?: string;
 }
 
 export type AnyJournal = ApplyJournal | ChangeJournal;
@@ -43,6 +50,7 @@ export function writeJournal(dataDir: string, journal: AnyJournal): void {
 }
 
 const isString = (value: unknown): value is string => typeof value === "string" && value.length > 0;
+const isOptionalDist = (value: unknown): boolean => value === undefined || (typeof value === "string" && isDistName(value));
 const isStringOrNull = (value: unknown): value is string | null => value === null || isString(value);
 
 /** The journal, or null when there is none or it is not one this code wrote. */
@@ -56,7 +64,8 @@ export function readJournal(dataDir: string): AnyJournal | null {
         isString(raw.moduleId) &&
         isString(raw.version) &&
         (raw.phase === "placing" || raw.phase === "building" || raw.phase === "lifecycle") &&
-        isString(raw.webRoot);
+        isString(raw.webRoot) &&
+        isOptionalDist(raw.dist);
       return changeOk ? (raw as unknown as ChangeJournal) : null;
     }
     const ok =
@@ -71,7 +80,8 @@ export function readJournal(dataDir: string): AnyJournal | null {
       isStringOrNull(raw.previousDir) &&
       isString(raw.version) &&
       (raw.phase === "placing" || raw.phase === "building" || raw.phase === "lifecycle") &&
-      isString(raw.webRoot);
+      isString(raw.webRoot) &&
+      isOptionalDist(raw.dist);
     return ok ? (raw as unknown as ApplyJournal) : null;
   } catch {
     return null;

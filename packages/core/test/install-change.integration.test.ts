@@ -11,6 +11,7 @@ import { ApplyFailedError, ApplyRefusedError, applyPackage } from "../src/instal
 import type { BuildRunner } from "../src/install/build.ts";
 import { changeModule } from "../src/install/change.ts";
 import { recoverInterrupted } from "../src/install/recover.ts";
+import { distRecordPath, readLiveDist } from "../src/install/dist.ts";
 import { writeJournal } from "../src/install/journal.ts";
 import { listOperations, startOperation } from "../src/operations/index.ts";
 import { buildPackageContext, intakePackage } from "../src/packages/index.ts";
@@ -33,6 +34,7 @@ beforeEach(async () => {
   generateRegistration([], { outDir: join(work, "web") });
   mkdirSync(join(work, "web", ".next"));
   writeFileSync(join(work, "web", ".next", "BUILD_ID"), "old");
+  writeFileSync(join(work, "web", "tsconfig.json"), JSON.stringify({ include: ["src", ".next/types/**/*.ts"] }));
   const scratch = await createScratchDatabase();
   skipReason = scratch.url ? undefined : scratch.skipReason;
   if (!scratch.url) return;
@@ -42,6 +44,7 @@ beforeEach(async () => {
   registry.registerCore();
   await migrate(pool, registry);
   builds.length = 0;
+  servingDuringBuild.length = 0;
   restarts.length = 0;
 });
 afterEach(async () => {
@@ -59,11 +62,19 @@ const test = (name: string, run: () => Promise<void>) =>
 
 const builds: string[] = [];
 const restarts: string[] = [];
-const goodBuild: BuildRunner = async (webRoot) => {
+/** What the serving build's BUILD_ID was while each build ran: a build must not touch it. */
+const servingDuringBuild: string[] = [];
+const goodBuild: BuildRunner = async (webRoot, _signal, dist) => {
   builds.push(readFileSync(join(webRoot, REGISTRY_FILE), "utf8"));
-  writeFileSync(join(webRoot, ".next", "BUILD_ID"), `build-${builds.length}`);
+  servingDuringBuild.push(readFileSync(join(webRoot, readLiveDist(webRoot, paths().dataDir).name, "BUILD_ID"), "utf8"));
+  mkdirSync(join(webRoot, dist!), { recursive: true });
+  writeFileSync(join(webRoot, dist!, "BUILD_ID"), `build-${builds.length}`);
   return { code: 0, output: "ok" };
 };
+/** The BUILD_ID of the build the server would serve if it restarted now. */
+const buildId = () => readFileSync(join(work, "web", readLiveDist(join(work, "web"), paths().dataDir).name, "BUILD_ID"), "utf8");
+/** Every build directory and per-directory tsconfig in the web folder. */
+const buildDirs = () => readdirSync(join(work, "web")).filter((name) => name.startsWith(".next") || name.startsWith("tsconfig.next")).sort();
 const badBuild: BuildRunner = async () => ({ code: 1, output: "Type error: boom" });
 const requestRestart = async () => {
   restarts.push("asked");
@@ -78,6 +89,7 @@ async function install(id = "reports", options: PackageOptions = {}): Promise<vo
   assert.equal(taken.ok, true, JSON.stringify(taken));
   await applyPackage({ pool, sha256: createHash("sha256").update(readFileSync(file)).digest("hex"), actor: "change-test", ...paths(), run: goodBuild, requestRestart });
   builds.length = 0;
+  servingDuringBuild.length = 0;
   restarts.length = 0;
 }
 
@@ -101,10 +113,15 @@ describe("changeModule", () => {
   test("disable builds without the module, then disables it, restarts and records the run", async () => {
     await install();
     assert.match(registryText(), /reports/);
+    const servingBefore = readLiveDist(join(work, "web"), paths().dataDir).name;
+    const buildIdBefore = buildId();
     const result = await change("disable");
     assert.deepEqual({ kind: result.kind, restart: result.restart }, { kind: "disable", restart: "restart requested" });
+    assert.notEqual(readLiveDist(join(work, "web"), paths().dataDir).name, servingBefore, "the record now names the new build's directory");
+    assert.equal(readFileSync(join(work, "web", servingBefore, "BUILD_ID"), "utf8"), buildIdBefore, "and the old directory is still there for the server that is draining");
     assert.equal(await state(), "disabled");
     assert.equal(builds.length, 1);
+    assert.deepEqual(servingDuringBuild, [buildIdBefore], "the build that was serving was untouched while the new one was made");
     assert.doesNotMatch(builds[0]!, /reports/, "the build saw the registry without the module");
     assert.doesNotMatch(registryText(), /reports/);
     assert.equal(restarts.length, 1);
@@ -169,10 +186,13 @@ describe("changeModule", () => {
 
   test("a build that fails changes nothing and restores the previous build", async () => {
     await install();
-    const before = readFileSync(join(work, "web", ".next", "BUILD_ID"), "utf8");
+    const before = buildId();
+    const serving = readLiveDist(join(work, "web"), paths().dataDir).name;
     await assert.rejects(change("disable", { run: badBuild }), (error) => error instanceof ApplyFailedError && error.step === "build");
     assert.equal(await state(), "enabled");
-    assert.equal(readFileSync(join(work, "web", ".next", "BUILD_ID"), "utf8"), before);
+    assert.equal(buildId(), before);
+    assert.equal(readLiveDist(join(work, "web"), paths().dataDir).name, serving, "nothing was switched");
+    assert.deepEqual(buildDirs().filter((name) => name !== serving && name !== `tsconfig${serving}.json` && name !== ".next"), [], "the failed build left no directory or tsconfig behind");
     assert.match(registryText(), /reports/);
     assert.equal(restarts.length, 0);
     const [run] = await listOperations(pool, { moduleId: "reports", limit: 1 });
@@ -181,10 +201,13 @@ describe("changeModule", () => {
 
   test("a hook that fails after the build restores the build and the registration", async () => {
     await install("hooked", { manifest: { hooks: "./hooks.ts" }, files: { "hooks.ts": "export function onDisable() { throw new Error('refuses to stop'); }\n" } });
-    const before = readFileSync(join(work, "web", ".next", "BUILD_ID"), "utf8");
+    const before = buildId();
+    const serving = readLiveDist(join(work, "web"), paths().dataDir).name;
     await assert.rejects(change("disable", { id: "hooked" }), (error) => error instanceof ApplyFailedError && error.step === "lifecycle");
     assert.equal(await state("hooked"), "enabled");
-    assert.equal(readFileSync(join(work, "web", ".next", "BUILD_ID"), "utf8"), before);
+    assert.equal(buildId(), before);
+    assert.equal(readLiveDist(join(work, "web"), paths().dataDir).name, serving, "a build that was made but whose lifecycle step failed is never switched to");
+    assert.deepEqual(buildDirs().filter((name) => name !== serving && name !== `tsconfig${serving}.json` && name !== ".next"), [], "and its directory is removed");
     assert.match(registryText(), /hooked/);
     assert.equal(restarts.length, 0);
   });
@@ -240,37 +263,58 @@ describe("changeModule", () => {
 });
 
 describe("recovery of a change", () => {
-  const crash = async (phase: "building" | "lifecycle", expected: "enabled" | "disabled" | "gone") => {
+  const crash = async (phase: "building" | "lifecycle", expected: "enabled" | "disabled" | "gone", dist = ".next-crashed") => {
     await install();
-    const { renameSync } = await import("node:fs");
-    writeJournal(paths().dataDir, { type: "change", moduleId: "reports", action: "disable", expected, version: "1.0.0", phase, webRoot: paths().webRoot });
-    renameSync(join(work, "web", ".next"), join(work, "web", ".next.rollback"));
-    mkdirSync(join(work, "web", ".next"));
-    writeFileSync(join(work, "web", ".next", "partial"), "x");
+    const serving = readLiveDist(join(work, "web"), paths().dataDir).name;
+    writeJournal(paths().dataDir, { type: "change", moduleId: "reports", action: "disable", expected, version: "1.0.0", phase, webRoot: paths().webRoot, dist });
+    mkdirSync(join(work, "web", dist), { recursive: true });
+    if (phase === "lifecycle") writeFileSync(join(work, "web", dist, "BUILD_ID"), "crashed-run");
+    else writeFileSync(join(work, "web", dist, "partial"), "x");
+    writeFileSync(join(work, "web", `tsconfig${dist}.json`), "{}");
+    return serving;
   };
 
-  test("a run killed during the build is undone: the previous build comes back", async () => {
-    await crash("building", "disabled");
+  test("a run killed during the build is undone: its half build goes and the one that was serving was never touched", async () => {
+    const serving = await crash("building", "disabled");
     const notes = await recoverInterrupted({ pool, ...paths() });
     assert.match(notes.join("\n"), /put back/);
-    assert.equal(existsSync(join(work, "web", ".next", "partial")), false);
-    assert.equal(existsSync(join(work, "web", ".next.rollback")), false);
+    assert.equal(existsSync(join(work, "web", ".next-crashed")), false);
+    assert.equal(existsSync(join(work, "web", "tsconfig.next-crashed.json")), false);
+    assert.equal(readLiveDist(join(work, "web"), paths().dataDir).name, serving);
     assert.equal(await state(), "enabled");
   });
 
-  test("a run killed after its database step completed keeps the result", async () => {
+  test("a run killed after its database step completed keeps the result and puts its build in service", async () => {
     await crash("lifecycle", "disabled");
     await pool.query("update core.modules set state = 'disabled' where id = 'reports'");
     const notes = await recoverInterrupted({ pool, ...paths() });
     assert.match(notes.join("\n"), /kept/);
-    assert.equal(existsSync(join(work, "web", ".next.rollback")), false);
+    assert.match(notes.join("\n"), /put in service/);
+    assert.equal(readLiveDist(join(work, "web"), paths().dataDir).name, ".next-crashed");
     assert.equal(await state(), "disabled");
   });
 
   test("a run killed in the lifecycle phase before the database moved is undone", async () => {
-    await crash("lifecycle", "disabled");
+    const serving = await crash("lifecycle", "disabled");
     const notes = await recoverInterrupted({ pool, ...paths() });
     assert.match(notes.join("\n"), /put back/);
     assert.equal(await state(), "enabled");
+    assert.equal(existsSync(join(work, "web", ".next-crashed")), false, "the finished build that was never put in service is removed");
+    assert.equal(readLiveDist(join(work, "web"), paths().dataDir).name, serving);
+    assert.equal(existsSync(distRecordPath(paths().dataDir)), true);
+  });
+
+  test("a journal from before builds had directories of their own still restores .next.rollback", async () => {
+    await install();
+    const { renameSync } = await import("node:fs");
+    writeJournal(paths().dataDir, { type: "change", moduleId: "reports", action: "disable", expected: "disabled", version: "1.0.0", phase: "building", webRoot: paths().webRoot });
+    renameSync(join(work, "web", ".next"), join(work, "web", ".next.rollback"));
+    mkdirSync(join(work, "web", ".next"));
+    writeFileSync(join(work, "web", ".next", "partial"), "x");
+    const notes = await recoverInterrupted({ pool, ...paths() });
+    assert.match(notes.join("\n"), /put back/);
+    assert.equal(existsSync(join(work, "web", ".next", "partial")), false);
+    assert.equal(existsSync(join(work, "web", ".next.rollback")), false);
+    assert.equal(readFileSync(join(work, "web", ".next", "BUILD_ID"), "utf8"), "old");
   });
 });

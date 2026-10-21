@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildEnvironment } from "../src/install/build.ts";
+import { buildEnvironment, buildRunEnvironment } from "../src/install/build.ts";
 
 describe("buildEnvironment", () => {
   it("keeps what a build needs and drops the secrets", () => {
@@ -21,5 +21,18 @@ describe("buildEnvironment", () => {
 
   it("skips variables that are not set", () => {
     assert.deepEqual(buildEnvironment({ PATH: undefined, HOME: "/h" }), { HOME: "/h" });
+  });
+});
+
+describe("buildRunEnvironment", () => {
+  const env = { PATH: "/usr/bin", MODUNEXO_MASTER_KEY: "secret", DATABASE_URL: "postgres://u:p@h/db", MODUNEXO_DIST_DIR: ".next-inherited" };
+
+  it("adds the directory to build into, which next.config reads, to the same minimal environment", () => {
+    const run = buildRunEnvironment(env, ".next-abc");
+    assert.deepEqual(run, { PATH: "/usr/bin", MODUNEXO_DIST_DIR: ".next-abc" });
+  });
+
+  it("never inherits a directory from the process that launched the build", () => {
+    assert.deepEqual(buildRunEnvironment(env, undefined), { PATH: "/usr/bin" });
   });
 });

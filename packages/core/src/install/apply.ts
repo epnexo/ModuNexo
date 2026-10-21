@@ -12,6 +12,7 @@ import { OperationBusyError, finishOperation, setStep, startOperation } from "..
 import { DATA_DIR, buildPackageContext, listIntakes, stagingPath, validatePackageTree } from "../packages/index.ts";
 import { REPO_ROOT } from "../packages/context.ts";
 import { BuildFailedError, type BuildHandle, type BuildRunner, buildWithRollback } from "./build.ts";
+import { newDistName } from "./dist.ts";
 import { clearJournal, writeJournal } from "./journal.ts";
 import { type Placement, placePackage } from "./place.ts";
 import { recoverInterrupted, registryFromDisk } from "./recover.ts";
@@ -150,7 +151,9 @@ export async function applyPackage(options: ApplyOptions): Promise<ApplyResult> 
     process.on(signal, handler);
     return [signal, handler] as const;
   });
-  const journalBase = { version: review.version, webRoot };
+  // The build directory of this run is named now, so every journal says which one to remove if the run dies.
+  const dist = newDistName();
+  const journalBase = { version: review.version, webRoot, dist };
   const setPhase = (phase: "building" | "lifecycle") => {
     if (placement !== undefined) writeJournal(dataDir, { ...placement.state, ...journalBase, phase });
   };
@@ -190,6 +193,8 @@ export async function applyPackage(options: ApplyOptions): Promise<ApplyResult> 
     setPhase("building");
     build = await buildWithRollback({
       webRoot,
+      dataDir,
+      dist,
       modules,
       previousModules,
       signal: controller.signal,

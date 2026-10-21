@@ -7,6 +7,7 @@ import { discoverModules } from "../discovery.ts";
 import { LifecycleService } from "../lifecycle/index.ts";
 import { closeStaleOperations, liveOperation } from "../operations/index.ts";
 import { Registry } from "../registry.ts";
+import { distTsconfigName, writeLiveDist } from "./dist.ts";
 import { clearJournal, isChange, readJournal } from "./journal.ts";
 import { undoPlacement } from "./place.ts";
 
@@ -57,12 +58,28 @@ export async function recoverInterrupted(options: RecoverOptions): Promise<strin
         keep = found === current.expected;
       } else keep = rows[0]?.installed_version === current.version;
     }
+    const dist = current.dist;
     if (keep) {
-      rmSync(backup, { recursive: true, force: true });
-      notes.push(`recovered: ${subject} was interrupted after its database step had completed, so its result was kept (restart the server to serve it)`);
+      if (dist === undefined) {
+        // A journal from before builds had directories of their own: the kept previous build is no longer needed.
+        rmSync(backup, { recursive: true, force: true });
+        notes.push(`recovered: ${subject} was interrupted after its database step had completed, so its result was kept (restart the server to serve it)`);
+      } else if (existsSync(join(options.webRoot, dist, "BUILD_ID"))) {
+        // The step the dead run did not get to: the build it made is put in service.
+        writeLiveDist(options.dataDir, dist);
+        notes.push(`recovered: ${subject} was interrupted after its database step had completed, so its result was kept and its build (${dist}) was put in service (restart the server to serve it)`);
+      } else {
+        rmSync(join(options.webRoot, dist), { recursive: true, force: true });
+        rmSync(join(options.webRoot, distTsconfigName(dist)), { force: true });
+        notes.push(`recovered: ${subject} was interrupted after its database step had completed, so its result was kept, but ${dist} is not a finished build, so the build that was serving stays; rebuild with "npm run web:build" to serve the change`);
+      }
     } else {
       if (current !== null && !isChange(current)) undoPlacement(current);
-      if (existsSync(backup)) {
+      if (dist !== undefined) {
+        // The run built beside the build that was serving, which was never touched: only the new directory goes.
+        rmSync(join(options.webRoot, dist), { recursive: true, force: true });
+        rmSync(join(options.webRoot, distTsconfigName(dist)), { force: true });
+      } else if (existsSync(backup)) {
         rmSync(join(options.webRoot, ".next"), { recursive: true, force: true });
         renameSync(backup, join(options.webRoot, ".next"));
       }
