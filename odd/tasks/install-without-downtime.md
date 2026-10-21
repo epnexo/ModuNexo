@@ -31,7 +31,7 @@ Branch: feat/install-without-downtime (from main c2d7b78). Delivery strategy: as
 - [x] T0 experiment: Next 16 honours `distDir` from the environment for both `build` and `start`, a build in a second directory does not disturb a server running from `.next`. Route: inline. Evidence: L5.
 - [x] T1 (S4) the directory record: names, read and write of `run/web.dist`, fallback to `.next`, removal of stray directories; `next.config` `distDir`. Route: inline. Commit: next commit (RED observed; 18 tests)
 - [x] T2 (S1, S3) `buildWithRollback` builds into a new directory; commit and rollback; journal and recovery. Route: inline. Commit: next commit (RED observed; install suites 63/63)
-- [ ] T3 (S2, S5) `run.ts start` reads the record for each (re)start; `web:build` writes it; the supervisor passes the directory to the server. Route: inline.
+- [x] T3 (S2, S5) `run.ts start` reads the record for each (re)start; `web:build` writes it; the supervisor passes the directory to the server. Route: inline. Commit: next commit (RED observed for the supervisor and the start preparation; 31 tests)
 - [ ] T4 (S1, S2, S3) apply and change integration; end-to-end: a real build while the server answers continuously. Route: inline.
 - [ ] T5 (S6) docs, full suite, independent verifier. Route: inline then verifier.
 
@@ -75,3 +75,7 @@ Branch: feat/install-without-downtime (from main c2d7b78). Delivery strategy: as
   a finished build and keeps what was serving); a journal with no directory (written by the old code) still restores `.next.rollback`.
   Four tests of mine were wrong, not the code (BUILD_ID text repeats between builds, the live build's own tsconfig is rightly kept,
   the serving build was read before the install that changes it, the serving log was not reset after the install helper).
+- L8: T3 observed. The supervisor asks `prepare` before every start (the first and each restart) and merges its answer into the child's
+  environment (a throwing `prepare` is logged and the server still starts). `prepareServerStart` picks the record's directory or `.next`
+  and clears directories nobody serves, leaving alone the one a journal names (a restart in the middle of an install must not pull a
+  build from under it) and everything for 60 s after a switch. `web:build` by hand writes its tsconfig, builds, and records the directory.

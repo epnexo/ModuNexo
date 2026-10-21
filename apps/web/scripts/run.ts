@@ -5,7 +5,8 @@ import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { runCli } from "@modunexo/core/cli";
-import { pidFilePath } from "@modunexo/core/install";
+import { DEFAULT_DIST, pidFilePath, prepareServerStart, writeDistTsconfig, writeLiveDist } from "@modunexo/core/install";
+import { log } from "@modunexo/core/log";
 import { DATA_DIR } from "@modunexo/core/packages";
 import { LaunchError, LaunchUsageError, exitCodeFor, planLaunch } from "../src/server/launch.ts";
 import { superviseChild } from "../src/server/supervisor.ts";
@@ -52,9 +53,29 @@ async function main(): Promise<number> {
     if (plan.dev) return runChild(serveArgs);
     // Production runs under a small supervisor: an install asks it (SIGUSR2, via the pid file) to restart the
     // server so the new build is served. It restarts on that request only, never because the server died.
-    return superviseChild({ args: serveArgs, cwd: webRoot, pidFile: pidFilePath(DATA_DIR), signals: process });
+    // Every start, the first and each restart, serves the build the record of the live directory names: a module change
+    // builds beside the serving build and only then records its directory, so the restart is the switch.
+    return superviseChild({
+      args: serveArgs,
+      cwd: webRoot,
+      pidFile: pidFilePath(DATA_DIR),
+      signals: process,
+      prepare: () => {
+        const start = prepareServerStart(webRoot, DATA_DIR);
+        if (start.warning !== null) log.warn("web.dist_record_ignored", { reason: start.warning });
+        if (start.removed.length > 0) log.info("web.build_directories_cleared", { removed: start.removed });
+        return { MODUNEXO_DIST_DIR: start.dist };
+      },
+    });
   }
-  return runChild([createRequire(import.meta.url).resolve("next/dist/bin/next"), ...plan.nextArgs]);
+  const next = createRequire(import.meta.url).resolve("next/dist/bin/next");
+  // What is left is `build`. A build made by hand goes into `.next`, or into MODUNEXO_DIST_DIR when that is set, and is recorded as the live one so
+  // `web:start` serves what was just built. (A module change does not come this way: it builds beside the live build.)
+  const dist = process.env.MODUNEXO_DIST_DIR || DEFAULT_DIST;
+  writeDistTsconfig(webRoot, dist);
+  const code = await runChild([next, ...plan.nextArgs]);
+  if (code === 0) writeLiveDist(DATA_DIR, dist);
+  return code;
 }
 
 try {
