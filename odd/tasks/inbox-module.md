@@ -17,10 +17,10 @@ Branch: feat/inbox-module (local; only `main` is published, no push without the 
 
 ## Tasks
 
-- [ ] T1 (S1) scaffold with `modules new`, manifest, settings, permissions, migration. Route: inline.
-- [ ] T2 (S2, S3, S7) the inbound route and its store. Route: inline.
-- [ ] T3 (S5) reply and the `deliver` job. Route: inline.
-- [ ] T4 (S4, S6) the page and live updates. Route: inline.
+- [x] T1 (S1) scaffold with `modules new`, manifest, settings, permissions, migration. Route: inline. Commit: e54cb51
+- [x] T2 (S2, S3, S7) the inbound route and its store. Route: inline. Commit: e54cb51 (RED: module missing; 9 tests)
+- [x] T3 (S5) reply and the `deliver` job. Route: inline. Commit: 4754d36 (RED: module missing; 10 tests)
+- [x] T4 (S4, S6) the page and live updates. Route: inline. Commit: 3fb13a9 (RED: module missing; 6 tests for the reads; the page itself is proved on a real build)
 - [ ] T5 (S1, S8) pack, add and apply on a real build; docs; full suite; independent verifier. Route: inline then verifier.
 
 ## Log
@@ -29,3 +29,6 @@ Branch: feat/inbox-module (local; only `main` is published, no push without the 
   (answering: "¿Te parece bien que el agente quede como servicio externo (el Vocero actual ya lo hace así con `/api/bot/llm`) y arranco con el inbox?")
 - L2: ADR-001 accepted in 8a2496e; question 3 answered (external service). Mapping trigger fired once (explorer: module layout, capability declarations, naming rules, README examples). The Vocero inbox model was read from its public schema snapshot: `contact`, `conversation` (channel, channel_thread_ref, unread_count, last_message_at), `message` (direction, text, status, wa_message_id, origin). This feature takes the same three tables and drops everything channel-specific.
 - L3: Risk: security (item 2): the first public, unauthenticated entry point that writes business data; data (item 1): a new schema with migrations. An independent verifier runs at the end.
+- L4: Installed on the dev server with `modules add` and `modules apply`. The first apply failed at the build and was rolled back without touching the serving build (169 probes during it, all 200). Two causes: the archive predated a type fix of mine (`interface` does not satisfy `Record<string, unknown>`; now `type`), and a core bug: the generated public route wrote `const rule = {...}` and TypeScript widened `"hex"` to `string`, so any public route declaring `encoding` could not build. Fixed in the core with a test that failed first (the "fix(core)" commit). The second apply succeeded (148 probes, all 200). Live: `/inbox` 200, a POST with no signature 401, GET 405.
+- L5: Findings for the core, not fixed here: a module page cannot ask who is viewing (so S6 is enforced only at the gate: the reply form is shown to every reader and the send is refused to those without `inbox.write`); replies queued before an outbound URL is set are not sent when it is; the SDK has no helper for the same-origin rule, so the module copies it.
+- L6 (2026-10-21, user, verbatim, answering a versioning proposal): "si el plan esta bien" — the platform versioning is the next feature, after this one closes.
