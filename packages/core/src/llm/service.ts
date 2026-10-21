@@ -1,5 +1,5 @@
 import type pg from "pg";
-import { type ChatRequest, type ChatResult, type LlmClient, type LlmDeclaration, LlmError, type LlmProbeResult, type SettingValue } from "@modunexo/sdk";
+import { type ChatMessage, type ChatRequest, type ChatResult, type LlmClient, type LlmDeclaration, LlmError, type LlmProbeResult, type SettingValue } from "@modunexo/sdk";
 import { resolveMasterKey } from "../auth/master-key.ts";
 import type { Registry } from "../registry.ts";
 import { SettingsService } from "../settings/service.ts";
@@ -27,21 +27,30 @@ export interface LlmServiceOptions {
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** What a chat request must be before the platform spends a network call on it. */
+/**
+ * What a chat request must be before the platform spends a network call on it. Returns a copy that holds only what was
+ * checked: each value is read once, and a message carries its role and content and nothing else, so what is sent is what
+ * was validated.
+ */
 function checkRequest(request: unknown): ChatRequest {
   const refuse = (why: string): never => {
     throw new LlmError("invalid_request", why);
   };
   if (!isObject(request)) return refuse("the request must be an object with a list of messages");
-  const { messages, model, temperature, maxTokens } = request;
+  const { messages, model, temperature, maxTokens, signal } = request;
   if (!Array.isArray(messages) || messages.length < 1 || messages.length > MAX_MESSAGES) return refuse(`messages must be a list of 1 to ${MAX_MESSAGES} messages`);
   let characters = 0;
-  messages.forEach((message: unknown, index) => {
-    if (!isObject(message) || typeof message.role !== "string" || !ROLES.has(message.role)) refuse(`messages[${index}].role must be system, user or assistant`);
-    const content = (message as Record<string, unknown>).content;
-    if (typeof content !== "string" || content === "") refuse(`messages[${index}].content must be a non-empty string`);
-    characters += (content as string).length;
-  });
+  const copy: ChatMessage[] = [];
+  // An indexed loop, not forEach: a hole in the list is a missing message, not one to skip.
+  for (let index = 0; index < messages.length; index++) {
+    const message: unknown = index in messages ? messages[index] : undefined;
+    if (!isObject(message)) return refuse(`messages[${index}] must be an object with a role and a content`);
+    const { role, content } = message;
+    if (typeof role !== "string" || !ROLES.has(role)) return refuse(`messages[${index}].role must be system, user or assistant`);
+    if (typeof content !== "string" || content === "") return refuse(`messages[${index}].content must be a non-empty string`);
+    characters += content.length;
+    copy.push({ role: role as ChatMessage["role"], content });
+  }
   if (characters > MAX_PROMPT_CHARS) return refuse(`the messages hold ${characters} characters; the limit is ${MAX_PROMPT_CHARS}`);
   if (model !== undefined && (typeof model !== "string" || model.length < 1 || model.length > MAX_MODEL_NAME_CHARS || /[\u0000-\u001f\u007f]/.test(model))) {
     return refuse(`model must be a name of 1 to ${MAX_MODEL_NAME_CHARS} characters without control characters`);
@@ -50,7 +59,13 @@ function checkRequest(request: unknown): ChatRequest {
   if (maxTokens !== undefined && (typeof maxTokens !== "number" || !Number.isInteger(maxTokens) || maxTokens < 1 || maxTokens > MAX_COMPLETION_TOKENS)) {
     return refuse(`maxTokens must be a whole number from 1 to ${MAX_COMPLETION_TOKENS}`);
   }
-  return request as unknown as ChatRequest;
+  return {
+    messages: copy,
+    ...(model === undefined ? {} : { model }),
+    ...(temperature === undefined ? {} : { temperature }),
+    ...(maxTokens === undefined ? {} : { maxTokens }),
+    ...(signal === undefined ? {} : { signal: signal as AbortSignal }),
+  };
 }
 
 /**

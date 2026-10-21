@@ -39,7 +39,7 @@ Branch: feat/llm-adapter (from main e1b350e). Delivery strategy: ask-on-risk; th
 - [x] T1 (S1, S3, S4, S6 SDK side) manifest `llm`, `llm.ts` (types, symbol, `LlmError`, `chat`, `probeLlm`). Route: inline. Commit: next commit (RED observed; SDK 124/124)
 - [x] T2 (S2, S3, S4, S5, S6) OpenAI-compatible provider, `LlmService`, tests against a local HTTP server. Route: inline. Commit: next commit (RED observed; 26 tests twice green)
 - [x] T3 (S4 CLI, S7, S8 review) register in web and worker, `llm probe`, install review. Route: inline. Commit: next commit (RED observed; CLI regression 135/135; e2e 46/46)
-- [ ] T4 (S8 docs) README, skill, ADR; full suite; independent verifier. Route: inline then verifier.
+- [x] T4 (S8 docs) README, skill, ADR; full suite (1357/1357); independent verifier (1 blocker, fixed). Route: inline then verifier. Commit: next commit
 
 ## Log
 
@@ -59,3 +59,15 @@ Branch: feat/llm-adapter (from main e1b350e). Delivery strategy: ask-on-risk; th
   `instanceof LlmError`, because the bundle holds more than one copy of the SDK. L3's claim that putting the class in the SDK
   makes `instanceof` work across the globalThis boundary was wrong. `LlmError` now marks its instances with a
   `Symbol.for("modunexo.llm.error")` property and answers `instanceof` by that mark (SDK test written first, red before the fix).
+- L6: Full suite 1357/1357 (0 fail, 0 skipped). Independent verifier, probes in a scratch copy: S1, S2, S4, S5, S7, S8 pass (15 redirect
+  cases made exactly one request; gzip bombs are counted after decompression; the key is removed from every error shape tried);
+  one BLOCKER, fixed with tests that failed first: `checkRequest` used `forEach`, which skips holes, so `messages: new Array(1)` was
+  sent to the provider as `[null]` instead of being refused before any network call. The validated request is now a copy that
+  holds only role and content, each value read once (this also closes the verifier's A2: a getter that changed between the check
+  and the send, and extra message fields forwarded unchecked). Recheck: LLM service and provider tests 27/27 twice, worker 29/29.
+- L7: Advisories left, not fixed: (A1) the key is scrubbed from error text but not from a successful reply (`content`, `model`,
+  model ids), and an encoded form (URL-encoded) of a key with special characters survives in error text; the provider is the
+  host the administrator chose, so an echo is unlikely, and the cost of scrubbing replies is altering the model's answer;
+  (A3) a `signal` that is not an `AbortSignal` raises a plain `TypeError` before any network call instead of `invalid_request`,
+  and U+0085 / U+202E pass the model-name check; the 200,000 limit counts UTF-16 units; (A4) `instanceof` by mark is true for any
+  subclass and survives an object spread, which is acceptable because module code is trusted.
