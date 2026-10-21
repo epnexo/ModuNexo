@@ -3,6 +3,9 @@ node_modules/
 dist/
 build/
 .next/
+# A module change builds into a directory of its own (and a tsconfig for it); see packages/core/src/install/dist.ts
+.next-*/
+tsconfig.next-*.json
 next-env.d.ts
 
 # Written by "npm run registry:generate" from the modules enabled in the database.
