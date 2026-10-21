@@ -67,7 +67,7 @@ export const REGISTRY_FILE = "src/generated/modules.ts";
  */
 export const ROUTES_DIR = "src/app/(shell)";
 
-export const RESERVED_PATHS: readonly string[] = ["/", "/apps", "/settings", "/login", "/logout", "/api", "/_next"];
+export const RESERVED_PATHS: readonly string[] = ["/", "/apps", "/settings", "/status", "/login", "/logout", "/api", "/_next"];
 
 export interface RenderOptions {
   /** Replaces `RESERVED_PATHS`. */

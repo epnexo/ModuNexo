@@ -5,6 +5,7 @@ import { NavLink } from "./nav-link";
 const SHELL_ENTRIES: { label: string; href: string; icon: IconName }[] = [
   { label: "Home", href: "/", icon: "home" },
   { label: "Apps", href: "/apps", icon: "apps" },
+  { label: "Status", href: "/status", icon: "chart" },
   { label: "Settings", href: "/settings", icon: "settings" },
 ];
 

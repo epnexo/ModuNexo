@@ -163,7 +163,7 @@ describe("renderRegistration: conflicts are found before anything is produced", 
       const problems = problemsOf([fixture("alpha", { pages: [page(path)] })]);
       assert.match(problems[0]!, /module "alpha" declares "[^"]+", which is reserved for the shell/, path);
     }
-    assert.ok(RESERVED_PATHS.includes("/") && RESERVED_PATHS.includes("/apps") && RESERVED_PATHS.includes("/settings") && RESERVED_PATHS.includes("/login") && RESERVED_PATHS.includes("/api"));
+    assert.ok(RESERVED_PATHS.includes("/") && RESERVED_PATHS.includes("/apps") && RESERVED_PATHS.includes("/settings") && RESERVED_PATHS.includes("/login") && RESERVED_PATHS.includes("/api") && RESERVED_PATHS.includes("/status"));
   });
 
   it("does not treat a longer sibling name as reserved", () => {

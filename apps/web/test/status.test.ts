@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { LlmError } from "@modunexo/sdk";
 import type { JobRecord } from "@modunexo/core/jobs";
-import { ERROR_CHARS, cutText, formatAgo, formatBytes, formatWait, modelRows, probeError, probeSummary, troubleRows, workerLine } from "../src/server/status.ts";
+import { ERROR_CHARS, cutText, formatAgo, formatBytes, formatWait, modelRows, probeError, probeSummary, runProbe, troubleRows, workerLine } from "../src/server/status.ts";
 
 describe("cutText", () => {
   it("is null for nothing, and one tidy line for anything else", () => {
@@ -148,5 +148,57 @@ describe("probeSummary and probeError", () => {
     assert.equal(unexpected.code, "unexpected");
     assert.ok(!unexpected.message.includes("password"), unexpected.message);
     assert.deepEqual(probeError("a string"), probeError(new TypeError("x")));
+  });
+});
+
+describe("runProbe", () => {
+  const manifests = [
+    { id: "agent", llm: { baseUrlSetting: "llm.url" } },
+    { id: "plain" },
+    { id: "off", llm: { baseUrlSetting: "llm.url" } },
+  ];
+  const enabled = new Set(["agent", "plain"]);
+  const result = { endpoint: "http://127.0.0.1:1/v1", latencyMs: 7, models: ["m"], model: "m", modelAvailable: true };
+  const service = (probe: (id: string) => Promise<typeof result>) => ({ probe });
+
+  it("tests the module's model and answers with the sentences to show", async () => {
+    const asked: string[] = [];
+    const reply = await runProbe({ service: service(async (id) => (asked.push(id), result)), manifests, enabled }, "agent");
+    assert.equal(reply.status, 200);
+    assert.deepEqual(reply.body, { lines: probeSummary(result) });
+    assert.deepEqual(asked, ["agent"]);
+  });
+
+  it("answers 404, and calls nothing, for a module that is unknown, calls no model or is not enabled", async () => {
+    let calls = 0;
+    const counting = service(async () => (calls += 1, result));
+    for (const id of ["nobody", "plain", "off", "", "__proto__", "agent/../x"]) {
+      const reply = await runProbe({ service: counting, manifests, enabled }, id);
+      assert.equal(reply.status, 404, id);
+      assert.deepEqual(reply.body, { error: "this module does not call a model", code: "not_found" }, id);
+    }
+    assert.equal(calls, 0);
+  });
+
+  it("answers 422 for a module that is not set up, and 502 for a provider that refuses, each with its code and message", async () => {
+    const notSet = await runProbe({ service: service(async () => { throw new LlmError("not_configured", 'set the setting "llm.url" of module "agent" to the provider\'s base URL'); }), manifests, enabled }, "agent");
+    assert.deepEqual([notSet.status, notSet.body], [422, { error: 'set the setting "llm.url" of module "agent" to the provider\'s base URL', code: "not_configured" }]);
+    for (const code of ["unreachable", "timeout", "unauthorized", "rejected", "rate_limited", "bad_response", "too_large"] as const) {
+      const reply = await runProbe({ service: service(async () => { throw new LlmError(code, `refused: ${code}`); }), manifests, enabled }, "agent");
+      assert.deepEqual([reply.status, reply.body], [502, { error: `refused: ${code}`, code }], code);
+    }
+  });
+
+  it("answers 500, saying nothing of what went wrong, for an error it did not expect, and hands it to the log", async () => {
+    const logged: unknown[] = [];
+    const failure = new Error("password=hunter2 in postgres://u:p@h/db");
+    const reply = await runProbe({ service: service(async () => { throw failure; }), manifests, enabled, onUnexpected: (error) => void logged.push(error) }, "agent");
+    assert.deepEqual([...logged], [failure], "the details go to the log, not to the browser");
+    const refused = await runProbe({ service: service(async () => { throw new LlmError("timeout", "slow"); }), manifests, enabled, onUnexpected: (error) => void logged.push(error) }, "agent");
+    assert.equal(refused.status, 502);
+    assert.equal(logged.length, 1, "a refusal the platform raised is not logged as unexpected");
+    assert.equal(reply.status, 500);
+    assert.deepEqual(reply.body, { error: probeError(new Error("x")).message, code: "unexpected" });
+    assert.ok(!JSON.stringify(reply.body).includes("hunter2"));
   });
 });
