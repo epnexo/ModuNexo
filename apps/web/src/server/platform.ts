@@ -3,8 +3,9 @@ import { createPool, resolveDatabaseUrl } from "@modunexo/core/pool";
 import { SettingsService } from "@modunexo/core/settings";
 import { ModuleDbService } from "@modunexo/core/data";
 import { EventService } from "@modunexo/core/events";
+import { FileService, defaultFileStorage } from "@modunexo/core/files";
 import { JobService } from "@modunexo/core/jobs";
-import { DB_READER, EVENTS_PUBLISHER, JOBS_ENQUEUER, SETTINGS_READER, type DbReader, type EventsPublisher, type JobsEnqueuer, type SettingsReader } from "@modunexo/sdk";
+import { DB_READER, EVENTS_PUBLISHER, FILES_SERVICE, JOBS_ENQUEUER, SETTINGS_READER, type DbReader, type EventsPublisher, type FilesService, type JobsEnqueuer, type SettingsReader } from "@modunexo/sdk";
 import type pg from "pg";
 import { resolvePublicUrl } from "./launch.ts";
 import { CLOSED, STORE, closePlatform, holder, reopenPlatform } from "./platform-lifecycle.ts";
@@ -76,3 +77,17 @@ const eventsPublisher: EventsPublisher = {
   publish: (moduleId, name, payload, options) => new EventService(platform().pool, webRegistry()).publish(moduleId, name, payload, options),
 };
 (globalThis as typeof globalThis & { [EVENTS_PUBLISHER]?: EventsPublisher })[EVENTS_PUBLISHER] = eventsPublisher;
+
+/**
+ * What `putFile` and the other file functions in the SDK call. The bytes go to the data directory, which the web app and
+ * the worker share; the service is built per call, so the pool and the directory are only touched when a file is used.
+ */
+const files = () => new FileService(platform().pool, webRegistry(), defaultFileStorage());
+const filesService: FilesService = {
+  put: (moduleId, input, options) => files().put(moduleId, input, options),
+  get: (moduleId, id) => files().get(moduleId, id),
+  stat: (moduleId, id) => files().stat(moduleId, id),
+  list: (moduleId, options) => files().list(moduleId, options),
+  remove: (moduleId, id) => files().remove(moduleId, id),
+};
+(globalThis as typeof globalThis & { [FILES_SERVICE]?: FilesService })[FILES_SERVICE] = filesService;

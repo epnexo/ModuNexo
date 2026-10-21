@@ -14,10 +14,12 @@ import { Registry } from "../registry.ts";
 import { MigrationRunError, migrate, pendingMigrations } from "../runner.ts";
 import { SettingValueError, SettingsError } from "../settings/service.ts";
 import { EventError } from "../events/index.ts";
+import { FileError } from "../files/index.ts";
 import { JOB_STATUSES, JobError, type JobStatus } from "../jobs/index.ts";
 import { TokenError } from "../tokens/errors.ts";
 import { DATA_DIR } from "../packages/paths.ts";
 import { runEventsCommand } from "./events.ts";
+import { runFilesCommand } from "./files.ts";
 import { runJobsCommand, runWorkerCommand } from "./jobs.ts";
 import { runNewCommand } from "./new.ts";
 import { runAddCommand, runApplyCommand, runChangeCommand, runPackCommand } from "./packages.ts";
@@ -96,6 +98,9 @@ commands:
                                    the newest events; the payload only with --json
   events publish <module> <event> [--payload <json>]
                                    publish an event the module declared (subscribed jobs are queued)
+  files list [<module>] [--limit <n>] [--json]
+                                   the newest stored files; the content is never printed
+  files delete <module> <file-id>  delete a file's row and bytes (files live under MODUNEXO_DATA_DIR/files)
   auth status                      whether the shell asks for a sign-in
   auth require                     ask for a sign-in (refused while no administrator exists)
   auth disable                     serve local requests without a sign-in
@@ -172,6 +177,8 @@ const COMMAND_OPTIONS: Record<string, readonly string[]> = {
   "jobs retry": [],
   "events list": ["type", "limit", "json"],
   "events publish": ["payload"],
+  "files list": ["limit", "json"],
+  "files delete": [],
   "auth status": [],
   "auth require": [],
   "auth disable": [],
@@ -263,6 +270,18 @@ function checkEventsArguments(command: string, ids: string[], values: Parsed["va
   }
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+function checkFilesArguments(command: string, ids: string[], values: Parsed["values"]): void {
+  if (command === "files list") {
+    if (ids.length > 1) throw new UsageError("files list takes at most one module id");
+    if (values.limit !== undefined && wholeNumberIn(values.limit, 1, 500) === null) throw new UsageError("--limit takes a whole number from 1 to 500");
+    return;
+  }
+  if (ids.length !== 2) throw new UsageError("files delete takes a module id and a file id");
+  if (!UUID.test(ids[1]!)) throw new UsageError("files delete takes a module id and a file id (a UUID)");
+}
+
 function parse(argv: string[]): Parsed | "help" {
   let parsed;
   try {
@@ -305,6 +324,12 @@ function parse(argv: string[]): Parsed | "help" {
     }
     command = `events ${second}`;
     ids = rest;
+  } else if (first === "files") {
+    if (second !== "list" && second !== "delete") {
+      throw new UsageError(second === undefined ? "no files command given" : `unknown files command "${second}"`);
+    }
+    command = `files ${second}`;
+    ids = rest;
   } else if (first === "auth") {
     if (second !== "status" && second !== "require" && second !== "disable") {
       throw new UsageError(second === undefined ? "no auth command given" : `unknown auth command "${second}"`);
@@ -341,9 +366,10 @@ function parse(argv: string[]): Parsed | "help" {
   if (command.startsWith("tokens ")) checkTokensArguments(command, ids, parsed.values);
   if (command.startsWith("jobs ")) checkJobsArguments(command, ids, parsed.values);
   if (command.startsWith("events ")) checkEventsArguments(command, ids, parsed.values);
+  if (command.startsWith("files ")) checkFilesArguments(command, ids, parsed.values);
   if (command === "worker") checkWorkerOptions(parsed.values);
   const takesId = command !== "modules list" && command.startsWith("modules ");
-  if (!command.startsWith("settings ") && !command.startsWith("tokens ") && !command.startsWith("jobs ") && !command.startsWith("events ")) {
+  if (!command.startsWith("settings ") && !command.startsWith("tokens ") && !command.startsWith("jobs ") && !command.startsWith("events ") && !command.startsWith("files ")) {
     const noun = command === "modules pack" ? "a folder" : command === "modules add" ? "an archive" : command === "modules apply" ? "a package SHA-256" : "a module id";
     if (takesId && ids.length === 0) throw new UsageError(`${command} needs ${noun}`);
     if (takesId ? ids.length !== 1 : ids.length > 0) throw new UsageError(takesId ? `${command} takes exactly one ${noun.slice(2)}` : `${command} takes no arguments`);
@@ -640,7 +666,7 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
       );
       return EXIT_OK;
     }
-    if (parsed.command.startsWith("jobs ") || parsed.command.startsWith("events ") || parsed.command === "worker") {
+    if (parsed.command.startsWith("jobs ") || parsed.command.startsWith("events ") || parsed.command.startsWith("files ") || parsed.command === "worker") {
       let modulesDir: string;
       try {
         modulesDir = resolveModulesDir(typeof parsed.values["modules-dir"] === "string" ? parsed.values["modules-dir"] : undefined);
@@ -685,6 +711,19 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
             args: parsed.ids,
             payload: typeof parsed.values.payload === "string" ? JSON.parse(parsed.values.payload) : null,
             type: typeof parsed.values.type === "string" ? parsed.values.type : undefined,
+            limit: typeof limit === "string" ? Number(limit) : undefined,
+            json: parsed.values.json === true,
+          },
+          { pool, registry: context.registry, io },
+        );
+        return EXIT_OK;
+      }
+      if (parsed.command.startsWith("files ")) {
+        const limit = parsed.values.limit;
+        await runFilesCommand(
+          {
+            action: parsed.command.slice("files ".length) as "list" | "delete",
+            args: parsed.ids,
             limit: typeof limit === "string" ? Number(limit) : undefined,
             json: parsed.values.json === true,
           },
@@ -813,7 +852,7 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
       io.err(`${USAGE.split("\n")[0]} (run with --help for the commands)`);
       return EXIT_USAGE;
     }
-    if (error instanceof Refusal || error instanceof LifecycleRefusedError || error instanceof RegistrationError || error instanceof AdminRefusedError || error instanceof ModeRefusedError || error instanceof SettingsError || error instanceof SettingValueError || error instanceof TokenError || error instanceof JobError || error instanceof EventError) {
+    if (error instanceof Refusal || error instanceof LifecycleRefusedError || error instanceof RegistrationError || error instanceof AdminRefusedError || error instanceof ModeRefusedError || error instanceof SettingsError || error instanceof SettingValueError || error instanceof TokenError || error instanceof JobError || error instanceof EventError || error instanceof FileError) {
       io.err(`refused: ${error.message}`);
       return EXIT_REFUSED;
     }

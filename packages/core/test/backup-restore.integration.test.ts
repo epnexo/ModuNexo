@@ -83,15 +83,16 @@ describe("backup.sh and restore.sh", () => {
   const modulesA = () => join(work, "modules-a");
   const dataA = () => join(work, "data-a");
 
-  guard("saves the database, the modules and the packages, readable by the owner only, and not the master key", async () => {
+  guard("saves the database, the modules, the packages and the stored files, readable by the owner only, and not the master key", async () => {
     put(modulesA(), "alpha/manifest.ts", "export default { id: 'alpha' };\n");
     put(modulesA(), "alpha/node_modules/skip/index.js", "no\n");
     put(dataA(), "packages/abc.tgz", "archive bytes");
     put(dataA(), "staging/abc/ignored.txt", "rebuilt on demand");
+    put(dataA(), "files/alpha/ab/abcdef00-0000-4000-8000-000000000000", "stored file bytes");
     const result = await run(BACKUP, ["--out", join(work, "out"), "--database-url", source!.url, "--modules-dir", modulesA(), "--data-dir", dataA()]);
     assert.equal(result.code, 0, result.err);
     made = backups(join(work, "out")).map((name) => join(work, "out", name))[0]!;
-    assert.deepEqual(readdirSync(made!).sort(), ["BACKUP_INFO", "SHA256SUMS", "database.dump", "modules.tar.gz", "packages.tar.gz"]);
+    assert.deepEqual(readdirSync(made!).sort(), ["BACKUP_INFO", "SHA256SUMS", "database.dump", "files.tar.gz", "modules.tar.gz", "packages.tar.gz"]);
     for (const name of readdirSync(made!)) assert.equal(statSync(join(made!, name)).mode & 0o077, 0, `${name} is private`);
     assert.equal(statSync(made!).mode & 0o077, 0, "the folder is private");
     const info = readFileSync(join(made!, "BACKUP_INFO"), "utf8");
@@ -109,6 +110,7 @@ describe("backup.sh and restore.sh", () => {
     assert.deepEqual((await target.pool.query("select value from core.platform_settings where key = 'backup.marker'")).rows, [{ value: "kept" }]);
     assert.equal(readFileSync(join(modulesB, "alpha/manifest.ts"), "utf8"), "export default { id: 'alpha' };\n");
     assert.equal(readFileSync(join(dataB, "packages/abc.tgz"), "utf8"), "archive bytes");
+    assert.equal(readFileSync(join(dataB, "files/alpha/ab/abcdef00-0000-4000-8000-000000000000"), "utf8"), "stored file bytes");
     assert.deepEqual(readdirSync(join(modulesB, "alpha")), ["manifest.ts"], "node_modules was left out");
     assert.equal(readdirSync(dataB).includes("staging"), false, "staging is rebuilt, not saved");
   });
@@ -130,6 +132,32 @@ describe("backup.sh and restore.sh", () => {
     assert.notEqual(refusedDir.code, 0);
     assert.match(refusedDir.err, /already holds modules/);
     assert.equal(await tableCount(empty.pool), 0, "the database was not touched");
+  });
+
+  guard("restores a backup made before files were stored, and leaves no files folder", async () => {
+    const legacy = join(work, "legacy");
+    mkdirSync(legacy);
+    for (const name of readdirSync(made!)) if (name !== "files.tar.gz") writeFileSync(join(legacy, name), readFileSync(join(made!, name)));
+    const sums = readFileSync(join(made!, "SHA256SUMS"), "utf8").split("\n").filter((line) => line !== "" && !line.endsWith("files.tar.gz"));
+    writeFileSync(join(legacy, "SHA256SUMS"), `${sums.join("\n")}\n`);
+    const target = await scratch();
+    const dataL = join(work, "data-legacy");
+    const result = await run(RESTORE, [legacy, "--database-url", target.url, "--modules-dir", join(work, "modules-legacy"), "--data-dir", dataL]);
+    assert.equal(result.code, 0, result.err);
+    assert.equal(readFileSync(join(dataL, "packages/abc.tgz"), "utf8"), "archive bytes");
+    assert.equal(readdirSync(dataL).includes("files"), false);
+  });
+
+  guard("refuses to restore over a data folder that already holds files, before changing anything", async () => {
+    const target = await scratch();
+    const dataF = join(work, "data-f");
+    put(dataF, "files/alpha/cd/existing", "do not overwrite");
+    const result = await run(RESTORE, [made!, "--database-url", target.url, "--modules-dir", join(work, "modules-f"), "--data-dir", dataF]);
+    assert.notEqual(result.code, 0);
+    assert.match(result.err, /already holds files/);
+    assert.equal(await tableCount(target.pool), 0, "the database was not touched");
+    assert.equal(readFileSync(join(dataF, "files/alpha/cd/existing"), "utf8"), "do not overwrite");
+    assert.equal(readdirSync(work).includes("modules-f"), false, "no folder was created");
   });
 
   guard("refuses a backup that no longer matches its checksums, before changing anything", async () => {

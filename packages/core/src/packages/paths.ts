@@ -25,6 +25,11 @@ export function archivePath(dataDir: string, sha256: string): string {
   return join(dataDir, "packages", `${sha256}.tgz`);
 }
 
+/** Where the platform keeps the files modules store through the SDK (the disk adapter's root). */
+export function filesDir(dataDir: string): string {
+  return join(dataDir, "files");
+}
+
 export function stagingPath(dataDir: string, sha256: string): string {
   assertSha256(sha256);
   return join(dataDir, "staging", sha256);

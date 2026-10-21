@@ -35,6 +35,9 @@ const toMeta = (row: Record<string, unknown>): FileMeta => ({
   createdAt: (row.created_at as Date).toISOString(),
 });
 
+const clampLimit = (asked: number | undefined): number =>
+  Math.min(Math.max(typeof asked === "number" && Number.isFinite(asked) ? Math.trunc(asked) : DEFAULT_LIST, 1), MAX_LIST);
+
 const keyOf = (moduleId: string, id: string): string => `${moduleId}/${id.slice(0, 2)}/${id}`;
 
 function toIterable(data: FileData): AsyncIterable<Uint8Array> {
@@ -138,14 +141,22 @@ export class FileService implements FilesService {
   }
 
   async list(moduleId: string, options: ListFilesOptions = {}): Promise<FileMeta[]> {
-    const asked = options.limit;
-    const limit = Math.min(Math.max(typeof asked === "number" && Number.isFinite(asked) ? Math.trunc(asked) : DEFAULT_LIST, 1), MAX_LIST);
+    const limit = clampLimit(options.limit);
     const filterRef = options.ref !== undefined;
     const { rows } = await this.pool.query(
       `select ${COLUMNS} from core.files where module_id = $1 and ($2::boolean is false or ref = $3) order by created_at desc, id desc limit $4`,
       [moduleId, filterRef, options.ref ?? null, limit],
     );
     return rows.map(toMeta);
+  }
+
+  /** Files of every module, or of one, newest first; for the operator, not for module code. */
+  async listAll(options: { moduleId?: string; limit?: number } = {}): Promise<(FileMeta & { moduleId: string })[]> {
+    const { rows } = await this.pool.query(`select module_id, ${COLUMNS} from core.files where ($1::text is null or module_id = $1) order by created_at desc, id desc limit $2`, [
+      options.moduleId ?? null,
+      clampLimit(options.limit),
+    ]);
+    return rows.map((row) => ({ ...toMeta(row), moduleId: row.module_id as string }));
   }
 
   /** Deletes the module's own file: the row first, then the bytes (what remains of them is swept). */

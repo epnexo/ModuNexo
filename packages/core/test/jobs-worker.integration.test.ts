@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import type pg from "pg";
-import { EVENTS_PUBLISHER, type EventsPublisher, type JobContext, type JobHandler, JOBS_ENQUEUER, type JobsEnqueuer, enqueueJob, publishEvent } from "@modunexo/sdk";
+import { EVENTS_PUBLISHER, type EventsPublisher, FILES_SERVICE, type FilesService, type JobContext, type JobHandler, JOBS_ENQUEUER, type JobsEnqueuer, enqueueJob, publishEvent, putFile } from "@modunexo/sdk";
 import { EventService } from "../src/events/index.ts";
 import { JobService, Worker, type WorkerDeps, registerModuleRuntime } from "../src/jobs/index.ts";
 import { migrate } from "../src/runner.ts";
@@ -354,6 +357,25 @@ describe("Worker: dead workers, schedules and tick failures", () => {
     assert.deepEqual(left, [recent]);
     await pool!.query("delete from core.events where id = $1", [recent]);
   });
+
+  test("sweeps files on the same schedule as the pruning and logs how many it removed", async () => {
+    let sweeps = 0;
+    const { worker, logged } = makeWorker({ sync: async () => {} }, { files: { sweep: async () => ({ removed: ++sweeps === 1 ? 3 : 0 }) } });
+    await worker.runOnce();
+    await worker.runOnce();
+    assert.equal(sweeps, 2);
+    assert.deepEqual(logged.filter((l) => l.event === "worker.files_swept").map((l) => l.fields), [{ count: 3 }]);
+  });
+
+  test("a failing file sweep is logged and does not stop the tick from running jobs", async () => {
+    const { worker, logged } = makeWorker({ sync: async () => {} }, { files: { sweep: async () => Promise.reject(new Error("disk gone")) } });
+    const { id } = await enqueue("sync");
+    await worker.runOnce();
+    assert.equal((await row(id)).status, "succeeded");
+    const warned = logged.find((l) => l.event === "worker.files_sweep_failed");
+    assert.ok(warned, "the failure is logged");
+    assert.match(String((warned.fields?.error as Error).message), /disk gone/);
+  });
 });
 
 describe("Worker.run", () => {
@@ -516,6 +538,29 @@ describe("registerModuleRuntime", () => {
       delete manifest.events;
       delete (globalThis as typeof globalThis & { [EVENTS_PUBLISHER]?: EventsPublisher })[EVENTS_PUBLISHER];
       await pool!.query("delete from core.events where module_id = $1", [moduleId]);
+    }
+  });
+
+  test("lets a handler store a file through the SDK", async () => {
+    const manifest = box.modules.find((m) => m.manifest.id === moduleId)!.manifest;
+    manifest.files = {};
+    const dataDir = await mkdtemp(join(tmpdir(), "modunexo-worker-files-"));
+    const previous = process.env.MODUNEXO_DATA_DIR;
+    process.env.MODUNEXO_DATA_DIR = dataDir;
+    registerModuleRuntime(pool!, { current: box.registry() });
+    try {
+      const { worker } = makeWorker({ sync: async (ctx) => void (await putFile(ctx.moduleId, { name: "from-job.txt", data: new TextEncoder().encode("made by a job"), ref: `job:${ctx.jobId}` })) });
+      const { id } = await enqueue("sync");
+      await worker.runOnce();
+      const files = (await pool!.query("select module_id, name, content_type, size, ref from core.files where module_id = $1", [moduleId])).rows;
+      assert.deepEqual(files.map((f) => [f.module_id, f.name, f.content_type, Number(f.size), f.ref]), [[moduleId, "from-job.txt", "text/plain", 13, `job:${id}`]]);
+    } finally {
+      delete manifest.files;
+      delete (globalThis as typeof globalThis & { [FILES_SERVICE]?: FilesService })[FILES_SERVICE];
+      if (previous === undefined) delete process.env.MODUNEXO_DATA_DIR;
+      else process.env.MODUNEXO_DATA_DIR = previous;
+      await pool!.query("delete from core.files where module_id = $1", [moduleId]);
+      await rm(dataDir, { recursive: true, force: true });
     }
   });
 });

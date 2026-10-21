@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# Save everything the platform needs to come back: the database, the installed modules and the received packages.
+# Save everything the platform needs to come back: the database, the installed modules, the received packages and the
+# files modules stored.
 #
 #   scripts/backup.sh [--out <dir>] [--database-url <url>] [--modules-dir <dir>] [--data-dir <dir>]
 #
 # Writes <out>/modunexo-backup-<UTC time>/ (default <repo>/backups) with database.dump, modules.tar.gz,
-# packages.tar.gz, SHA256SUMS and BACKUP_INFO. The folder and its files are readable by you only: the dump holds
+# packages.tar.gz, files.tar.gz, SHA256SUMS and BACKUP_INFO. The folder and its files are readable by you only: the dump holds
 # every password hash and every encrypted secret.
+#
+# The files are read after the database, so a file stored in between has bytes without a row; the worker removes those
+# after a day. For a backup that matches to the second, stop the web app and the worker first.
 #
 # NOT in the backup, on purpose: MODUNEXO_MASTER_KEY and your .env. Stored secrets are encrypted with that key, so keep
 # it somewhere else (a password manager); a restore without it works, but the stored secrets have to be typed again.
@@ -16,7 +20,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/pg-tools.sh"
 
 usage() {
   echo "usage: scripts/backup.sh [--out <dir>] [--database-url <url>] [--modules-dir <dir>] [--data-dir <dir>]"
-  echo "Saves the database, the installed modules and the received packages. MODUNEXO_MASTER_KEY is not saved: keep it elsewhere."
+  echo "Saves the database, the installed modules, the received packages and the stored files. MODUNEXO_MASTER_KEY is not saved: keep it elsewhere."
 }
 
 out="$PG_ROOT/backups"
@@ -47,6 +51,7 @@ pg_dump_db "$url" > "$dir/database.dump"
 [ -s "$dir/database.dump" ] || fail "the database dump is empty"
 tar -czf "$dir/modules.tar.gz" -C "$modules" --exclude=node_modules --exclude=.next .
 if [ -d "$data/packages" ]; then tar -czf "$dir/packages.tar.gz" -C "$data" packages; else tar -czf "$dir/packages.tar.gz" -T /dev/null; fi
+if [ -d "$data/files" ]; then tar -czf "$dir/files.tar.gz" -C "$data" files; else tar -czf "$dir/files.tar.gz" -T /dev/null; fi
 
 {
   echo "created: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -54,6 +59,6 @@ if [ -d "$data/packages" ]; then tar -czf "$dir/packages.tar.gz" -C "$data" pack
   echo "commit: $(git -C "$PG_ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
   echo "note: MODUNEXO_MASTER_KEY is not included. Keep it elsewhere; stored secrets are encrypted with it."
 } > "$dir/BACKUP_INFO"
-(cd "$dir" && sha256sum database.dump modules.tar.gz packages.tar.gz BACKUP_INFO > SHA256SUMS)
+(cd "$dir" && sha256sum database.dump modules.tar.gz packages.tar.gz files.tar.gz BACKUP_INFO > SHA256SUMS)
 ok=1
 echo "backup written to $dir"
