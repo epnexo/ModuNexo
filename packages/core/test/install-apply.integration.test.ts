@@ -9,6 +9,7 @@ import type pg from "pg";
 import { REGISTRY_FILE } from "../src/codegen/render.ts";
 import { generateRegistration } from "../src/codegen/generate.ts";
 import { ApplyFailedError, ApplyRefusedError, applyPackage } from "../src/install/apply.ts";
+import { distRecordPath, readLiveDist } from "../src/install/dist.ts";
 import { readJournal, writeJournal } from "../src/install/journal.ts";
 import { recoverInterrupted } from "../src/install/recover.ts";
 import { placePackage } from "../src/install/place.ts";
@@ -38,6 +39,7 @@ beforeEach(async () => {
   generateRegistration([], { outDir: join(work, "web") });
   mkdirSync(join(work, "web", ".next"));
   writeFileSync(join(work, "web", ".next", "BUILD_ID"), "old");
+  writeFileSync(join(work, "web", "tsconfig.json"), JSON.stringify({ include: ["src", ".next/types/**/*.ts"] }));
   const scratch = await createScratchDatabase();
   skipReason = scratch.url ? undefined : scratch.skipReason;
   if (!scratch.url) return;
@@ -71,14 +73,19 @@ async function stage(options: PackageOptions = {}): Promise<string> {
 }
 
 const builds: string[] = [];
-const goodBuild: BuildRunner = async (webRoot) => {
+/** What the serving build's BUILD_ID was while each build ran: a build must not touch it. */
+const servingDuringBuild: string[] = [];
+const goodBuild: BuildRunner = async (webRoot, _signal, dist) => {
   builds.push(readFileSync(join(webRoot, REGISTRY_FILE), "utf8"));
-  writeFileSync(join(webRoot, ".next", "BUILD_ID"), "new");
+  servingDuringBuild.push(readFileSync(join(webRoot, readLiveDist(webRoot, paths().dataDir).name, "BUILD_ID"), "utf8"));
+  mkdirSync(join(webRoot, dist!), { recursive: true });
+  writeFileSync(join(webRoot, dist!, "BUILD_ID"), "new");
   return { code: 0, output: "ok" };
 };
 const badBuild: BuildRunner = async () => ({ code: 1, output: "Type error: boom" });
 beforeEach(() => {
   builds.length = 0;
+  servingDuringBuild.length = 0;
 });
 
 const restarts: string[] = [];
@@ -93,7 +100,10 @@ beforeEach(() => {
 const apply = (sha256: string, run: BuildRunner = goodBuild, afterPreflight?: () => Promise<void>) =>
   applyPackage({ pool, sha256, actor: "apply-test", ...paths(), run, requestRestart, ...(afterPreflight === undefined ? {} : { afterPreflight }) });
 const modulesRows = async () => (await pool.query("select id, state, installed_version from core.modules order by id")).rows;
-const buildId = () => readFileSync(join(work, "web", ".next", "BUILD_ID"), "utf8");
+/** The BUILD_ID of the build the server would serve if it restarted now. */
+const buildId = () => readFileSync(join(work, "web", readLiveDist(join(work, "web"), paths().dataDir).name, "BUILD_ID"), "utf8");
+/** Every build directory and per-directory tsconfig in the web folder. */
+const buildDirs = () => readdirSync(join(work, "web")).filter((name) => name.startsWith(".next") || name.startsWith("tsconfig.next")).sort();
 const schemaExists = async (name: string) => (await pool.query("select 1 from information_schema.schemata where schema_name = $1", [name])).rowCount === 1;
 
 describe("applyPackage: install", () => {
@@ -108,6 +118,9 @@ describe("applyPackage: install", () => {
     assert.equal(builds.length, 1);
     assert.match(builds[0]!, /reports/);
     assert.equal(buildId(), "new");
+    assert.deepEqual(servingDuringBuild, ["old"], "the build that was serving was untouched while the new one was made");
+    assert.notEqual(readLiveDist(join(work, "web"), paths().dataDir).name, ".next", "the new build is in its own directory, and the record names it");
+    assert.equal(readFileSync(join(work, "web", ".next", "BUILD_ID"), "utf8"), "old", "the old directory stays for the server that is draining");
     assert.equal(restarts.length, 1);
     assert.ok(await schemaExists("reports"));
     const [run] = await listOperations(pool, { moduleId: "reports" });
@@ -128,6 +141,8 @@ describe("applyPackage: install", () => {
     assert.deepEqual(readdirSync(join(work, "modules")), []);
     assert.deepEqual(readdirSync(join(work, "node_modules")), []);
     assert.equal(buildId(), "old");
+    assert.deepEqual(buildDirs(), [".next"], "the failed build's directory and tsconfig are gone");
+    assert.equal(existsSync(distRecordPath(paths().dataDir)), false, "nothing was switched");
     assert.doesNotMatch(readFileSync(join(work, "web", REGISTRY_FILE), "utf8"), /reports/);
     assert.equal(restarts.length, 0);
     const [run] = await listOperations(pool, { moduleId: "reports" });
@@ -262,8 +277,43 @@ describe("applyPackage: interruption", () => {
   test("a run that died mid-build is recovered by the next apply, which then goes through", async () => {
     await apply(await stage());
     const sha = await stage({ version: "1.1.0" });
-    // What a killed process leaves behind: the new version placed, the old one aside, a half build, a journal,
-    // the good build in .next.rollback and a run that is `running` under a pid that no longer exists.
+    const serving = readLiveDist(join(work, "web"), paths().dataDir).name;
+    // What a killed process leaves behind: the new version placed, the old one aside, a half build in its own
+    // directory, a journal that names it, and a run that is `running` under a pid that no longer exists.
+    const placement = placePackage({
+      stagingDir: join(paths().dataDir, "staging", sha),
+      moduleId: "reports",
+      packageName: "@acme/reports",
+      version: "1.1.0",
+      kind: "upgrade",
+      previousVersion: "1.0.0",
+      modulesDir: paths().modulesDir,
+      nodeModulesDir: join(work, "node_modules"),
+      dataDir: paths().dataDir,
+      beforeChange: (state) => writeJournal(paths().dataDir, { ...state, version: "1.1.0", phase: "building", webRoot: paths().webRoot, dist: ".next-crashed" }),
+    });
+    assert.ok(placement.previousDir);
+    mkdirSync(join(work, "web", ".next-crashed"));
+    writeFileSync(join(work, "web", ".next-crashed", "partial"), "x");
+    writeFileSync(join(work, "web", "tsconfig.next-crashed.json"), "{}");
+    await startOperation(pool, { moduleId: "reports", version: "1.1.0", sha256: sha, kind: "upgrade", actor: "apply-test", pid: 2 ** 22 + 4321 });
+
+    const result = await apply(sha);
+    assert.equal(result.kind, "upgrade");
+    assert.match(result.warnings.join("\n"), /recovered/i);
+    assert.deepEqual(await modulesRows(), [{ id: "reports", state: "enabled", installed_version: "1.1.0" }]);
+    assert.equal(JSON.parse(readFileSync(join(work, "modules", "reports", "package.json"), "utf8")).version, "1.1.0");
+    assert.equal(existsSync(join(work, "web", ".next-crashed")), false, "the half build is gone");
+    assert.equal(existsSync(join(work, "web", "tsconfig.next-crashed.json")), false);
+    assert.equal(existsSync(join(work, "web", ".next", "BUILD_ID")), true, "the build that was serving was never touched");
+    assert.notEqual(readLiveDist(join(work, "web"), paths().dataDir).name, serving, "and the run that followed switched to its own build");
+    const statuses = (await listOperations(pool, { moduleId: "reports", limit: 5 })).map((run) => run.status);
+    assert.deepEqual(statuses, ["succeeded", "failed", "succeeded"]);
+  });
+
+  test("a journal from before builds had directories of their own is still recovered: the kept .next.rollback comes back", async () => {
+    await apply(await stage());
+    const sha = await stage({ version: "1.1.0" });
     const placement = placePackage({
       stagingDir: join(paths().dataDir, "staging", sha),
       moduleId: "reports",
@@ -281,17 +331,12 @@ describe("applyPackage: interruption", () => {
     renameSync(join(work, "web", ".next"), join(work, "web", ".next.rollback"));
     mkdirSync(join(work, "web", ".next"));
     writeFileSync(join(work, "web", ".next", "partial"), "x");
-    await startOperation(pool, { moduleId: "reports", version: "1.1.0", sha256: sha, kind: "upgrade", actor: "apply-test", pid: 2 ** 22 + 4321 });
-
-    const result = await apply(sha);
-    assert.equal(result.kind, "upgrade");
-    assert.match(result.warnings.join("\n"), /recovered/i);
-    assert.deepEqual(await modulesRows(), [{ id: "reports", state: "enabled", installed_version: "1.1.0" }]);
-    assert.equal(JSON.parse(readFileSync(join(work, "modules", "reports", "package.json"), "utf8")).version, "1.1.0");
+    await startOperation(pool, { moduleId: "reports", version: "1.1.0", sha256: sha, kind: "upgrade", actor: "apply-test", pid: 2 ** 22 + 4322 });
+    const notes = await recoverInterrupted({ pool, ...paths() });
+    assert.match(notes.join("\n"), /put back/);
     assert.equal(existsSync(join(work, "web", ".next", "partial")), false);
+    assert.equal(readFileSync(join(work, "web", ".next", "BUILD_ID"), "utf8"), "old");
     assert.equal(existsSync(join(work, "web", ".next.rollback")), false);
-    const statuses = (await listOperations(pool, { moduleId: "reports", limit: 5 })).map((run) => run.status);
-    assert.deepEqual(statuses, ["succeeded", "failed", "succeeded"]);
   });
 });
 
@@ -317,7 +362,7 @@ describe("applyPackage: other rules", () => {
 });
 
 describe("recoverInterrupted", () => {
-  const crashedUpgrade = async (phase: "placing" | "building" | "lifecycle", version = "1.1.0") => {
+  const crashedUpgrade = async (phase: "placing" | "building" | "lifecycle", version = "1.1.0", dist = ".next-crashed") => {
     await apply(await stage());
     const sha = await stage({ version });
     placePackage({
@@ -330,8 +375,12 @@ describe("recoverInterrupted", () => {
       modulesDir: paths().modulesDir,
       nodeModulesDir: join(work, "node_modules"),
       dataDir: paths().dataDir,
-      beforeChange: (state) => writeJournal(paths().dataDir, { ...state, version, phase, webRoot: paths().webRoot }),
+      beforeChange: (state) => writeJournal(paths().dataDir, { ...state, version, phase, webRoot: paths().webRoot, dist }),
     });
+    // The build the crashed run had made (a finished one when it got as far as the lifecycle, a half one before).
+    mkdirSync(join(work, "web", dist), { recursive: true });
+    if (phase === "lifecycle") writeFileSync(join(work, "web", dist, "BUILD_ID"), "crashed-run");
+    else writeFileSync(join(work, "web", dist, "partial"), "x");
     return sha;
   };
   const recover = () => recoverInterrupted({ pool, ...paths() });
@@ -342,16 +391,35 @@ describe("recoverInterrupted", () => {
     await pool.query("update core.modules set installed_version = '1.1.0' where id = 'reports'");
     const notes = await recover();
     assert.match(notes.join("\n"), /kept/);
+    assert.match(notes.join("\n"), /put in service/);
     assert.equal(moduleVersion(), "1.1.0");
     assert.equal(readJournal(paths().dataDir), null);
+    assert.equal(readLiveDist(join(work, "web"), paths().dataDir).name, ".next-crashed", "the switch the dead run did not get to make is made");
+    assert.equal(buildId(), "crashed-run");
+  });
+
+  test("keeps the result but does not switch to a build directory that is not a finished build", async () => {
+    await crashedUpgrade("building");
+    await pool.query("update core.modules set installed_version = '1.1.0' where id = 'reports'");
+    writeJournal(paths().dataDir, { ...readJournal(paths().dataDir)!, phase: "lifecycle" });
+    const serving = readLiveDist(join(work, "web"), paths().dataDir).name;
+    const notes = await recover();
+    assert.match(notes.join("\n"), /kept/);
+    assert.match(notes.join("\n"), /not a finished build/);
+    assert.equal(readLiveDist(join(work, "web"), paths().dataDir).name, serving, "the build that was serving stays the one");
+    assert.equal(moduleVersion(), "1.1.0");
   });
 
   test("undoes the placement when it died in the lifecycle phase before the database moved", async () => {
     await crashedUpgrade("lifecycle");
+    const serving = readLiveDist(join(work, "web"), paths().dataDir).name;
     const notes = await recover();
     assert.match(notes.join("\n"), /put back/);
     assert.equal(moduleVersion(), "1.0.0");
     assert.equal(readJournal(paths().dataDir), null);
+    assert.equal(existsSync(join(work, "web", ".next-crashed")), false, "the crashed run's build directory is removed");
+    assert.equal(readLiveDist(join(work, "web"), paths().dataDir).name, serving, "the build that was serving is still the one");
+    assert.equal(existsSync(distRecordPath(paths().dataDir)), true, "the first apply's record is untouched");
   });
 
   test("undoes a placement that died while placing, before the old folder was moved", async () => {

@@ -30,7 +30,7 @@ Branch: feat/install-without-downtime (from main c2d7b78). Delivery strategy: as
 
 - [x] T0 experiment: Next 16 honours `distDir` from the environment for both `build` and `start`, a build in a second directory does not disturb a server running from `.next`. Route: inline. Evidence: L5.
 - [x] T1 (S4) the directory record: names, read and write of `run/web.dist`, fallback to `.next`, removal of stray directories; `next.config` `distDir`. Route: inline. Commit: next commit (RED observed; 18 tests)
-- [ ] T2 (S1, S3) `buildWithRollback` builds into a new directory; commit and rollback; journal and recovery. Route: inline.
+- [x] T2 (S1, S3) `buildWithRollback` builds into a new directory; commit and rollback; journal and recovery. Route: inline. Commit: next commit (RED observed; install suites 63/63)
 - [ ] T3 (S2, S5) `run.ts start` reads the record for each (re)start; `web:build` writes it; the supervisor passes the directory to the server. Route: inline.
 - [ ] T4 (S1, S2, S3) apply and change integration; end-to-end: a real build while the server answers continuously. Route: inline.
 - [ ] T5 (S6) docs, full suite, independent verifier. Route: inline then verifier.
@@ -68,3 +68,10 @@ Branch: feat/install-without-downtime (from main c2d7b78). Delivery strategy: as
   (`isDistName` in the record, the same rule in `next.config` where it throws on a bad `MODUNEXO_DIST_DIR`, and `writeDistTsconfig`);
   a record of `.next` must not ask for a `tsconfig.next.json` that does not exist; a stray directory is not removed for 60 s
   after the record was written (the replaced server may be draining); a link named like a build directory is removed, never followed.
+- L7: T2 observed. `buildWithRollback` no longer moves `.next`: it builds into the directory the caller names (`newDistName()`, written
+  into every journal), refuses to write over the live one, clears strays first (not within 60 s of a switch), type-checks with a
+  tsconfig of its own, and goes live only at `commit()` (a record, refused if the directory has no BUILD_ID). Recovery of a journal
+  that names a directory removes it when the lifecycle step had not completed, and puts it in service when it had (or says it is not
+  a finished build and keeps what was serving); a journal with no directory (written by the old code) still restores `.next.rollback`.
+  Four tests of mine were wrong, not the code (BUILD_ID text repeats between builds, the live build's own tsconfig is rightly kept,
+  the serving build was read before the install that changes it, the serving log was not reset after the install helper).

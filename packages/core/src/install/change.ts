@@ -10,6 +10,7 @@ import { DATA_DIR, filesDir } from "../packages/paths.ts";
 import { REPO_ROOT } from "../packages/context.ts";
 import { ApplyFailedError, ApplyRefusedError } from "./apply.ts";
 import { BuildFailedError, type BuildHandle, type BuildRunner, buildWithRollback } from "./build.ts";
+import { newDistName } from "./dist.ts";
 import { clearJournal, writeJournal } from "./journal.ts";
 import { removePackage } from "./place.ts";
 import { recoverInterrupted, registryFromDisk } from "./recover.ts";
@@ -117,7 +118,9 @@ export async function changeModule(options: ChangeOptions): Promise<ChangeResult
   const installedVersion = (await readStates(pool)).get(moduleId)?.installedVersion ?? plan.version;
   const packageName = action === "uninstall" ? readPackageName(modulesDir, moduleId) : "";
   const expected = action === "enable" ? "enabled" : action === "disable" ? "disabled" : "gone";
-  const journal = (phase: "building" | "lifecycle") => writeJournal(dataDir, { type: "change", moduleId, action, expected, version: plan.version, phase, webRoot });
+  // The build directory of this run is named now, so the journal says which one to remove if the run dies.
+  const dist = newDistName();
+  const journal = (phase: "building" | "lifecycle") => writeJournal(dataDir, { type: "change", moduleId, action, expected, version: plan.version, phase, webRoot, dist });
   const progress = async (name: string, detail: string) => {
     if (controller.signal.aborted && name !== "lifecycle") throw new Error("interrupted by a signal");
     step = name;
@@ -128,7 +131,7 @@ export async function changeModule(options: ChangeOptions): Promise<ChangeResult
   try {
     await progress("build", "next build (this takes a while)");
     journal("building");
-    build = await buildWithRollback({ webRoot, modules, previousModules, signal: controller.signal, ...(options.run === undefined ? {} : { run: options.run }) });
+    build = await buildWithRollback({ webRoot, dataDir, dist, modules, previousModules, signal: controller.signal, ...(options.run === undefined ? {} : { run: options.run }) });
 
     await progress("lifecycle", `${action} ${moduleId}`);
     journal("lifecycle");
