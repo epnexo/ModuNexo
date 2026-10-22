@@ -1,4 +1,5 @@
 import type { BrandProfile } from "@modunexo/core/brand";
+import { CORE_VERSION } from "@modunexo/core/version";
 
 /** Name, and for a business its public contact details; nothing at all while no identity is configured. */
 export function BrandFooter({ profile }: { profile: BrandProfile | null }) {
@@ -29,6 +30,7 @@ export function BrandFooter({ profile }: { profile: BrandProfile | null }) {
             {profile.phone ? <span>{profile.phone}</span> : null}
           </>
         ) : null}
+        <span className="sm:ml-auto">Modunexo {CORE_VERSION}</span>
       </div>
     </footer>
   );
