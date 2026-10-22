@@ -238,6 +238,7 @@ describe("web app: sign-in required", () => {
     assert.match(home.body, /href="\/settings"/);
     assert.match(home.body, /No modules are installed yet/, "with zero modules the home screen says so");
     assert.match(home.body, /Sign out/);
+    assert.ok(home.body.includes(`Modunexo ${CORE_VERSION}`), "every screen of the shell says which version of the platform this is");
     const apps = await call("GET", "/apps", { cookie });
     assert.equal(apps.status, 200);
     assert.match(apps.body, /No modules are enabled in this build/);
