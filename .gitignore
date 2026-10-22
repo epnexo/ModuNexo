@@ -24,3 +24,6 @@ var/
 
 # Routes written for installed modules (the demo module "hello" included); never part of the platform.
 apps/web/src/app/(shell)/hello/
+
+# Modules are made outside the platform and installed as archives (modules pack, modules add).
+modules-src/

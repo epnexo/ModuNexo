@@ -5,6 +5,18 @@ version follows [Semantic Versioning](https://semver.org/). The platform has one
 root, `packages/core` and `apps/web`); the SDK keeps its own (`SDK_VERSION`), the number a module's `platform` range is
 checked against, and it changes only when the contract with modules changes. See "Versioning" in the README.
 
+## [Unreleased]
+
+### Added
+
+- The version of the platform is shown in the footer of every screen of the shell, not only on Status.
+- `@modunexo/core` exports `runner`, `job-runtime` and `settings-service`, the pieces a module's own tests need.
+
+### Changed
+
+- The platform ships no business module. The `inbox` module moved to its own repository, `modunexo-modules`, and is
+  installed from a packed archive. `modules-src/` is no longer tracked.
+
 ## [0.2.0] - 2026-10-21
 
 ### Added

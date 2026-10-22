@@ -25,7 +25,10 @@
     "./apps": "./src/apps.ts",
     "./data": "./src/data/module-db.ts",
     "./scaffold": "./src/scaffold/module.ts",
-    "./log": "./src/log.ts"
+    "./log": "./src/log.ts",
+    "./runner": "./src/runner.ts",
+    "./job-runtime": "./src/jobs/runtime.ts",
+    "./settings-service": "./src/settings/service.ts"
   },
   "dependencies": {
     "@modunexo/sdk": "^0.1.0",
