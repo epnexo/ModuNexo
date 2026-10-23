@@ -76,7 +76,8 @@ export class ModuleDbService implements DbReader {
    * A READ ONLY handle on the module's own schema, for statements the platform runs on the module's behalf, such as
    * the ones it declares for the dashboard. The database itself refuses a write through it, and the statement runs as
    * a role with `SELECT` on that schema alone, so a name qualified with `core` or another module's schema is refused
-   * too. This is not a sandbox for the module's own code, which migrates and runs with the platform's credentials.
+   * too. This is a second line of defense, not a sandbox: a statement can call `set_config('role', …)` inside a function that runs
+   * SQL later and so return to the platform's rights, and the module's own code migrates and runs with those credentials.
    */
   readOwn(moduleId: string): DbReadOnly {
     const manifest = this.registry.get(moduleId);

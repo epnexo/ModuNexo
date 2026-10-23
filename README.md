@@ -834,7 +834,7 @@ dashboard: {
   is above 0. `severity` is `info`, `warning` or `error`; the most serious come first.
 - `sql` is one `select` (or `with`) statement of at most 2000 characters, with no `;`, written as the module's own
   migrations are (unqualified table names). It runs in a `READ ONLY` transaction as a role that can read the module's schema and nothing else,
-  with that schema as `search_path` and a 3 second limit, so the database itself refuses a write and a read of `core` or of
+  with that schema as `search_path` and a 3 second limit, so the database itself refuses a write, and a plain or qualified read of `core` or of
   another module's tables. A statement that fails, is slow or answers with something
   that is not a figure is shown as "not available", without the database's message, and never hides another card.
 - `permission` is the key of a permission the module declares; whoever lacks it does not see the card. Name one for
@@ -852,9 +852,11 @@ such a manifest with `unknown field "dashboard"`.
 The role is `mnx_ro_<schema>`: it cannot log in, and the platform creates it the first time it needs it, with `SELECT` on the
 module's tables (those that exist and those the platform creates later). The database user the platform connects with needs
 `CREATEROLE` for that (a superuser has it); without it a card is shown as "not available" and the server's log says why, it is
-never run with more rights. This protects the platform's and the other modules' data from a statement written for the dashboard;
-it is not a sandbox for the module's own code, which migrates and runs with the platform's credentials, so a module is still
-trusted code that an administrator reviews before installing it (see "Data: `getDb`"). Each load of the dashboard runs every card it may show, so keep a statement cheap.
+never run with more rights. This stops a statement that reads what it should not by mistake or by a qualified name; it is not a barrier against a
+statement crafted to get out of the role: a function that runs SQL after `set_config('role', …)` returns to the platform's
+rights (Postgres lets a session always go back to the user it logged in as, so only a separate login per module would close
+it). The module's own migrations and code run with the platform's credentials anyway, so a module is trusted code that an
+administrator reviews before installing it (see "Data: `getDb`"). Each load of the dashboard runs every card it may show, so keep a statement cheap.
 
 ### The Status screen
 

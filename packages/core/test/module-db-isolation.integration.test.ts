@@ -72,7 +72,8 @@ describe("ModuleDbService.readOwn: the platform's statements for a module reach 
     await assert.rejects(fresh().readOwn(mine).query(`select label from "${theirsSchema}".items`), /permission denied/);
   });
 
-  guard("refuses to step out of its restriction inside one statement", async () => {
+  // Known limit, not covered: a function that runs SQL after set_config('role', …) (query_to_xml) returns to the platform's rights.
+  guard("refuses a subquery of the same statement that switches role first, which is checked before it runs", async () => {
     const sneaky = "select set_config('role', session_user, true), (select count(*) from core.modules)";
     await assert.rejects(fresh().readOwn(mine).query(sneaky), /permission denied/);
     await assert.rejects(fresh().readOwn(mine).query("select set_config('role', 'none', true), (select count(*) from core.modules)"), /permission denied/);
