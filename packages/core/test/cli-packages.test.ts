@@ -62,6 +62,19 @@ function moduleFolder(name = "reports-src", options: { manifest?: Record<string,
 
 const sha = (file: string) => createHash("sha256").update(readFileSync(file)).digest("hex");
 
+const dashboard = { stats: [{ key: "items", label: "Items", href: "/reports", sql: "select count(*) from items" }] };
+
+describe("cli: a module that contributes nothing to the dashboard", () => {
+  it("is packed with a warning on stderr and still succeeds, and the warning is gone once it declares a dashboard", async () => {
+    const quiet = await spawn(["modules", "pack", moduleFolder(), "--out", join(work, "quiet.tgz")], {});
+    assert.equal(quiet.code, 0, quiet.stderr);
+    assert.match(quiet.stderr, /warning: module "reports" contributes nothing to the dashboard/);
+    const loud = await spawn(["modules", "pack", moduleFolder("loud-src", { manifest: { dashboard } }), "--out", join(work, "loud.tgz")], {});
+    assert.equal(loud.code, 0, loud.stderr);
+    assert.doesNotMatch(loud.stderr, /dashboard/);
+  });
+});
+
 describe("cli: modules pack", () => {
   it("builds an archive with the manifest written as data, and prints its size and SHA-256", async () => {
     const folder = moduleFolder();

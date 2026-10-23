@@ -20,6 +20,7 @@ interface Review {
   subscriptions: { event: string; job: string }[];
   files: { maxBytes: number; accept: string[] | null; downloadable: boolean } | null;
   llm: { baseUrlSetting: string; apiKeySetting: string | null; modelSetting: string | null } | null;
+  dashboard: { stats: number; alerts: number } | null;
   settings: { key: string }[];
   migrations: string[];
   runsHooks: boolean;
@@ -417,6 +418,13 @@ export function AppsManager({ initial, installed, modules }: { initial: AppsStat
                   </dd>
                 </>
               ) : null}
+              <dt className="text-muted">Dashboard</dt>
+              <dd>
+                {staged.review.dashboard === null
+                  ? "none"
+                  : `${staged.review.dashboard.stats} ${staged.review.dashboard.stats === 1 ? "figure" : "figures"}, ${staged.review.dashboard.alerts} ${staged.review.dashboard.alerts === 1 ? "alert" : "alerts"}`}
+                {staged.review.dashboard === null ? <span className="block text-xs text-muted">This module contributes nothing to the dashboard.</span> : null}
+              </dd>
               <dt className="text-muted">Permissions</dt>
               <dd>{list(staged.review.permissions.map((permission) => permission.key))}</dd>
               <dt className="text-muted">Settings</dt>

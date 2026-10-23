@@ -402,3 +402,27 @@ describe("validatePackageTree: dependencies are the platform's", () => {
     assert.match(problems, /page\.tsx/);
   });
 });
+
+describe("validatePackageTree: dashboard", () => {
+  const dashboard = {
+    stats: [{ key: "items", label: "Items", href: "/items", sql: "select count(*) from items" }],
+    alerts: [
+      { key: "a", label: "A", href: "/items", severity: "warning", sql: "select count(*) from items" },
+      { key: "b", label: "B", href: "/items", severity: "error", sql: "select count(*) from items" },
+    ],
+  };
+
+  it("shows how many figures and alerts the module puts on the dashboard", () => {
+    writeGood({ manifest: { dashboard } });
+    const full = validatePackageTree(root, context());
+    assert.equal(full.ok, true, full.ok ? "" : full.problems.join("\n"));
+    if (full.ok) assert.deepEqual(full.review.dashboard, { stats: 1, alerts: 2 });
+  });
+
+  it("shows null for a module that declares no dashboard, which stays valid", () => {
+    writeGood();
+    const plain = validatePackageTree(root, context());
+    assert.equal(plain.ok, true);
+    if (plain.ok) assert.equal(plain.review.dashboard, null);
+  });
+});
