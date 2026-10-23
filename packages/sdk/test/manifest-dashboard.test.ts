@@ -52,6 +52,11 @@ describe("validateManifest: dashboard", () => {
     assert.match(problemsOf(withDashboard({ stats: [{ ...stat, label: "x".repeat(81) }] })).join("\n"), /dashboard\.stats\[0\]\.label/);
     assert.match(problemsOf(withDashboard({ stats: [{ ...stat, href: "pipeline" }] })).join("\n"), /dashboard\.stats\[0\]\.href must start with "\/"/);
     assert.match(problemsOf(withDashboard({ stats: [{ ...stat, href: "//evil.example" }] })).join("\n"), /dashboard\.stats\[0\]\.href/);
+    // A browser reads "/\\host" as "//host", so a backslash, a space or a control character cannot be in an address.
+    for (const href of ["/\\evil.example", "/ pipeline", "/a\tb", "/a\\b", "/\nx"]) {
+      assert.match(problemsOf(withDashboard({ alerts: [{ ...alert, href }] })).join("\n"), /dashboard\.alerts\[0\]\.href/, JSON.stringify(href));
+    }
+    for (const href of ["/", "/pipeline", "/agenda/settings", "/inbox?unread=1"]) assert.deepEqual(problemsOf(withDashboard({ stats: [{ ...stat, href }] })), [], href);
   });
 
   it("refuses an alert whose severity is not info, warning or error", () => {
