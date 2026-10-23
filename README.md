@@ -833,24 +833,28 @@ dashboard: {
 - An **alert** counts something that needs attention: its `sql` returns a whole number, and the alert is shown only while it
   is above 0. `severity` is `info`, `warning` or `error`; the most serious come first.
 - `sql` is one `select` (or `with`) statement of at most 2000 characters, with no `;`, written as the module's own
-  migrations are (unqualified table names). It runs in a `READ ONLY` transaction with the module's schema as `search_path`
-  and a 3 second limit, so the database itself refuses a write. A statement that fails, is slow or answers with something
+  migrations are (unqualified table names). It runs in a `READ ONLY` transaction as a role that can read the module's schema and nothing else,
+  with that schema as `search_path` and a 3 second limit, so the database itself refuses a write and a read of `core` or of
+  another module's tables. A statement that fails, is slow or answers with something
   that is not a figure is shown as "not available", without the database's message, and never hides another card.
 - `permission` is the key of a permission the module declares; whoever lacks it does not see the card. Name one for
   anything that is not meant for everyone. At most 12 stats and 12 alerts; each `key` is unique in its list.
 - `href` is a path of this platform (it starts with `/`, not `//`).
 
 The platform adds its own alerts, for an administrator only: a job that stopped after its last attempt in the last 7 days
-(module and job name, never what it reported), an install or upgrade that failed or was rolled back, an enabled module whose
+(module and job name, never what it reported), an install, upgrade, enabling, disabling or removal that failed or was rolled back and is still the last thing that happened to that module (a retry that worked clears it), an enabled module whose
 required settings are still unset (how many, never which), and the line about jobs due with nobody to take them. An
 administrator also sees the totals of modules and jobs and the newest activity (events and operations). Nothing on the
 dashboard shows a job's data, an event's payload, an error text or a key. `modules pack` and `modules add` print a warning, and
 still succeed, for a module that declares no `dashboard`. The field exists since SDK `0.1.1`; a platform that is older refuses
 such a manifest with `unknown field "dashboard"`.
 
-`READ ONLY` stops a write, not a read: a statement can read any table the database user can, as the module's other code
-can, because a module is trusted code that an administrator reviews before installing it (this is not a sandbox, see
-"Data: `getDb`"). Each load of the dashboard runs every card it may show, so keep a statement cheap.
+The role is `mnx_ro_<schema>`: it cannot log in, and the platform creates it the first time it needs it, with `SELECT` on the
+module's tables (those that exist and those the platform creates later). The database user the platform connects with needs
+`CREATEROLE` for that (a superuser has it); without it a card is shown as "not available" and the server's log says why, it is
+never run with more rights. This protects the platform's and the other modules' data from a statement written for the dashboard;
+it is not a sandbox for the module's own code, which migrates and runs with the platform's credentials, so a module is still
+trusted code that an administrator reviews before installing it (see "Data: `getDb`"). Each load of the dashboard runs every card it may show, so keep a statement cheap.
 
 ### The Status screen
 
