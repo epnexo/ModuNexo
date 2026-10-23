@@ -168,6 +168,39 @@ export interface LlmDeclaration {
   modelSetting?: string;
 }
 
+/** How serious an alert is; the dashboard orders and colours alerts by it. */
+export type DashboardSeverity = "info" | "warning" | "error";
+
+/** A figure the module shows on the dashboard. */
+export interface DashboardStat {
+  /** Stable identifier, unique among the module's stats. */
+  key: string;
+  label: string;
+  /** The screen that explains the figure; a path of this platform that starts with "/". */
+  href: string;
+  /**
+   * One `select` (or `with`) statement run READ ONLY with the module's own schema as `search_path`. The first column of
+   * its first row is the figure: a whole number or a short text.
+   */
+  sql: string;
+}
+
+/** A problem the module reports on the dashboard while there is something to fix. */
+export interface DashboardAlert {
+  key: string;
+  label: string;
+  href: string;
+  severity: DashboardSeverity;
+  /** Like a stat's `sql`, but the first column must be a whole number: the count of what needs attention. At 0 the alert is not shown. */
+  sql: string;
+}
+
+/** What the module contributes to the platform's dashboard. At least one stat or alert. */
+export interface DashboardDeclaration {
+  stats?: DashboardStat[];
+  alerts?: DashboardAlert[];
+}
+
 /** The contract every module declares in its `manifest.ts` (manifest v2). */
 export interface ModuleManifest {
   /** Unique kebab-case identifier. */
@@ -200,6 +233,8 @@ export interface ModuleManifest {
   files?: FilesDeclaration;
   /** Present: the module may call a language model with `chat`; the endpoint, key and model are the settings it names. */
   llm?: LlmDeclaration;
+  /** Optional: figures and alerts the module contributes to the dashboard. */
+  dashboard?: DashboardDeclaration;
   /** Relative path (starting with "./") to a file exporting `onInstall`, `onEnable`, `onDisable`, `onUpgrade`, `onUninstall`. */
   hooks?: string;
 }
@@ -224,8 +259,17 @@ const SCHEMA_NAME = /^[a-z][a-z0-9_]{0,62}$/;
 // "core" belongs to the platform itself.
 const RESERVED_SCHEMAS = new Set(["public", "information_schema", "core"]);
 const KNOWN_FIELDS = new Set([
-  "id", "version", "name", "platform", "dependsOn", "schema", "migrationsDir", "nav", "pages", "settings", "permissions", "scopes", "jobs", "events", "subscriptions", "files", "llm", "hooks",
+  "id", "version", "name", "platform", "dependsOn", "schema", "migrationsDir", "nav", "pages", "settings", "permissions", "scopes", "jobs", "events", "subscriptions", "files", "llm", "dashboard", "hooks",
 ]);
+const KNOWN_DASHBOARD_FIELDS = new Set(["stats", "alerts"]);
+const KNOWN_STAT_FIELDS = new Set(["key", "label", "href", "sql"]);
+const KNOWN_ALERT_FIELDS = new Set(["key", "label", "href", "severity", "sql"]);
+const DASHBOARD_SEVERITIES = ["info", "warning", "error"];
+const MAX_DASHBOARD_ENTRIES = 12;
+const MAX_DASHBOARD_LABEL_CHARS = 80;
+const MAX_DASHBOARD_SQL_CHARS = 2000;
+/** A single read statement. The READ ONLY transaction is what really forbids writes; this only catches a mistake early. */
+const DASHBOARD_SQL = /^(select|with)[\s(]/i;
 const KNOWN_NAV_FIELDS = new Set(["label", "href", "icon", "group", "order", "permission"]);
 const KNOWN_PAGE_FIELDS = new Set(["path", "entry", "kind", "dynamic", "methods", "permission", "public", "scope"]);
 const KNOWN_PUBLIC_FIELDS = new Set(["signature", "ratePerMinute", "maxBodyBytes"]);
@@ -585,6 +629,50 @@ function checkJobs(jobs: unknown, problems: string[]): void {
   });
 }
 
+function checkDashboardEntries(list: unknown, name: string, known: Set<string>, withSeverity: boolean, problems: string[]): void {
+  eachItem(list, name, problems, (entry, where, index) => {
+    checkUnknownFields(entry, known, where, problems);
+    if (typeof entry.key !== "string" || !KEY.test(entry.key)) {
+      problems.push(`${where}.key must be a stable identifier (lowercase a-z, 0-9, _ and dot-separated segments)`);
+    } else if ((list as Record<string, unknown>[]).findIndex((other) => other.key === entry.key) !== index) {
+      problems.push(`${where}.key "${entry.key}" is duplicated`);
+    }
+    if (!isNonEmptyString(entry.label) || entry.label.length > MAX_DASHBOARD_LABEL_CHARS) {
+      problems.push(`${where}.label must be a non-empty string of at most ${MAX_DASHBOARD_LABEL_CHARS} characters`);
+    }
+    if (typeof entry.href !== "string" || !entry.href.startsWith("/") || entry.href.startsWith("//")) {
+      problems.push(`${where}.href must start with "/" and stay on this platform`);
+    }
+    if (withSeverity && !DASHBOARD_SEVERITIES.includes(entry.severity as string)) {
+      problems.push(`${where}.severity must be one of ${DASHBOARD_SEVERITIES.join(", ")}`);
+    }
+    if (typeof entry.sql !== "string" || entry.sql.trim() === "") {
+      problems.push(`${where}.sql must be a non-empty string`);
+    } else if (entry.sql.length > MAX_DASHBOARD_SQL_CHARS) {
+      problems.push(`${where}.sql must be at most ${MAX_DASHBOARD_SQL_CHARS} characters`);
+    } else if (!DASHBOARD_SQL.test(entry.sql.trim()) || entry.sql.includes(";")) {
+      problems.push(`${where}.sql must be one select (or with) statement with no ";"`);
+    }
+  });
+  if (Array.isArray(list) && list.length > MAX_DASHBOARD_ENTRIES) problems.push(`${name} must have at most ${MAX_DASHBOARD_ENTRIES} entries`);
+}
+
+function checkDashboard(dashboard: unknown, problems: string[]): void {
+  if (!isPlainObject(dashboard)) {
+    problems.push("dashboard must be an object");
+    return;
+  }
+  checkUnknownFields(dashboard, KNOWN_DASHBOARD_FIELDS, "dashboard", problems);
+  const stats = dashboard.stats;
+  const alerts = dashboard.alerts;
+  if (stats !== undefined) checkDashboardEntries(stats, "dashboard.stats", KNOWN_STAT_FIELDS, false, problems);
+  if (alerts !== undefined) checkDashboardEntries(alerts, "dashboard.alerts", KNOWN_ALERT_FIELDS, true, problems);
+  const empty = (list: unknown) => list === undefined || (Array.isArray(list) && list.length === 0);
+  if (empty(stats) && empty(alerts)) {
+    problems.push("dashboard must declare at least one stat or alert");
+  }
+}
+
 function checkEvents(events: unknown, permissionKeys: Set<string>, problems: string[]): void {
   const seen = new Set<string>();
   eachItem(events, "events", problems, (event, where) => {
@@ -743,6 +831,7 @@ export function validateManifest(input: unknown, options: ValidateOptions = {}):
   if (raw.jobs !== undefined) checkJobs(raw.jobs, problems);
   if (raw.events !== undefined) checkEvents(raw.events, permissionKeys, problems);
   if (raw.files !== undefined) checkFiles(raw.files, permissionKeys, problems);
+  if (raw.dashboard !== undefined) checkDashboard(raw.dashboard, problems);
   if (raw.llm !== undefined) checkLlm(raw.llm, settingTypes(raw.settings), problems);
   if (raw.subscriptions !== undefined) {
     const jobNames = new Set(Array.isArray(raw.jobs) ? raw.jobs.flatMap((job) => (isPlainObject(job) && typeof job.name === "string" ? [job.name] : [])) : []);
