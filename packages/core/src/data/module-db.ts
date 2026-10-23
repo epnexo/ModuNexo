@@ -59,6 +59,19 @@ export class ModuleDbService implements DbReader {
     };
   }
 
+  /**
+   * A READ ONLY handle on the module's own schema, for statements the platform runs on the module's behalf, such as
+   * the ones it declares for the dashboard. The database itself refuses a write through it.
+   */
+  readOwn(moduleId: string): DbReadOnly {
+    const manifest = this.registry.get(moduleId);
+    if (manifest === undefined || moduleId === CORE_MODULE_ID) {
+      throw new DbAccessError("unknown-module", `module "${moduleId}" is not part of this build, so it has no data to reach`);
+    }
+    const scope: Scope = { schema: manifest.schema, requires: [moduleId], readOnly: true };
+    return { query: (sql, params) => this.#transaction(scope, (tx) => tx.query(sql, params)) };
+  }
+
   async #transaction<T>(scope: Scope, run: (tx: DbQueryable) => Promise<T>): Promise<T> {
     const client = await this.pool.connect();
     let broken = false;
