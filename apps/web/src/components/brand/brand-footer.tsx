@@ -30,7 +30,7 @@ export function BrandFooter({ profile }: { profile: BrandProfile | null }) {
             {profile.phone ? <span>{profile.phone}</span> : null}
           </>
         ) : null}
-        <span className="sm:ml-auto">Modunexo {CORE_VERSION}</span>
+        <span className="sm:ml-auto">{`Modunexo ${CORE_VERSION}`}</span>
       </div>
     </footer>
   );
