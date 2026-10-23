@@ -15,7 +15,8 @@ checked against, and it changes only when the contract with modules changes. See
 ### Security
 
 - The statements a module declares for the dashboard now run as a role that can read that module's schema and nothing else, so
-  `select … from core.settings` or from another module's schema is refused by the database. The platform creates the role
+  `select … from core.settings` or from another module's schema is refused by the database. It is a second line of defense, not
+  isolation: a statement crafted to switch role from inside can still get out (see the README). The platform creates the role
   (`mnx_ro_<schema>`, no login) on first use; the database user needs `CREATEROLE` for that, and a card is "not available"
   without it. Migrations and a module's own code are unchanged and still run with the platform's credentials.
 
