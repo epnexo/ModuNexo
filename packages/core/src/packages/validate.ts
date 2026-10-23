@@ -35,6 +35,8 @@ export interface PackageReview {
   files: { maxBytes: number; accept: string[] | null; downloadable: boolean } | null;
   /** Null when the module calls no model. Each value is the key of one of the module's own settings. */
   llm: { baseUrlSetting: string; apiKeySetting: string | null; modelSetting: string | null } | null;
+  /** Null when the module contributes nothing to the dashboard. */
+  dashboard: { stats: number; alerts: number } | null;
   settings: { key: string; type: string; required: boolean; hasDefault: boolean }[];
   migrations: string[];
   runsHooks: boolean;
@@ -237,6 +239,7 @@ export function validatePackageTree(root: string, context: PackageContext): Pack
       jobs: (manifest.jobs ?? []).map((job) => ({ name: job.name, ...(job.every === undefined ? {} : { every: job.every }) })),
       events: (manifest.events ?? []).map((event) => ({ name: event.name, streamed: event.permission !== undefined })),
       subscriptions: (manifest.subscriptions ?? []).map((subscription) => ({ event: subscription.event, job: subscription.job })),
+      dashboard: manifest.dashboard === undefined ? null : { stats: (manifest.dashboard.stats ?? []).length, alerts: (manifest.dashboard.alerts ?? []).length },
       llm:
         manifest.llm === undefined
           ? null

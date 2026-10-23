@@ -6,6 +6,9 @@ import type { CliIo } from "./run.ts";
 
 const list = (values: string[]): string => (values.length === 0 ? "none" : values.join(", "));
 
+/** Said at pack and add time; the module is still accepted, since a dashboard is optional. */
+const silentOnDashboard = (id: string): string => `module "${id}" contributes nothing to the dashboard: it declares no "dashboard" in its manifest`;
+
 /** `modules pack <folder> [--out <file>]`: builds the archive a platform accepts. Needs no database. */
 export async function runPackCommand(args: { folder: string; out?: string; modulesDir: string }, io: CliIo): Promise<void> {
   const context = await buildPackageContext({ modulesDir: args.modulesDir });
@@ -13,6 +16,7 @@ export async function runPackCommand(args: { folder: string; out?: string; modul
     const result = await packFolder(args.folder, context, args.out);
     io.out(`packed ${result.outFile} (${result.sizeBytes} bytes)`);
     io.out(`sha256 ${result.sha256}`);
+    if (result.manifest.dashboard === undefined) io.err(`warning: ${silentOnDashboard(result.manifest.id)}`);
     io.out(`${result.manifest.id} ${result.manifest.version}: give the file and this SHA-256 to whoever installs it ("modules add <archive> --sha256 <hex>").`);
   } catch (error) {
     if (error instanceof PackRefusedError) throw new Refusal(error.problems.join("\n  "));
@@ -62,9 +66,11 @@ export async function runAddCommand(
   if (open.length > 0) row("public", `${list(open.map((page) => page.path))} - answer without a sign-in, guarded only by their signature`);
   row("nav", list(review.nav.map((item) => item.label)));
   row("permissions", list(review.permissions.map((permission) => permission.key)));
+  row("dashboard", review.dashboard === null ? "none" : `${review.dashboard.stats} ${review.dashboard.stats === 1 ? "figure" : "figures"}, ${review.dashboard.alerts} ${review.dashboard.alerts === 1 ? "alert" : "alerts"}`);
   row("settings", list(review.settings.map((setting) => setting.key)));
   row("migrations", list(review.migrations));
   row("hooks", review.runsHooks ? "yes - the package's own code runs inside the platform when installed" : "none");
+  if (review.dashboard === null) io.err(`warning: ${silentOnDashboard(review.id)}`);
   row("depends on", list(review.dependsOn.map((need) => `${need.id} ${need.range} (${need.status})`)));
   row("libraries", list(review.dependencies.map((dependency) => `${dependency.name} ${dependency.range}`)));
   row("scripts", review.scripts.length === 0 ? "none (never run)" : `${review.scripts.join(", ")} (never run)`);
