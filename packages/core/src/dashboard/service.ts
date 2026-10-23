@@ -10,6 +10,7 @@ const DEFAULT_TIMEOUT_MS = 3000;
 const MAX_TEXT_CHARS = 60;
 /** How far back a stopped job or a failed operation still raises an alert. */
 const RECENT = "7 days";
+const OPERATION_NAME: Record<string, string> = { install: "Install", upgrade: "Upgrade", enable: "Enabling", disable: "Disabling", uninstall: "Uninstall" };
 const SEVERITY_RANK: Record<DashboardSeverity, number> = { error: 0, warning: 1, info: 2 };
 
 export interface DashboardOptions {
@@ -172,10 +173,14 @@ export class DashboardService {
         `select module_id, name, count(*)::int as n, max(finished_at) as at from core.jobs
          where status = 'dead' and finished_at > now() - interval '${RECENT}' group by module_id, name order by max(finished_at) desc limit 20`,
       ),
+      // A failure counts only while it is the last thing that happened to the module: a retry that succeeded, or an uninstall, settles it.
       this.pool.query(
-        `select module_id, version, kind, status, finished_at from core.module_operations
-         where status in ('failed', 'rolled_back') and finished_at > now() - interval '${RECENT}' order by finished_at desc limit 10`,
+        `select module_id, version, kind, status, finished_at from core.module_operations o
+         where status in ('failed', 'rolled_back') and finished_at > now() - interval '${RECENT}'
+           and not exists (select 1 from core.module_operations later where later.module_id = o.module_id and later.id > o.id)
+         order by finished_at desc limit 10`,
       ),
+
       this.pool.query("select module_id, type, created_at from core.events order by id desc limit 10"),
       this.pool.query("select module_id, version, kind, status, coalesce(finished_at, started_at) as at from core.module_operations order by id desc limit 5"),
       this.#incomplete(),
@@ -198,7 +203,7 @@ export class DashboardService {
         kind: "operation_failed",
         severity: "error",
         moduleId: row.module_id,
-        label: `${row.kind === "install" ? "Install" : "Upgrade"} of ${row.module_id} ${row.version} ${row.status === "failed" ? "failed" : "was rolled back"}`,
+        label: `${OPERATION_NAME[row.kind] ?? "Change"} of ${row.module_id} ${row.version} ${row.status === "failed" ? "failed" : "was rolled back"}`,
         href: "/apps",
         count: 1,
         at: row.finished_at,
@@ -220,7 +225,7 @@ export class DashboardService {
       ...(operations.rows as { module_id: string; version: string; kind: string; status: string; at: Date }[]).map((row) => ({
         at: row.at,
         moduleId: row.module_id,
-        text: `${row.kind === "install" ? "Install" : "Upgrade"} of ${row.module_id} ${row.version}: ${row.status}`,
+        text: `${OPERATION_NAME[row.kind] ?? "Change"} of ${row.module_id} ${row.version}: ${row.status}`,
         href: "/apps",
       })),
     ]
