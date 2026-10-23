@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, beforeEach, describe, it } from "node:test";
 import type pg from "pg";
 import { DashboardService } from "../src/dashboard/service.ts";
+import type { LogFields, Logger } from "../src/log.ts";
 import { migrate } from "../src/runner.ts";
 import { createPool } from "../src/pool.ts";
 import { createScratchDatabase } from "../src/testing.ts";
@@ -16,6 +17,7 @@ let plain: string;
 let off: string;
 let service: DashboardService;
 let incomplete: Record<string, string[]> = {};
+const logged: { level: string; event: string; fields: LogFields }[] = [];
 
 const everyone = () => true;
 
@@ -62,7 +64,9 @@ before(async () => {
   off = third.manifest.id;
   third.manifest.dashboard = { stats: [{ key: "items", label: "Hidden", href: "/items", sql: "select count(*) from items" }] };
   await migrate(pool, box.registry());
-  service = new DashboardService(pool, box.registry(), { statementTimeoutMs: 400, incompleteSettings: async (id) => incomplete[id] ?? [] });
+  const note = (level: string) => (event: string, fields?: LogFields) => void logged.push({ level, event, fields: fields ?? {} });
+  const logger: Logger = { debug: note("debug"), info: note("info"), warn: note("warn"), error: note("error") };
+  service = new DashboardService(pool, box.registry(), { statementTimeoutMs: 400, incompleteSettings: async (id) => incomplete[id] ?? [], log: logger });
 });
 
 after(async () => {
@@ -78,6 +82,7 @@ after(async () => {
 beforeEach(async () => {
   if (!pool) return;
   incomplete = {};
+  logged.length = 0;
   await pool.query("delete from core.jobs where module_id = any($1)", [[rich, plain, off]]);
   await pool.query("delete from core.module_operations where module_id = any($1)", [[rich, plain, off]]);
   await setState(rich, "enabled");
@@ -110,6 +115,15 @@ describe("DashboardService.cards: what modules contribute", () => {
     }
     assert.doesNotMatch(JSON.stringify(stats), /no_such_table|relation|read-only|statement timeout|sneaky/i);
     assert.equal((await pool!.query(`select count(*)::int as n from "${box.modules[0]!.manifest.schema}".items where label = 'sneaky'`)).rows[0].n, 0, "the READ ONLY transaction refused the write");
+  });
+
+  guard("tells whoever reads the server's log which statement failed and why, once per failure, and nothing else", async () => {
+    await service.cards(everyone);
+    const failures = logged.filter((entry) => entry.event === "dashboard.statement_failed");
+    // The logger redacts a field named like a secret, and "key" is one, so the card is named "card".
+    assert.deepEqual(failures.map((entry) => entry.fields.card).sort(), ["broken", "gone", "slow", "writes"], "only a statement that raised an error is reported; an answer that is not a figure is not");
+    assert.ok(failures.every((entry) => entry.level === "warn" && entry.fields.module === rich && entry.fields.error instanceof Error));
+    assert.match(String(failures.find((entry) => entry.fields.card === "broken")?.fields.error), /no_such_table/);
   });
 
   guard("does not wait for the slow statement longer than the limit, and one failing card does not hide the others", async () => {

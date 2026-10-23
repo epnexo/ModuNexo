@@ -2,6 +2,7 @@ import type { DashboardSeverity } from "@modunexo/sdk";
 import type pg from "pg";
 import { CORE_MODULE_ID } from "../core-module.ts";
 import { ModuleDbService } from "../data/module-db.ts";
+import { type Logger, log as platformLog } from "../log.ts";
 import type { Registry } from "../registry.ts";
 
 /** Longest a declared statement may run, so one slow module cannot hold the dashboard. */
@@ -16,6 +17,8 @@ export interface DashboardOptions {
   statementTimeoutMs?: number;
   /** Keys of the required settings a module still lacks; the web passes the settings service's `incomplete`. */
   incompleteSettings?: (moduleId: string) => Promise<string[]>;
+  /** Where a failed statement is reported, for whoever reads the server's output. Default: the platform's log. */
+  log?: Logger;
 }
 
 interface CardBase {
@@ -113,12 +116,14 @@ export class DashboardService {
     return (rows as { id: string }[]).map((row) => row.id).filter((id) => id !== CORE_MODULE_ID && this.registry.get(id) !== undefined);
   }
 
-  async #first(moduleId: string, sql: string): Promise<unknown> {
+  async #first(moduleId: string, card: string, sql: string): Promise<unknown> {
     try {
       const result = await this.#db.readOwn(moduleId).query(sql);
       const row = result.rows[0];
       return row === undefined ? undefined : Object.values(row)[0];
-    } catch {
+    } catch (error) {
+      // The card says "not available" and nothing more; the reason goes to the server's log, where only an operator reads it.
+      (this.options.log ?? platformLog).warn("dashboard.statement_failed", { module: moduleId, card, error });
       return undefined;
     }
   }
@@ -138,12 +143,12 @@ export class DashboardService {
       const base = (entry: { key: string; label: string; href: string }): CardBase => ({ moduleId: id, moduleName: manifest.name, key: entry.key, label: entry.label, href: entry.href });
       for (const stat of dashboard.stats ?? []) {
         if (!canSee(id, stat.permission)) continue;
-        stats.push(this.#first(id, stat.sql).then((value) => ({ ...base(stat), value: toStat(value) })));
+        stats.push(this.#first(id, stat.key, stat.sql).then((value) => ({ ...base(stat), value: toStat(value) })));
       }
       for (const alert of dashboard.alerts ?? []) {
         if (!canSee(id, alert.permission)) continue;
         alerts.push(
-          this.#first(id, alert.sql).then((value) => {
+          this.#first(id, alert.key, alert.sql).then((value) => {
             const count = toCount(value);
             return count === 0 ? null : { ...base(alert), severity: alert.severity, count };
           }),

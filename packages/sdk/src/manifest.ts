@@ -273,6 +273,8 @@ const MAX_DASHBOARD_ENTRIES = 12;
 const MAX_DASHBOARD_LABEL_CHARS = 80;
 const MAX_DASHBOARD_SQL_CHARS = 2000;
 /** A single read statement. The READ ONLY transaction is what really forbids writes; this only catches a mistake early. */
+/** A path of this platform: not "//host" and, since a browser reads a backslash as a slash, no backslash, space or control character. */
+const DASHBOARD_HREF = /^\/(?![/\\])[^\s\\]*$/;
 const DASHBOARD_SQL = /^(select|with)[\s(]/i;
 const KNOWN_NAV_FIELDS = new Set(["label", "href", "icon", "group", "order", "permission"]);
 const KNOWN_PAGE_FIELDS = new Set(["path", "entry", "kind", "dynamic", "methods", "permission", "public", "scope"]);
@@ -644,7 +646,7 @@ function checkDashboardEntries(list: unknown, name: string, known: Set<string>, 
     if (!isNonEmptyString(entry.label) || entry.label.length > MAX_DASHBOARD_LABEL_CHARS) {
       problems.push(`${where}.label must be a non-empty string of at most ${MAX_DASHBOARD_LABEL_CHARS} characters`);
     }
-    if (typeof entry.href !== "string" || !entry.href.startsWith("/") || entry.href.startsWith("//")) {
+    if (typeof entry.href !== "string" || !DASHBOARD_HREF.test(entry.href)) {
       problems.push(`${where}.href must start with "/" and stay on this platform`);
     }
     if (entry.permission !== undefined && !(typeof entry.permission === "string" && permissionKeys.has(entry.permission))) {
