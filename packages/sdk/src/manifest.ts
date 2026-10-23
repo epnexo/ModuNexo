@@ -178,6 +178,8 @@ export interface DashboardStat {
   label: string;
   /** The screen that explains the figure; a path of this platform that starts with "/". */
   href: string;
+  /** Key of a permission declared in `permissions`; the card is hidden from anyone without it. */
+  permission?: string;
   /**
    * One `select` (or `with`) statement run READ ONLY with the module's own schema as `search_path`. The first column of
    * its first row is the figure: a whole number or a short text.
@@ -191,6 +193,8 @@ export interface DashboardAlert {
   label: string;
   href: string;
   severity: DashboardSeverity;
+  /** Key of a permission declared in `permissions`; the alert is hidden from anyone without it. */
+  permission?: string;
   /** Like a stat's `sql`, but the first column must be a whole number: the count of what needs attention. At 0 the alert is not shown. */
   sql: string;
 }
@@ -262,8 +266,8 @@ const KNOWN_FIELDS = new Set([
   "id", "version", "name", "platform", "dependsOn", "schema", "migrationsDir", "nav", "pages", "settings", "permissions", "scopes", "jobs", "events", "subscriptions", "files", "llm", "dashboard", "hooks",
 ]);
 const KNOWN_DASHBOARD_FIELDS = new Set(["stats", "alerts"]);
-const KNOWN_STAT_FIELDS = new Set(["key", "label", "href", "sql"]);
-const KNOWN_ALERT_FIELDS = new Set(["key", "label", "href", "severity", "sql"]);
+const KNOWN_STAT_FIELDS = new Set(["key", "label", "href", "permission", "sql"]);
+const KNOWN_ALERT_FIELDS = new Set(["key", "label", "href", "severity", "permission", "sql"]);
 const DASHBOARD_SEVERITIES = ["info", "warning", "error"];
 const MAX_DASHBOARD_ENTRIES = 12;
 const MAX_DASHBOARD_LABEL_CHARS = 80;
@@ -629,7 +633,7 @@ function checkJobs(jobs: unknown, problems: string[]): void {
   });
 }
 
-function checkDashboardEntries(list: unknown, name: string, known: Set<string>, withSeverity: boolean, problems: string[]): void {
+function checkDashboardEntries(list: unknown, name: string, known: Set<string>, withSeverity: boolean, permissionKeys: Set<string>, problems: string[]): void {
   eachItem(list, name, problems, (entry, where, index) => {
     checkUnknownFields(entry, known, where, problems);
     if (typeof entry.key !== "string" || !KEY.test(entry.key)) {
@@ -642,6 +646,9 @@ function checkDashboardEntries(list: unknown, name: string, known: Set<string>, 
     }
     if (typeof entry.href !== "string" || !entry.href.startsWith("/") || entry.href.startsWith("//")) {
       problems.push(`${where}.href must start with "/" and stay on this platform`);
+    }
+    if (entry.permission !== undefined && !(typeof entry.permission === "string" && permissionKeys.has(entry.permission))) {
+      problems.push(`${where}.permission must be the key of a permission declared in "permissions"`);
     }
     if (withSeverity && !DASHBOARD_SEVERITIES.includes(entry.severity as string)) {
       problems.push(`${where}.severity must be one of ${DASHBOARD_SEVERITIES.join(", ")}`);
@@ -657,7 +664,7 @@ function checkDashboardEntries(list: unknown, name: string, known: Set<string>, 
   if (Array.isArray(list) && list.length > MAX_DASHBOARD_ENTRIES) problems.push(`${name} must have at most ${MAX_DASHBOARD_ENTRIES} entries`);
 }
 
-function checkDashboard(dashboard: unknown, problems: string[]): void {
+function checkDashboard(dashboard: unknown, permissionKeys: Set<string>, problems: string[]): void {
   if (!isPlainObject(dashboard)) {
     problems.push("dashboard must be an object");
     return;
@@ -665,8 +672,8 @@ function checkDashboard(dashboard: unknown, problems: string[]): void {
   checkUnknownFields(dashboard, KNOWN_DASHBOARD_FIELDS, "dashboard", problems);
   const stats = dashboard.stats;
   const alerts = dashboard.alerts;
-  if (stats !== undefined) checkDashboardEntries(stats, "dashboard.stats", KNOWN_STAT_FIELDS, false, problems);
-  if (alerts !== undefined) checkDashboardEntries(alerts, "dashboard.alerts", KNOWN_ALERT_FIELDS, true, problems);
+  if (stats !== undefined) checkDashboardEntries(stats, "dashboard.stats", KNOWN_STAT_FIELDS, false, permissionKeys, problems);
+  if (alerts !== undefined) checkDashboardEntries(alerts, "dashboard.alerts", KNOWN_ALERT_FIELDS, true, permissionKeys, problems);
   const empty = (list: unknown) => list === undefined || (Array.isArray(list) && list.length === 0);
   if (empty(stats) && empty(alerts)) {
     problems.push("dashboard must declare at least one stat or alert");
@@ -831,7 +838,7 @@ export function validateManifest(input: unknown, options: ValidateOptions = {}):
   if (raw.jobs !== undefined) checkJobs(raw.jobs, problems);
   if (raw.events !== undefined) checkEvents(raw.events, permissionKeys, problems);
   if (raw.files !== undefined) checkFiles(raw.files, permissionKeys, problems);
-  if (raw.dashboard !== undefined) checkDashboard(raw.dashboard, problems);
+  if (raw.dashboard !== undefined) checkDashboard(raw.dashboard, permissionKeys, problems);
   if (raw.llm !== undefined) checkLlm(raw.llm, settingTypes(raw.settings), problems);
   if (raw.subscriptions !== undefined) {
     const jobNames = new Set(Array.isArray(raw.jobs) ? raw.jobs.flatMap((job) => (isPlainObject(job) && typeof job.name === "string" ? [job.name] : [])) : []);

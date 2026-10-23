@@ -76,4 +76,11 @@ describe("validateManifest: dashboard", () => {
     const many = Array.from({ length: 13 }, (_, i) => ({ ...stat, key: `s${i}` }));
     assert.match(problemsOf(withDashboard({ stats: many })).join("\n"), /dashboard\.stats must have at most 12 entries/);
   });
+
+  it("hides a card behind a declared permission, and refuses one that is not declared", () => {
+    const declared = { ...base, permissions: [{ key: "contacts.read", label: "Read" }] };
+    assert.deepEqual(problemsOf({ ...declared, dashboard: { stats: [{ ...stat, permission: "contacts.read" }], alerts: [{ ...alert, permission: "contacts.read" }] } }), []);
+    assert.match(problemsOf({ ...declared, dashboard: { stats: [{ ...stat, permission: "contacts.write" }] } }).join("\n"), /dashboard\.stats\[0\]\.permission must be the key of a permission declared/);
+    assert.match(problemsOf(withDashboard({ alerts: [{ ...alert, permission: "contacts.read" }] })).join("\n"), /dashboard\.alerts\[0\]\.permission/);
+  });
 });
