@@ -56,6 +56,15 @@ export default async function DashboardPage() {
     );
   }
 
+  if (view.hidden) {
+    return (
+      <div className="flex max-w-xl flex-col gap-4">
+        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+        <p className="text-muted">Nothing to show you yet. The enabled modules report only to people who hold their permissions.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-3">

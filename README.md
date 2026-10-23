@@ -845,8 +845,12 @@ The platform adds its own alerts, for an administrator only: a job that stopped 
 required settings are still unset (how many, never which), and the line about jobs due with nobody to take them. An
 administrator also sees the totals of modules and jobs and the newest activity (events and operations). Nothing on the
 dashboard shows a job's data, an event's payload, an error text or a key. `modules pack` and `modules add` print a warning, and
-still succeed, for a module that declares no `dashboard`. The field exists since SDK `0.1.1`, so a module that declares it
-asks for a platform at least that new.
+still succeed, for a module that declares no `dashboard`. The field exists since SDK `0.1.1`; a platform that is older refuses
+such a manifest with `unknown field "dashboard"`.
+
+`READ ONLY` stops a write, not a read: a statement can read any table the database user can, as the module's other code
+can, because a module is trusted code that an administrator reviews before installing it (this is not a sandbox, see
+"Data: `getDb`"). Each load of the dashboard runs every card it may show, so keep a statement cheap.
 
 ### The Status screen
 

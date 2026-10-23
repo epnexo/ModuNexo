@@ -45,6 +45,8 @@ export interface ModuleCards {
   alerts: AlertCard[];
   /** Enabled modules that contribute nothing to the dashboard. */
   silent: { moduleId: string; moduleName: string }[];
+  /** How many modules are enabled, whether or not this viewer may see any of their cards. */
+  enabled: number;
 }
 
 export interface PlatformAlert {
@@ -133,7 +135,8 @@ export class DashboardService {
     const stats: Promise<StatCard>[] = [];
     const alerts: Promise<AlertCard | null>[] = [];
     const silent: ModuleCards["silent"] = [];
-    for (const id of await this.#enabledIds()) {
+    const enabledIds = await this.#enabledIds();
+    for (const id of enabledIds) {
       const manifest = this.registry.get(id)!;
       const dashboard = manifest.dashboard;
       if (dashboard === undefined) {
@@ -157,7 +160,7 @@ export class DashboardService {
     }
     const shown = (await Promise.all(alerts)).filter((alert): alert is AlertCard => alert !== null);
     shown.sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]);
-    return { stats: await Promise.all(stats), alerts: shown, silent };
+    return { stats: await Promise.all(stats), alerts: shown, silent, enabled: enabledIds.length };
   }
 
   /** The platform's own state: module and job totals, what needs a look, and the newest activity. */

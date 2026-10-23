@@ -6,7 +6,7 @@ import { buildDashboard } from "../src/server/dashboard.ts";
 const NOW = new Date("2026-10-23T12:00:00Z");
 const minutesAgo = (n: number) => new Date(NOW.getTime() - n * 60_000);
 
-const cards = (over: Partial<ModuleCards> = {}): ModuleCards => ({ stats: [], alerts: [], silent: [], ...over });
+const cards = (over: Partial<ModuleCards> = {}): ModuleCards => ({ stats: [], alerts: [], silent: [], enabled: 0, ...over });
 const overview = (over: Partial<PlatformOverview> = {}): PlatformOverview => ({ modules: { enabled: 2, disabled: 1 }, jobs: { queued: 0, running: 0 }, alerts: [], activity: [], ...over });
 const alertCard = (over: Record<string, unknown> = {}) => ({ moduleId: "inbox", moduleName: "Inbox", key: "unanswered", label: "Unanswered conversations", href: "/inbox", severity: "warning" as const, count: 3, ...over });
 const statCard = (over: Record<string, unknown> = {}) => ({ moduleId: "contacts", moduleName: "Contacts", key: "people", label: "People", href: "/contacts", value: 12 as number | string | null, ...over });
@@ -75,10 +75,14 @@ describe("buildDashboard: figures, silent modules and the platform block", () =>
     assert.deepEqual(view.activity.map((entry) => [entry.text, entry.when, entry.href]), [["inbox.message.received", "2 min ago", "/status"]]);
   });
 
-  it("knows whether there is anything to show at all", () => {
-    assert.equal(buildDashboard({ cards: cards(), overview: null, now: NOW }).empty, true);
-    assert.equal(buildDashboard({ cards: cards({ silent: [{ moduleId: "a", moduleName: "A" }] }), overview: null, now: NOW }).empty, false);
-    assert.equal(buildDashboard({ cards: cards({ stats: [statCard()] }), overview: null, now: NOW }).empty, false);
-    assert.equal(buildDashboard({ cards: cards(), overview: overview({ modules: { enabled: 0, disabled: 0 } }), now: NOW }).empty, true);
+  it("tells no module enabled apart from modules enabled whose cards this viewer may not see", () => {
+    const none = buildDashboard({ cards: cards(), overview: null, now: NOW });
+    assert.deepEqual([none.empty, none.hidden], [true, false]);
+    const hidden = buildDashboard({ cards: cards({ enabled: 4 }), overview: null, now: NOW });
+    assert.deepEqual([hidden.empty, hidden.hidden], [false, true], "four modules are enabled, none lets this viewer see a card");
+    const shown = buildDashboard({ cards: cards({ enabled: 1, stats: [statCard()] }), overview: null, now: NOW });
+    assert.deepEqual([shown.empty, shown.hidden], [false, false]);
+    const admin = buildDashboard({ cards: cards({ enabled: 4 }), overview: overview(), now: NOW });
+    assert.deepEqual([admin.empty, admin.hidden], [false, false], "an administrator always has the platform block");
   });
 });
