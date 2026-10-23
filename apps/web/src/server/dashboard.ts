@@ -41,8 +41,10 @@ export interface DashboardView {
   silent: string[];
   platform: { modules: string; jobs: string } | null;
   activity: { text: string; when: string; href: string }[];
-  /** Nothing installed and enabled, so there is nothing to show. */
+  /** No module is enabled, so there is nothing to show. */
   empty: boolean;
+  /** Modules are enabled, but this viewer holds no permission to see a card of any of them, and is given no platform block. */
+  hidden: boolean;
 }
 
 const plural = (count: number, one: string, many: string) => (count === 1 ? one : many);
@@ -93,14 +95,16 @@ export function buildDashboard({ cards, overview, workerLine = null, now }: Dash
 
   const platform = overview === null ? null : { modules: `${overview.modules.enabled} enabled, ${overview.modules.disabled} disabled`, jobs: `${overview.jobs.queued} queued, ${overview.jobs.running} running` };
   const activity = (overview?.activity ?? []).map((entry) => ({ text: entry.text, when: formatAgo(entry.at, now), href: entry.href }));
-  const nothingEnabled = overview === null || overview.modules.enabled === 0;
+  const modules = [...byModule.values()];
+  const empty = cards.enabled === 0;
   return {
     headline,
     alerts,
-    modules: [...byModule.values()],
+    modules,
     silent: cards.silent.map((entry) => entry.moduleName),
     platform,
     activity,
-    empty: cards.stats.length === 0 && cards.alerts.length === 0 && cards.silent.length === 0 && nothingEnabled,
+    empty,
+    hidden: !empty && platform === null && alerts.length === 0 && modules.length === 0 && cards.silent.length === 0,
   };
 }

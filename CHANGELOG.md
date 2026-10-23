@@ -13,7 +13,7 @@ checked against, and it changes only when the contract with modules changes. See
   platform's own alerts (stopped jobs, failed installs, unset required settings), totals and recent activity.
 - Modules may declare a `dashboard` in the manifest: stats and alerts, each a `select` run `READ ONLY` in the module's schema
   with a time limit and behind an optional permission. It is optional; `modules pack` and `modules add` warn when it is missing.
-  The SDK goes to `0.1.1` for it, so modules that use it ask for a platform that knows the field.
+  The SDK goes to `0.1.1` for it; an older platform refuses a manifest that declares it as an unknown field.
 - The package review shows the dashboard (`review.dashboard`, a row in `modules add` and on the Apps screen).
 - The version of the platform is shown in the footer of every screen of the shell, not only on Status.
 - `@modunexo/core` exports `runner`, `job-runtime` and `settings-service`, the pieces a module's own tests need.

@@ -159,6 +159,12 @@ describe("DashboardService.cards: what modules contribute", () => {
     assert.equal((await service.cards(everyone)).stats.some((card) => card.key === "private"), true);
   });
 
+  guard("counts the enabled modules even when the viewer may see none of their cards", async () => {
+    const cards = await service.cards(() => false);
+    assert.equal(cards.enabled, 2, "rich and plain are enabled; off is not");
+    assert.deepEqual([cards.stats.length, cards.alerts.length], [0, 0]);
+  });
+
   guard("leaves out a disabled module and lists an enabled one that declares nothing as silent", async () => {
     const cards = await service.cards(everyone);
     assert.equal(cards.stats.some((card) => card.moduleId === off), false);

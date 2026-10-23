@@ -53,7 +53,7 @@ describe("validateManifest: dashboard", () => {
     assert.match(problemsOf(withDashboard({ stats: [{ ...stat, href: "pipeline" }] })).join("\n"), /dashboard\.stats\[0\]\.href must start with "\/"/);
     assert.match(problemsOf(withDashboard({ stats: [{ ...stat, href: "//evil.example" }] })).join("\n"), /dashboard\.stats\[0\]\.href/);
     // A browser reads "/\\host" as "//host", so a backslash, a space or a control character cannot be in an address.
-    for (const href of ["/\\evil.example", "/ pipeline", "/a\tb", "/a\\b", "/\nx"]) {
+    for (const href of ["/\\evil.example", "/ pipeline", "/a\tb", "/a\\b", "/\nx", "/a\u0000b", "/a\u0001b", "/a\u007fb", "/a\u200bb", "/a\ufeffb"]) {
       assert.match(problemsOf(withDashboard({ alerts: [{ ...alert, href }] })).join("\n"), /dashboard\.alerts\[0\]\.href/, JSON.stringify(href));
     }
     for (const href of ["/", "/pipeline", "/agenda/settings", "/inbox?unread=1"]) assert.deepEqual(problemsOf(withDashboard({ stats: [{ ...stat, href }] })), [], href);
