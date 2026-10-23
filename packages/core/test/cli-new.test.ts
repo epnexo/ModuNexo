@@ -51,6 +51,7 @@ describe("modules new", () => {
     const packed = await cli("modules", "pack", join(work, "field-notes"), "--out", archive);
     assert.equal(packed.code, 0, packed.err);
     assert.match(packed.out, /sha256 [0-9a-f]{64}/);
+    assert.doesNotMatch(packed.err, /contributes nothing to the dashboard/, "a new module already reports its items to the dashboard");
     assert.ok(existsSync(archive));
   });
 

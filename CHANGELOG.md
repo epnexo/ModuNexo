@@ -9,11 +9,19 @@ checked against, and it changes only when the contract with modules changes. See
 
 ### Added
 
+- The dashboard replaces Home at `/`: alerts that need attention, the figures modules report, and, for an administrator, the
+  platform's own alerts (stopped jobs, failed installs, unset required settings), totals and recent activity.
+- Modules may declare a `dashboard` in the manifest: stats and alerts, each a `select` run `READ ONLY` in the module's schema
+  with a time limit and behind an optional permission. It is optional; `modules pack` and `modules add` warn when it is missing.
+  The SDK goes to `0.1.1` for it, so modules that use it ask for a platform that knows the field.
+- The package review shows the dashboard (`review.dashboard`, a row in `modules add` and on the Apps screen).
 - The version of the platform is shown in the footer of every screen of the shell, not only on Status.
 - `@modunexo/core` exports `runner`, `job-runtime` and `settings-service`, the pieces a module's own tests need.
 
 ### Changed
 
+- The sidebar starts with the Dashboard, and Apps, Status and Settings moved into a collapsible Admin block at the bottom that
+  only an administrator is given. Their addresses did not change.
 - The platform ships no business module. The `inbox` module moved to its own repository, `modunexo-modules`, and is
   installed from a packed archive. `modules-src/` is no longer tracked.
 
