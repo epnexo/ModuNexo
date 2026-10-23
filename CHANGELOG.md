@@ -7,6 +7,18 @@ checked against, and it changes only when the contract with modules changes. See
 
 ## [Unreleased]
 
+### Fixed
+
+- The dashboard no longer alerts about an install or upgrade that failed and was retried with success, or that was followed
+  by an uninstall: a failure counts only while it is the last operation of its module.
+
+### Security
+
+- The statements a module declares for the dashboard now run as a role that can read that module's schema and nothing else, so
+  `select … from core.settings` or from another module's schema is refused by the database. The platform creates the role
+  (`mnx_ro_<schema>`, no login) on first use; the database user needs `CREATEROLE` for that, and a card is "not available"
+  without it. Migrations and a module's own code are unchanged and still run with the platform's credentials.
+
 ## [0.3.0] - 2026-10-23
 
 ### Added
