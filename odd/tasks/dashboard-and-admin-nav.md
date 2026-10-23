@@ -1,0 +1,40 @@
+# Feature: dashboard and admin navigation (modules feed a dashboard; Home and the admin screens are reorganised)
+
+Objective: replace the empty Home with a dashboard that shows the general state and the notifications modules contribute, and move Settings, Apps and Status into a collapsible "Admin" block at the bottom of the sidebar that only an administrator sees.
+Branch: feat/dashboard-and-admin-nav (local; only `main` is published, no push without the owner). Delivery strategy: ask-on-risk. Test runner: `npm test` (node:test via tsx), `npm run typecheck`; modules repo: `npm test`, `npx tsc --noEmit -p tsconfig.json`.
+
+## Specs
+
+- S1. Modules may declare a `dashboard` in their manifest. It is **optional**: a manifest without it stays valid. [decision: optional with a warning, because making it required breaks every installed module and the published contract; the platform is tolerant and the modules repo is strict (S9)]
+- S2. `dashboard.stats` is a list of `{ key, label, href, sql }`: a short number or text with a link to the screen that explains it. `dashboard.alerts` is a list of `{ key, label, href, severity, sql }` with `severity` one of `info`, `warning`, `error`. An alert whose count is 0 is not shown. At least one stat or alert; at most 12 of each; `sql` is one `select`/`with` statement of at most 2000 characters, with no `;`. [decision, L6: the manifest holds SQL, not a code file]
+- S3. Each `sql` runs inside the module's own schema in a `READ ONLY` transaction with a time limit, so the database itself refuses any write. If it fails or times out, only its card shows "not available"; the dashboard still renders. One module's failure never hides another module's cards.
+- S4. The platform contributes its own alerts without any module declaring them: jobs in status `dead` (shown as module, job name and time, never the error text), module operations `failed` or `rolled_back`, and required settings still unset. "Worker alive" is out of the first version because the worker leaves no heartbeat. [decision]
+- S5. The dashboard replaces Home: the `/` page shows the general state (modules enabled and disabled, jobs queued and running), the alerts, the modules' stats and the recent activity (`core.events`, `core.module_operations`). Every card links to the screen where it is fixed.
+- S6. A module that declares no `dashboard` is listed as "no information" instead of being hidden. Packing or installing it prints a warning that the module contributes nothing to the dashboard; the command still succeeds.
+- S7. The sidebar shows the dashboard and the installed modules at the top. At the bottom, a collapsible block named "Admin" holds Settings, Apps and Status. A viewer who is not an administrator does not see the block, and the pages stay protected as they are today. [decision: the shell's Apps, Status and Settings entries stop being top-level]
+- S8. Error text from jobs or modules is never shown on the dashboard; the detail stays in Status, which only an administrator can open.
+- S9. In the modules repo, every module declares a `dashboard` and a test fails if one does not. Each module that changes gets a new version, a changelog entry and a repacked archive: `contacts` (contacts and open leads; leads not moved for some days), `agenda` (bookings today; unconfirmed), `inbox` (open conversations; unanswered; webhook secret unset), `assistant` (replies today; paused conversations; model not configured).
+- S10. Help text and docs are updated: `docs/GUIDE.md` (how a module feeds the dashboard), the SDK reference for `dashboard`, `CHANGELOG.md` `[Unreleased]`.
+
+Out of scope here, decided in the conversation as a later delivery: groups created from the front and a module assigned to a group when it is installed (needs a table and a migration); a "worker alive" heartbeat.
+
+## Tasks
+
+- [x] T1. SDK contract: `dashboard` in the manifest, validator with clear messages, unknown fields refused, optional. S1, S2. Route: inline. RED: `unknown field "dashboard"`; GREEN: 133 SDK tests, typecheck clean. Commit: pending.
+- [ ] T2. Core service: run a module query read-only with a time limit, isolate failures, build the platform's own alerts. S3, S4, S8. Route: inline. Commit: pending.
+- [ ] T3. Dashboard page replacing Home, with the empty states and the "no information" listing. S5, S6. Route: inline. Commit: pending.
+- [ ] T4. Sidebar: collapsible "Admin" block at the bottom, hidden to non-administrators; mobile navigation included. S7. Route: inline. Commit: pending.
+- [ ] T5. Pack and install warning for a module without `dashboard`. S6. Route: inline. Commit: pending.
+- [ ] T6. Modules repo: dashboards for the four modules, repo test that requires them, versions, changelogs, archives. S9. Route: inline (separate repo, own branch). Commit: pending.
+- [ ] T7. Docs and changelog. S10. Route: inline. Commit: pending.
+- [ ] T8. Independent verifier over the whole document (high risk: contract others consume, permissions, queries run on module data); one correction batch and one recheck. Route: delegated verifier.
+
+## Log
+
+- L1. 2026-10-23, user, original request: "enves de menu un dashboard o similar mostrando interaccion o estado general algo mas util mostrando notificaciones de modulos errores o similares / setin en la parte inferior y si mostralo solo a admin, una opcion es gerarquia si en setin desplegando las opciones status app y el nombre de la gerarquia seria admin"
+- L2. 2026-10-23, user: "dodos los modulos deben dejar unas notificaciones o los datos que se vana mostrar en el dashboard"
+- L3. 2026-10-23, user: "que opcion es mas segura y funcional" — answered with the optional-with-warning option; the user then said: "sí, empieza con el documento de feature".
+- L4. 2026-10-23, user, earlier in the same thread: "yo creo que hacer esto en el fromt una opcion de crear grupos y cuando se instala asignar a un grupo por ejemplo / adicional la opcion de hom no se esta utilizando app y status deberia ser de la opcion de setings o subproducto de esta y setin debe ser si es admin diferente a otro perfil no autorizado" — the groups part is a later delivery.
+- L5. Evidence: the SDK has no widget, notification or dashboard concept; the nav entry already has `group` and `order`; Apps, Status and Settings pages already refuse non-administrators; `core.jobs` (status `dead`, `last_error`) and `core.module_operations` (status `failed`, `rolled_back`) already hold what the platform alerts need.
+- L6. Open points to settle while implementing, recorded when decided: the time limit; how the web decides the viewer is an administrator for the sidebar (the Apps page already uses `viewer.canWrite`).
+- L7. 2026-10-23, decision (user: "si son deciciones objetivas tome la mejor deccion para completar el flujo"): the manifest holds the SQL of each stat and alert instead of pointing to a code file. Why: the web serves from a generated registry and does not load module code on demand (only the worker does); SQL is declarative, easy to validate and runs through the same `READ ONLY` transaction the platform already uses for `reader`, so a write is refused by Postgres. A stat's value is the first column of the first row (whole number or short text); an alert's is a whole number.
