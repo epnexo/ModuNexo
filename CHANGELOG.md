@@ -7,6 +7,8 @@ checked against, and it changes only when the contract with modules changes. See
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-23
+
 ### Added
 
 - The dashboard replaces Home at `/`: alerts that need attention, the figures modules report, and, for an administrator, the
