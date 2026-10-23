@@ -63,7 +63,7 @@ that answers but refuses (bad credentials, missing permission) **fails** the sui
 
 The platform has **one version**, written as the same number in `package.json`, `packages/core/package.json`,
 `apps/web/package.json` and `CORE_VERSION` (`packages/core/src/version.ts`); a test fails if they differ. Find it with
-`npm run modunexo -- --version` (it prints `modunexo 0.2.0 (sdk 0.1.0)`) or at the top of the Status screen.
+`npm run modunexo -- --version` (it prints `modunexo 0.3.0 (sdk 0.1.1)`) or at the top of the Status screen.
 
 The **SDK has its own number**, `SDK_VERSION`, because it is the contract with modules: a module's `platform` range is checked
 against it. It rises only when that contract changes, and then on the usual rules for a `0.x` version: a new optional
