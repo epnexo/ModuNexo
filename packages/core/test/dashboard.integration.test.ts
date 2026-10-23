@@ -203,21 +203,28 @@ describe("DashboardService.overview: the platform's own signals", () => {
     assert.doesNotMatch(JSON.stringify(alerts), /secret-token|internal|ancient/);
   });
 
-  guard("raises an alert for an install or upgrade that failed or was rolled back, and none for one that succeeded", async () => {
-    const insert = (status: string, finished: string) =>
+  guard("raises an alert only while the latest operation of a module is a failure, not once a later attempt succeeded", async () => {
+    const insert = (moduleId: string, kind: string, status: string, finished: string) =>
       pool!.query(
         `insert into core.module_operations (module_id, version, sha256, kind, status, detail, actor, pid, finished_at)
-         values ($1, '2.0.0', repeat('a', 64), 'upgrade', $2, 'private detail', 'op', 1, ${finished})`,
-        [rich, status],
+         values ($1, '2.0.0', case when $2 in ('install', 'upgrade') then repeat('a', 64) end, $2, $3, 'private detail', 'op', 1, ${finished})`,
+        [moduleId, kind, status],
       );
-    await insert("failed", "now()");
-    await insert("succeeded", "now()");
-    await insert("rolled_back", "now() - interval '30 days'");
+    await insert(rich, "upgrade", "succeeded", "now()");
+    await insert(rich, "upgrade", "failed", "now()");
+    await insert(plain, "install", "rolled_back", "now()");
+    await insert(plain, "install", "succeeded", "now()");
+    await insert(off, "install", "rolled_back", "now()");
+    await insert(off, "uninstall", "succeeded", "now()");
     const { alerts } = await service.overview();
-    const failed = alerts.filter((alert) => alert.kind === "operation_failed" && alert.moduleId === rich);
-    assert.equal(failed.length, 1);
-    assert.equal(failed[0]!.href, "/apps");
+    const failed = alerts.filter((alert) => alert.kind === "operation_failed");
+    assert.deepEqual(failed.filter((alert) => alert.moduleId === rich).map((alert) => alert.href), ["/apps"], "the last attempt failed");
+    assert.equal(failed.some((alert) => alert.moduleId === plain), false, "a retry succeeded after the rollback");
+    assert.equal(failed.some((alert) => alert.moduleId === off), false, "the module was uninstalled after the rollback");
     assert.doesNotMatch(JSON.stringify(alerts), /private detail/);
+    await pool!.query("delete from core.module_operations where module_id = $1", [rich]);
+    await insert(rich, "upgrade", "rolled_back", "now() - interval '30 days'");
+    assert.equal((await service.overview()).alerts.some((alert) => alert.kind === "operation_failed" && alert.moduleId === rich), false, "older than a week");
   });
 
   guard("raises an alert for an enabled module with required settings still unset, with the count and not the keys", async () => {
