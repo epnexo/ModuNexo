@@ -21,7 +21,7 @@ Out of scope here, decided in the conversation as a later delivery: groups creat
 ## Tasks
 
 - [x] T1. SDK contract: `dashboard` in the manifest, validator with clear messages, unknown fields refused, optional. S1, S2. Route: inline. RED: `unknown field "dashboard"`; GREEN: 133 SDK tests, typecheck clean. Commit: pending.
-- [ ] T2. Core service: run a module query read-only with a time limit, isolate failures, build the platform's own alerts. S3, S4, S8. Route: inline. Commit: pending.
+- [x] T2. Core service (`packages/core/src/dashboard/service.ts`, `ModuleDbService.readOwn`): run each declared statement READ ONLY with a time limit, isolate failures, build the platform's own alerts. S3, S4, S8. Route: inline. RED: module not found; GREEN: 12 new tests, module-db 12 unchanged, typecheck clean. Commit: pending.
 - [ ] T3. Dashboard page replacing Home, with the empty states and the "no information" listing. S5, S6. Route: inline. Commit: pending.
 - [ ] T4. Sidebar: collapsible "Admin" block at the bottom, hidden to non-administrators; mobile navigation included. S7. Route: inline. Commit: pending.
 - [ ] T5. Pack and install warning for a module without `dashboard`. S6. Route: inline. Commit: pending.
