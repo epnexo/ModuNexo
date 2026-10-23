@@ -50,6 +50,18 @@ export function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(href.endsWith("/") ? href : `${href}/`);
 }
 
+/** What the Admin block of the sidebar holds. Each page already refuses anyone who is not an administrator. */
+export const ADMIN_ENTRIES: { label: string; href: string; icon: IconName }[] = [
+  { label: "Apps", href: "/apps", icon: "apps" },
+  { label: "Status", href: "/status", icon: "chart" },
+  { label: "Settings", href: "/settings", icon: "settings" },
+];
+
+/** The current page is inside the Admin block, so the block opens by itself. */
+export function isAdminPath(pathname: string): boolean {
+  return ADMIN_ENTRIES.some((item) => isActive(pathname, item.href));
+}
+
 /** The icons a manifest may name. Anything else gets the generic one, so a typo never breaks the sidebar. */
 export const ICON_NAMES = ["app", "home", "apps", "settings", "dashboard", "documents", "chart", "megaphone", "users", "database", "mail", "calendar", "folder", "shield", "bolt"] as const;
 export type IconName = (typeof ICON_NAMES)[number];

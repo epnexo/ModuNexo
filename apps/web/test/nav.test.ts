@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { type NavEntry, groupNavigation, isActive, resolveIcon, subjectCan } from "../src/server/nav.ts";
+import { ADMIN_ENTRIES, type NavEntry, groupNavigation, isActive, isAdminPath, resolveIcon, subjectCan } from "../src/server/nav.ts";
 
 const entry = (overrides: Partial<NavEntry>): NavEntry => ({ moduleId: "m", label: "Item", href: "/item", ...overrides });
 const everything = () => true;
@@ -88,5 +88,16 @@ describe("resolveIcon", () => {
     assert.equal(resolveIcon(undefined), "app");
     assert.equal(resolveIcon("constructor"), "app");
     assert.equal(resolveIcon("__proto__"), "app");
+  });
+});
+
+describe("the Admin block", () => {
+  it("holds Apps, Status and Settings, each pointing at the page it always had", () => {
+    assert.deepEqual(ADMIN_ENTRIES.map((item) => [item.label, item.href]), [["Apps", "/apps"], ["Status", "/status"], ["Settings", "/settings"]]);
+  });
+
+  it("is open on any page inside it, below it included, and closed elsewhere", () => {
+    for (const path of ["/apps", "/status", "/settings", "/settings/anything", "/apps/x"]) assert.equal(isAdminPath(path), true, path);
+    for (const path of ["/", "/inbox", "/applications", "/statuses"]) assert.equal(isAdminPath(path), false, path);
   });
 });

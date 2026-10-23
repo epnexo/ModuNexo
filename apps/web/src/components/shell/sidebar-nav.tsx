@@ -1,27 +1,22 @@
-import { type IconName, type NavGroup, resolveIcon } from "../../server/nav";
+import { type NavGroup, resolveIcon } from "../../server/nav";
 import { NavIcon } from "./icon";
+import { AdminNav } from "./admin-nav";
 import { NavLink } from "./nav-link";
 
-const SHELL_ENTRIES: { label: string; href: string; icon: IconName }[] = [
-  { label: "Home", href: "/", icon: "home" },
-  { label: "Apps", href: "/apps", icon: "apps" },
-  { label: "Status", href: "/status", icon: "chart" },
-  { label: "Settings", href: "/settings", icon: "settings" },
-];
-
-/** The shell's own entries, then one block per module group. Rendered on the server; only the links are client. */
-export function SidebarNav({ groups }: { groups: NavGroup[] }) {
+/**
+ * The dashboard, then one block per module group, and at the bottom the Admin block, which only an administrator is
+ * given. Rendered on the server; only the links and the Admin block are client.
+ */
+export function SidebarNav({ groups, admin }: { groups: NavGroup[]; admin: boolean }) {
   return (
-    <nav aria-label="Main" className="flex flex-col gap-6">
+    <nav aria-label="Main" className="flex flex-1 flex-col gap-6">
       <ul className="flex flex-col gap-0.5">
-        {SHELL_ENTRIES.map((entry) => (
-          <li key={entry.href}>
-            <NavLink href={entry.href}>
-              <NavIcon name={entry.icon} />
-              {entry.label}
-            </NavLink>
-          </li>
-        ))}
+        <li>
+          <NavLink href="/">
+            <NavIcon name="dashboard" />
+            Dashboard
+          </NavLink>
+        </li>
       </ul>
       {groups.map((group) => (
         <div key={group.label ?? "ungrouped"} className="flex flex-col gap-1">
@@ -38,6 +33,7 @@ export function SidebarNav({ groups }: { groups: NavGroup[] }) {
           </ul>
         </div>
       ))}
+      {admin ? <AdminNav /> : null}
     </nav>
   );
 }

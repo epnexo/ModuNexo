@@ -234,12 +234,14 @@ describe("web app: sign-in required", () => {
     const home = await call("GET", "/", { cookie });
     assert.equal(home.status, 200);
     assert.match(home.body, new RegExp(EMAIL));
-    assert.match(home.body, /href="\/apps"/, "the sidebar lists the shell's own entries");
-    assert.match(home.body, /href="\/settings"/);
-    assert.match(home.body, /No modules are installed yet/, "with zero modules the home screen says so");
+    assert.match(home.body, /Dashboard<\/a>/, "the first entry of the sidebar is the dashboard");
+    assert.ok(home.body.includes(">Admin<"), "an administrator is given the Admin block at the bottom of the sidebar");
+    assert.ok(!home.body.includes('href="/status"'), "the block is closed on a page outside it");
+    assert.match(home.body, /No modules are installed yet/, "with zero modules the dashboard says so");
     assert.match(home.body, /Sign out/);
     assert.ok(home.body.includes(`Modunexo ${CORE_VERSION}`), "every screen of the shell says which version of the platform this is");
     const apps = await call("GET", "/apps", { cookie });
+    for (const path of ["/apps", "/status", "/settings"]) assert.match(apps.body, new RegExp(`href="${path}"`), `the Admin block is open on /apps and lists ${path}`);
     assert.equal(apps.status, 200);
     assert.match(apps.body, /No modules are enabled in this build/);
     assert.equal((await call("GET", "/settings", { cookie })).status, 200);
@@ -706,6 +708,7 @@ describe("web app: with a module installed", () => {
     const userHome = html(await call("GET", "/", { cookie: userCookie }));
     assert.match(userHome, /href="\/e2e-fixture"/);
     assert.ok(!userHome.includes('href="/e2e-fixture/area"'), "the user is not shown the restricted link");
+    assert.ok(!userHome.includes(">Admin<") && !userHome.includes('href="/status"') && !userHome.includes('href="/settings"'), "the user is not given the Admin block");
     assert.match(html(await call("GET", "/", { cookie })), /href="\/e2e-fixture\/area"/, "the administrator is");
   });
 
