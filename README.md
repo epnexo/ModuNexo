@@ -407,8 +407,10 @@ line. Installing, disabling or uninstalling a module changes the registry: run `
 
 Every page sits in the `(shell)` route group, whose layout draws the sidebar and the top bar. Generated module
 routes are written into that same group (`src/app/(shell)/<path>`), so a module's pages get the shell without
-knowing about it; only `/login` stands outside. The sidebar is the shell's own entries (Home, Apps, Settings) and
-then the enabled modules' `nav` entries, grouped and ordered as their manifests declare. An entry that names a
+knowing about it; only `/login` stands outside. The sidebar starts with the Dashboard and then the enabled modules'
+`nav` entries, grouped and ordered as their manifests declare. At the bottom, a collapsible **Admin** block holds Apps,
+Status and Settings; only an administrator (or the local operator while sign-in is off) is given it, and it opens by
+itself while the current page is inside it. The pages keep refusing anyone else, as before. An entry that names a
 `permission` is shown to the local operator, to an `admin` and to an `operator`, and the gate enforces the same rule on
 the route (see "Permissions" below), so a link that is hidden cannot be reached by typing its address.
 
@@ -815,9 +817,40 @@ npm run modunexo -- llm probe agent [--json]    # reached http://127.0.0.1:11434
   quotas, several providers per module, and a provider that does not speak the OpenAI format (the provider sits behind a small
   interface, so one can be added).
 
+### The dashboard
+
+`/` is the dashboard: what is going on at a glance, with a link to wherever it is fixed. A module opts in by declaring
+`dashboard` in its manifest; it is optional, and a module without it is listed as "not reporting".
+
+```ts
+dashboard: {
+  stats: [{ key: "open_leads", label: "Open leads", href: "/pipeline", permission: "contacts.read", sql: "select count(*) from leads where closed_at is null" }],
+  alerts: [{ key: "stale", label: "Leads not moved for a week", href: "/pipeline", severity: "warning", permission: "contacts.read", sql: "select count(*) from leads where updated_at < now() - interval '7 days'" }],
+}
+```
+
+- A **stat** is a figure: the first column of the first row of its `sql`, a whole number or a text of at most 60 characters.
+- An **alert** counts something that needs attention: its `sql` returns a whole number, and the alert is shown only while it
+  is above 0. `severity` is `info`, `warning` or `error`; the most serious come first.
+- `sql` is one `select` (or `with`) statement of at most 2000 characters, with no `;`, written as the module's own
+  migrations are (unqualified table names). It runs in a `READ ONLY` transaction with the module's schema as `search_path`
+  and a 3 second limit, so the database itself refuses a write. A statement that fails, is slow or answers with something
+  that is not a figure is shown as "not available", without the database's message, and never hides another card.
+- `permission` is the key of a permission the module declares; whoever lacks it does not see the card. Name one for
+  anything that is not meant for everyone. At most 12 stats and 12 alerts; each `key` is unique in its list.
+- `href` is a path of this platform (it starts with `/`, not `//`).
+
+The platform adds its own alerts, for an administrator only: a job that stopped after its last attempt in the last 7 days
+(module and job name, never what it reported), an install or upgrade that failed or was rolled back, an enabled module whose
+required settings are still unset (how many, never which), and the line about jobs due with nobody to take them. An
+administrator also sees the totals of modules and jobs and the newest activity (events and operations). Nothing on the
+dashboard shows a job's data, an event's payload, an error text or a key. `modules pack` and `modules add` print a warning, and
+still succeed, for a module that declares no `dashboard`. The field exists since SDK `0.1.1`, so a module that declares it
+asks for a platform at least that new.
+
 ### The Status screen
 
-`/status` ("Status" in the sidebar) shows an administrator what the background capabilities are doing, so the work of jobs,
+`/status` ("Status" in the Admin block of the sidebar) shows an administrator what the background capabilities are doing, so the work of jobs,
 events, files and models can be seen without the command line. Anyone else who opens it is told that only an administrator
 can, and nothing is read for them. With sign-in off, the local operator is the administrator. It has four tabs, one concern at
 a time:

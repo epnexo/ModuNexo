@@ -49,6 +49,8 @@ export default defineModule({
   permissions: [{ key: ${JSON.stringify(permission)}, label: ${JSON.stringify(`Use ${name}`)} }],
   nav: [{ label: ${JSON.stringify(name)}, href: ${JSON.stringify(path)}, icon: "app", permission: ${JSON.stringify(permission)} }],
   pages: [{ path: ${JSON.stringify(path)}, entry: "./web/page.tsx", kind: "page", dynamic: "force-dynamic", permission: ${JSON.stringify(permission)} }],
+  // What this module puts on the dashboard: each statement is one read-only select on this module's own tables.
+  dashboard: { stats: [{ key: "items", label: "Items", href: ${JSON.stringify(path)}, permission: ${JSON.stringify(permission)}, sql: "select count(*) from items" }] },
 });
 `,
     "migrations/0001_init.sql": `-- Runs with search_path set to this module's schema. Never edit an applied file: add 0002_*.sql instead.
@@ -136,6 +138,7 @@ export async function scaffoldModule(input: ScaffoldInput): Promise<ScaffoldResu
       permissions: [{ key: `${schema}.use`, label: `Use ${name}` }],
       nav: [{ label: name, href: `/${id}`, icon: "app", permission: `${schema}.use` }],
       pages: [{ path: `/${id}`, entry: "./web/page.tsx", kind: "page", dynamic: "force-dynamic", permission: `${schema}.use` }],
+      dashboard: { stats: [{ key: "items", label: "Items", href: `/${id}`, permission: `${schema}.use`, sql: "select count(*) from items" }] },
     });
   } catch (error) {
     if (error instanceof ManifestError) throw new ScaffoldRefusedError(`"${id}" cannot be used: ${error.problems.join("; ")}`);
