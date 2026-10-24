@@ -43,8 +43,8 @@ const columns = async (table: string) =>
   );
 
 describe("core lifecycle tables (migration 0002)", () => {
-  test("core.modules holds only what the manifest does not already say", async () => {
-    assert.deepEqual(await columns("modules"), ["id", "state", "installed_version", "installed_at", "updated_at"]);
+  test("core.modules holds only what the manifest does not already say, plus the menu group an administrator chose", async () => {
+    assert.deepEqual(await columns("modules"), ["id", "state", "installed_version", "installed_at", "updated_at", "group_id"]);
   });
 
   test("core.module_events has the audit columns", async () => {

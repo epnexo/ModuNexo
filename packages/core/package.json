@@ -25,6 +25,7 @@
     "./apps": "./src/apps.ts",
     "./data": "./src/data/module-db.ts",
     "./dashboard": "./src/dashboard/index.ts",
+    "./groups": "./src/groups/index.ts",
     "./scaffold": "./src/scaffold/module.ts",
     "./log": "./src/log.ts",
     "./runner": "./src/runner.ts",
