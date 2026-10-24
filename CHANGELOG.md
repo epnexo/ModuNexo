@@ -19,6 +19,9 @@ checked against, and it changes only when the contract with modules changes. See
 
 ### Fixed
 
+- Next.js is updated from 16.4.0 to 16.4.3. 16.4.0 carries a known security advisory, and `next build` aborted the first time it was run
+  after each change with a `SecurityFatalError` (a second run passed). With 16.4.3 the build runs through the first time and
+  `npm audit` reports no vulnerabilities.
 - The dashboard no longer alerts about an install or upgrade that failed and was retried with success, or that was followed
   by an uninstall: a failure counts only while it is the last operation of its module.
 
