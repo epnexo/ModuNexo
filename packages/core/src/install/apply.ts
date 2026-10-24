@@ -7,6 +7,7 @@ import semver from "semver";
 import { type RegistrationModule } from "../codegen/render.ts";
 import { DEFAULT_WEB_ROOT } from "../codegen/generate.ts";
 import { readPackageName, registrationModulesFor } from "../codegen/enabled.ts";
+import { GroupError, GroupService } from "../groups/service.ts";
 import { LifecycleService, fileHookLoader } from "../lifecycle/index.ts";
 import { OperationBusyError, finishOperation, setStep, startOperation } from "../operations/index.ts";
 import { DATA_DIR, buildPackageContext, listIntakes, stagingPath, validatePackageTree } from "../packages/index.ts";
@@ -45,6 +46,8 @@ export interface ApplyOptions {
   modulesDir?: string;
   webRoot?: string;
   dataDir?: string;
+  /** The menu group to put the module in once it is installed. A group that does not exist refuses the run before anything changes. */
+  groupId?: number;
   /** How the web app is built; `next build` by default. */
   run?: BuildRunner;
   /** Asks the running server to restart and says what happened. Default: nothing is asked. */
@@ -97,6 +100,10 @@ export async function applyPackage(options: ApplyOptions): Promise<ApplyResult> 
   if (!intakes.some((row) => row.status === "staged")) throw new ApplyRefusedError(`the package ${sha256} was refused at intake and cannot be applied`);
   const staging = stagingPath(dataDir, sha256);
   if (!existsSync(staging)) throw new ApplyRefusedError(`the staged tree of ${sha256} is no longer on disk; run "modules add" again`);
+
+  if (options.groupId !== undefined && !(await new GroupService(pool).list()).some((group) => group.id === options.groupId)) {
+    throw new ApplyRefusedError(`group ${options.groupId} does not exist; create it first or install without a group`);
+  }
 
   const context = await buildPackageContext({ modulesDir, repoRoot, pool });
   const validation = validatePackageTree(staging, context);
@@ -237,6 +244,15 @@ export async function applyPackage(options: ApplyOptions): Promise<ApplyResult> 
   } catch (error) {
     restart = `the restart could not be requested: ${message(error)}`;
     warnings.push(restart);
+  }
+  if (options.groupId !== undefined) {
+    // The module is installed by now: a group that went away in the meantime is a note, not a reason to undo anything.
+    try {
+      await new GroupService(pool).assign(review.id, options.groupId);
+    } catch (error) {
+      if (!(error instanceof GroupError)) throw error;
+      warnings.push(`${review.id} was installed but not put in its group: ${error.message}`);
+    }
   }
   await finishOperation(pool, operationId, "succeeded", restart);
   return { operationId, moduleId: review.id, version: review.version, kind, restart, warnings };

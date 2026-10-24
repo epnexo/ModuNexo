@@ -328,6 +328,17 @@ describe("cli: modules apply", () => {
     });
   });
 
+  it("takes --group as the id of a menu group, and only for apply", async (t) => {
+    await inScratchDatabase(t, async (_db, cli) => {
+      for (const bad of ["0", "abc", "1.5", "007", "99999999999999999"]) assert.equal((await cli("modules", "apply", "a".repeat(64), "--group", bad)).code, 2, bad);
+      assert.equal((await cli("modules", "apply", "a".repeat(64), "--group")).code, 2);
+      assert.equal((await cli("modules", "add", "x.tgz", "--group", "1")).code, 2);
+      assert.equal((await cli("modules", "enable", "reports", "--group", "1")).code, 2);
+      const refused = await cli("modules", "apply", "c".repeat(64), "--group", "1");
+      assert.equal(refused.code, 3, "a valid --group reaches the same refusal for a package that was never brought in");
+    });
+  });
+
   it("refuses a SHA-256 that was never brought in, with exit code 3, and changes nothing", async (t) => {
     await inScratchDatabase(t, async (db, cli, data) => {
       const result = await cli("modules", "apply", "c".repeat(64));
@@ -341,6 +352,7 @@ describe("cli: modules apply", () => {
   it("is listed in --help", async () => {
     const result = await spawn(["--help"], {});
     assert.match(result.stdout, /modules apply <sha256>/);
+    assert.match(result.stdout, /modules apply <sha256> \[--group <id>\]/);
   });
 });
 

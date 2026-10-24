@@ -28,6 +28,8 @@ export interface LaunchOptions {
   sha256: string;
   actor: string;
   dataDir: string;
+  /** The menu group to put the module in; passed on as `--group`. */
+  groupId?: number;
   /**
    * What to run after `node`: the script and its own flags, e.g. `["--import", "tsx", "<repo>/packages/core/src/cli/index.ts"]`.
    * The command is `modules apply <sha256> --actor <actor> --data-dir <dir>` appended to it.
@@ -102,7 +104,9 @@ async function launchProcess(options: Omit<LaunchOptions, "sha256" | "actor">, a
 export async function launchApply(options: LaunchOptions): Promise<Launched> {
   assertSha256(options.sha256);
   if (!ACTOR.test(options.actor)) throw new Error("the actor is not a plain name");
-  return launchProcess(options, ["modules", "apply", options.sha256, "--actor", options.actor, "--data-dir", options.dataDir], `apply-${options.sha256.slice(0, 12)}`);
+  if (options.groupId !== undefined && !(Number.isSafeInteger(options.groupId) && options.groupId > 0)) throw new Error("the group is not a group id");
+  const group = options.groupId === undefined ? [] : ["--group", String(options.groupId)];
+  return launchProcess(options, ["modules", "apply", options.sha256, "--actor", options.actor, "--data-dir", options.dataDir, ...group], `apply-${options.sha256.slice(0, 12)}`);
 }
 
 export interface LaunchChangeOptions extends Omit<LaunchOptions, "sha256"> {

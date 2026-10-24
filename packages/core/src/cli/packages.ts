@@ -82,7 +82,7 @@ export async function runAddCommand(
  * app with it, runs the lifecycle and asks the running server to restart. Takes minutes (the build); every step
  * is printed, and a failure undoes what it can and says what it could not.
  */
-export async function runApplyCommand(args: { sha256: string; json: boolean; actor: string; dataDir: string; modulesDir: string }, pool: pg.Pool, io: CliIo): Promise<void> {
+export async function runApplyCommand(args: { sha256: string; json: boolean; actor: string; dataDir: string; modulesDir: string; groupId?: number }, pool: pg.Pool, io: CliIo): Promise<void> {
   try {
     const result = await applyPackage({
       pool,
@@ -90,6 +90,7 @@ export async function runApplyCommand(args: { sha256: string; json: boolean; act
       actor: args.actor,
       dataDir: args.dataDir,
       modulesDir: args.modulesDir,
+      ...(args.groupId === undefined ? {} : { groupId: args.groupId }),
       requestRestart: () => requestRestart({ dataDir: args.dataDir }),
       onStep: (step, detail) => {
         if (!args.json) io.out(`[${step}] ${detail}`);

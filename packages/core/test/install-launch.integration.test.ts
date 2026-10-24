@@ -63,6 +63,13 @@ describe("launchApply", () => {
     assert.ok(launched.logFile.startsWith(join(work, "var", "logs")));
   });
 
+  test("passes the menu group on as --group, and refuses one that is not a group id", async () => {
+    await launchApply({ pool: pool!, sha256: SHA, actor: ACTOR, dataDir: join(work, "var"), entry: [recorder()], groupId: 7 });
+    await until(() => existsSync(join(work, "args.json")));
+    assert.deepEqual(JSON.parse(readFileSync(join(work, "args.json"), "utf8")), ["modules", "apply", SHA, "--actor", ACTOR, "--data-dir", join(work, "var"), "--group", "7"]);
+    for (const groupId of [0, -1, 1.5, Number.NaN]) await assert.rejects(launchApply({ pool: pool!, sha256: SHA, actor: ACTOR, dataDir: join(work, "var"), entry: [recorder()], groupId }), /not a group id/);
+  });
+
   test("refuses while another run is alive, and starts nothing", async () => {
     const running = await startOperation(pool!, { moduleId: "x", version: "1.0.0", sha256: "c".repeat(64), kind: "install", actor: ACTOR });
     await assert.rejects(launchApply({ pool: pool!, sha256: SHA, actor: ACTOR, dataDir: join(work, "var"), entry: [recorder()] }), LaunchBusyError);

@@ -62,7 +62,7 @@ commands:
                                    build the archive of a module folder (writes manifest.json from manifest.ts)
   modules add <archive> [--sha256 <hex>] [--data-dir <path>] [--json]
                                    bring a package in and review it; nothing is installed or run
-  modules apply <sha256> [--data-dir <path>] [--actor <name>] [--json]
+  modules apply <sha256> [--group <id>] [--data-dir <path>] [--actor <name>] [--json]
                                    install or upgrade a package that "modules add" staged: place, build the web
                                    app, run the lifecycle, restart the server; undone if a step fails
   db:migrate                       apply the core migrations; report installed modules that need "modules upgrade"
@@ -146,6 +146,7 @@ const OPTIONS = {
   role: { type: "string" },
   module: { type: "string" },
   actor: { type: "string" },
+  group: { type: "string" },
   rebuild: { type: "boolean" },
   help: { type: "boolean" },
   version: { type: "boolean" },
@@ -162,7 +163,7 @@ const COMMAND_OPTIONS: Record<string, readonly string[]> = {
   "modules new": ["name", "dir"],
   "modules pack": ["out"],
   "modules add": ["json", "sha256", "data-dir"],
-  "modules apply": ["json", "data-dir", "actor"],
+  "modules apply": ["json", "data-dir", "actor", "group"],
   "db:migrate": [],
   "registry:generate": ["dry-run", "out"],
   "admin create": ["email", "name"],
@@ -394,6 +395,9 @@ function parse(argv: string[]): Parsed | "help" | "version" {
   if (command === "modules apply" && !/^[0-9a-fA-F]{64}$/.test(ids[0]!)) throw new UsageError("modules apply takes the 64 hexadecimal characters of a package SHA-256");
   if ((typeof parsed.values.actor === "string" || typeof parsed.values["data-dir"] === "string") && !parsed.values.rebuild && command !== "modules apply" && command !== "modules add") {
     throw new UsageError(`--actor and --data-dir apply to ${command} only with --rebuild`);
+  }
+  if (typeof parsed.values.group === "string" && !/^[1-9][0-9]{0,14}$/.test(parsed.values.group)) {
+    throw new UsageError("--group takes the id of a menu group (a whole number, as the Groups screen shows it)");
   }
   if (typeof parsed.values.actor === "string" && !/^[A-Za-z0-9][A-Za-z0-9:._@-]{0,99}$/.test(parsed.values.actor)) {
     throw new UsageError("--actor takes a plain name (letters, digits and : . _ @ -, at most 100 characters)");
@@ -829,6 +833,7 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
             actor: typeof parsed.values.actor === "string" ? parsed.values.actor : "cli",
             dataDir: typeof parsed.values["data-dir"] === "string" ? parsed.values["data-dir"] : DATA_DIR,
             modulesDir: packagesModulesDir,
+            ...(typeof parsed.values.group === "string" ? { groupId: Number(parsed.values.group) } : {}),
           },
           pool,
           io,

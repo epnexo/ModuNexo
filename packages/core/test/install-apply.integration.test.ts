@@ -9,6 +9,7 @@ import type pg from "pg";
 import { REGISTRY_FILE } from "../src/codegen/render.ts";
 import { generateRegistration } from "../src/codegen/generate.ts";
 import { ApplyFailedError, ApplyRefusedError, applyPackage } from "../src/install/apply.ts";
+import { GroupService } from "../src/groups/service.ts";
 import { distRecordPath, readLiveDist } from "../src/install/dist.ts";
 import { readJournal, writeJournal } from "../src/install/journal.ts";
 import { recoverInterrupted } from "../src/install/recover.ts";
@@ -226,6 +227,45 @@ describe("applyPackage: the state is read again under the lock", () => {
     const [run] = await listOperations(pool, { moduleId: "reports", limit: 1 });
     assert.equal(run!.status, "failed");
     assert.match(run!.detail ?? "", /changed/);
+  });
+});
+
+describe("applyPackage: the menu group chosen at install time", () => {
+  const groupOf = async () => (await pool.query("select group_id from core.modules where id = 'reports'")).rows[0]?.group_id ?? null;
+
+  test("puts the new module in the chosen group once it is installed", async () => {
+    const group = await new GroupService(pool).create("Sales");
+    const sha = await stage();
+    await applyPackage({ pool, sha256: sha, actor: "apply-test", ...paths(), run: goodBuild, requestRestart, groupId: group.id });
+    assert.equal(Number(await groupOf()), group.id);
+    assert.deepEqual(await modulesRows(), [{ id: "reports", state: "enabled", installed_version: "1.0.0" }]);
+  });
+
+  test("leaves the module without a group when none is chosen", async () => {
+    await new GroupService(pool).create("Sales");
+    await apply(await stage());
+    assert.equal(await groupOf(), null);
+  });
+
+  test("refuses a group that does not exist before anything is placed, built or recorded", async () => {
+    const sha = await stage();
+    await assert.rejects(applyPackage({ pool, sha256: sha, actor: "apply-test", ...paths(), run: goodBuild, requestRestart, groupId: 4242 }), (error) => {
+      assert.ok(error instanceof ApplyRefusedError);
+      assert.match(error.message, /group 4242 does not exist/);
+      return true;
+    });
+    assert.equal(builds.length, 0);
+    assert.deepEqual(await modulesRows(), []);
+    assert.ok(!existsSync(join(work, "modules", "reports")));
+    assert.deepEqual(await listOperations(pool, { moduleId: "reports" }), []);
+  });
+
+  test("a failed install does not leave the group behind", async () => {
+    const group = await new GroupService(pool).create("Sales");
+    const sha = await stage();
+    await assert.rejects(applyPackage({ pool, sha256: sha, actor: "apply-test", ...paths(), run: badBuild, requestRestart, groupId: group.id }), ApplyFailedError);
+    assert.deepEqual(await modulesRows(), []);
+    assert.equal((await new GroupService(pool).list())[0]!.moduleCount, 0);
   });
 });
 
