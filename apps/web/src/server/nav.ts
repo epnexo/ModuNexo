@@ -44,6 +44,41 @@ export function groupNavigation(entries: readonly NavEntry[], canUse: (permissio
   return [...groups.values()];
 }
 
+/** The groups an administrator manages, and which module sits in which. */
+export interface GroupLayout {
+  groups: readonly { id: number; name: string; position: number }[];
+  /** Module id to group id. */
+  assignments: Readonly<Record<string, number>>;
+}
+
+const compareText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * Lays the registry's entries over the managed groups. A module sits under the group it was assigned; one nobody
+ * assigned keeps the group its manifest declares, and joins the managed group of the same name (ignoring case) if
+ * there is one. Order: ungrouped first, then the managed groups in the administrator's order, then the manifests'
+ * own groups by name; inside a group by `order` (none last), label and module id.
+ */
+export function arrangeNavigation(entries: readonly NavEntry[], layout: GroupLayout): NavEntry[] {
+  const byId = new Map(layout.groups.map((group) => [group.id, group]));
+  const byName = new Map(layout.groups.map((group) => [group.name.toLowerCase(), group]));
+  const placed = entries.map((entry) => {
+    const assigned = byId.get(layout.assignments[entry.moduleId] ?? -1);
+    const managed = assigned ?? (entry.group === undefined ? undefined : byName.get(entry.group.toLowerCase()));
+    return { entry: managed === undefined ? entry : { ...entry, group: managed.name }, rank: managed === undefined ? (entry.group === undefined ? -1 : Number.POSITIVE_INFINITY) : managed.position };
+  });
+  return placed
+    .sort(
+      (a, b) =>
+        (a.rank === b.rank ? 0 : a.rank < b.rank ? -1 : 1) ||
+        compareText(a.entry.group ?? "", b.entry.group ?? "") ||
+        (a.entry.order ?? Number.POSITIVE_INFINITY) - (b.entry.order ?? Number.POSITIVE_INFINITY) ||
+        compareText(a.entry.label, b.entry.label) ||
+        compareText(a.entry.moduleId, b.entry.moduleId),
+    )
+    .map((item) => item.entry);
+}
+
 /** The entry is the current page when the path is its own or below it; the home entry matches only the root. */
 export function isActive(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
@@ -53,6 +88,7 @@ export function isActive(pathname: string, href: string): boolean {
 /** What the Admin block of the sidebar holds. Each page already refuses anyone who is not an administrator. */
 export const ADMIN_ENTRIES: { label: string; href: string; icon: IconName }[] = [
   { label: "Apps", href: "/apps", icon: "apps" },
+  { label: "Groups", href: "/groups", icon: "folder" },
   { label: "Status", href: "/status", icon: "chart" },
   { label: "Settings", href: "/settings", icon: "settings" },
 ];

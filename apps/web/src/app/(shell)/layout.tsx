@@ -11,8 +11,9 @@ import { ThemeToggle } from "../../components/shell/theme-toggle";
 import { SignOutButton } from "../../components/sign-out-button";
 import { modules, navigation } from "../../generated/modules";
 import { loadBrand } from "../../server/brand";
+import { loadGroupLayout } from "../../server/group-layout";
 import { moduleScopes } from "../../server/module-scope";
-import { groupNavigation, subjectCan } from "../../server/nav";
+import { arrangeNavigation, groupNavigation, subjectCan } from "../../server/nav";
 import { resolveViewer } from "../../server/viewer";
 
 // Every page inside the shell depends on who is asking.
@@ -23,7 +24,7 @@ export default async function ShellLayout({ children }: { children: ReactNode })
   // The proxy has already turned this visitor away; this is the same rule at the point of use.
   if (viewer === null) redirect("/login");
   const who = viewer.email;
-  const groups = groupNavigation(navigation, (permission) => subjectCan(viewer.subject, permission));
+  const groups = groupNavigation(arrangeNavigation(navigation, await loadGroupLayout()), (permission) => subjectCan(viewer.subject, permission));
   const scopes = moduleScopes(modules);
   const brand = await loadBrand();
   // The platform has no identity until the administrator has been through the setup.
