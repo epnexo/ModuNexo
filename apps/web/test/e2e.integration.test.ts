@@ -632,12 +632,15 @@ describe("web app: with a module installed", () => {
     const home = await call("GET", "/", { cookie });
     assert.match(html(home), /href="\/e2e-fixture"/);
     assert.match(html(home), />Fixtures</, "the group heading");
-    assert.match(html(home), /1 module is enabled/);
+    assert.match(html(home), /<h1[^>]*>Dashboard<\/h1>/, "the home page is the dashboard");
+    assert.match(html(home), /Not reporting to the dashboard: /, "an enabled module that declares no dashboard is named as silent");
 
     const page = await call("GET", "/e2e-fixture", { cookie });
     assert.equal(page.status, 200);
     assert.match(html(page), /Fixture page/);
-    assert.match(html(page), /href="\/settings"/, "the module's page is drawn inside the shell, sidebar included");
+    assert.match(html(page), /aria-label="Main"/, "the module's page is drawn inside the shell, sidebar included");
+    assert.match(html(page), /href="\/e2e-fixture"/, "and the module's own entry is in that sidebar");
+    assert.match(html(page), />Admin</, "with the Admin block, closed while the page is outside it");
     assert.match(html(page), /data-module="e2e-fixture"/, "and its content is scoped to the module");
     assert.match(html(page), /Title setting: \[Untitled\]/, "the module's server code reads its setting, here the declared default");
     assert.equal((await call("GET", "/e2e-fixture")).status, 307, "and it is behind the gate like everything else");
