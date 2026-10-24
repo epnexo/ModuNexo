@@ -53,13 +53,13 @@ export function GroupNav({ group }: { group: NavGroup & { label: string } }) {
         onClick={toggle}
         aria-expanded={open}
         aria-controls={listId}
-        className="flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-muted transition-colors duration-150 hover:bg-panel-hover hover:text-foreground"
+        className="flex h-9 items-center gap-2 rounded-md px-2.5 text-sm font-semibold text-foreground transition-colors duration-150 hover:bg-panel-hover"
       >
-        <Chevron aria-hidden className="size-3.5" />
+        <Chevron aria-hidden className="size-4 text-muted" />
         {group.label}
       </button>
       {open ? (
-        <ul id={listId} className="flex flex-col gap-0.5">
+        <ul id={listId} className="ml-4 flex flex-col gap-0.5 border-l border-border pl-2">
           {group.entries.map((entry) => (
             <li key={`${entry.moduleId}:${entry.href}`}>
               <NavLink href={entry.href}>
