@@ -142,7 +142,7 @@ returns `{ modules, warnings }`; a symlink whose target is gone is skipped with 
 npm run modunexo -- modules new field-notes --name "Field Notes"   # writes modules-src/field-notes/
 npm run modunexo -- modules pack modules-src/field-notes --out field-notes.tgz
 npm run modunexo -- modules add field-notes.tgz --sha256 <hex>     # review
-npm run modunexo -- modules apply <hex>                            # install, rebuild, restart
+npm run modunexo -- modules apply <hex> [--group <id>]                # install, rebuild, restart
 ```
 
 `modules new` writes a module that already works: a manifest with one permission, nav entry and page, a first
@@ -256,7 +256,7 @@ npm run modules -- uninstall <id> --keep  # or --purge; no flag is refused, both
 npm run modunexo -- modules new <id> [--name <text>] [--dir <parent>]   # a working module folder, default modules-src/<id>
 npm run modunexo -- modules pack <folder> [--out <file>]
 npm run modunexo -- modules add <archive> [--sha256 <hex>] [--json]
-npm run modunexo -- modules apply <sha256> [--json]
+npm run modunexo -- modules apply <sha256> [--group <id>] [--json]
 npm run modunexo -- modules enable|disable|uninstall <id> --rebuild   # the change plus the rebuild and restart
 npm run db:migrate                        # the core only; reports installed modules that need "modules upgrade"
 npm run registry:generate [-- --dry-run] [-- --out <dir>]
@@ -408,11 +408,33 @@ line. Installing, disabling or uninstalling a module changes the registry: run `
 Every page sits in the `(shell)` route group, whose layout draws the sidebar and the top bar. Generated module
 routes are written into that same group (`src/app/(shell)/<path>`), so a module's pages get the shell without
 knowing about it; only `/login` stands outside. The sidebar starts with the Dashboard and then the enabled modules'
-`nav` entries, grouped and ordered as their manifests declare. At the bottom, a collapsible **Admin** block holds Apps,
-Status and Settings; only an administrator (or the local operator while sign-in is off) is given it, and it opens by
+`nav` entries, in titled blocks (see "Menu groups" below). At the bottom, a collapsible **Admin** block holds Apps,
+Groups, Status and Settings; only an administrator (or the local operator while sign-in is off) is given it, and it opens by
 itself while the current page is inside it. The pages keep refusing anyone else, as before. An entry that names a
 `permission` is shown to the local operator, to an `admin` and to an `operator`, and the gate enforces the same rule on
 the route (see "Permissions" below), so a link that is hidden cannot be reached by typing its address.
+
+### Menu groups
+
+The titled blocks of the sidebar are **groups**, and an administrator manages them from the **Groups** screen
+(`/groups`, in the Admin block): add a group, rename it, move it up or down, delete it, and choose the group of each
+installed module. They live in the database (`core.module_groups`, and `core.modules.group_id`), so a change shows on the
+next page load, with no rebuild. A module is placed by this rule:
+
+1. the group the administrator assigned to it;
+2. otherwise the group its manifest declares in `nav.group` (a plain title; if a managed group has the same name,
+   ignoring case, the module joins that one);
+3. otherwise it is listed above the blocks, as before.
+
+Managed groups come in the administrator's order, then the manifests' own groups by name. Deleting a group never touches
+its modules: they fall back to rule 2 or 3. A group name has 1 to 40 characters and is unique ignoring case.
+
+A group can be chosen when a module is installed: the Apps screen shows a **Menu group** selector next to the
+acknowledgement, `POST /api/apps/operations` takes an optional `groupId`, and the command line takes
+`modules apply <sha256> --group <id>`. A group that does not exist is refused before anything is placed or built; one that
+disappears while the install runs only adds a warning, because the module is already installed by then. The API is
+`GET|POST /api/groups`, `PATCH|DELETE /api/groups/<id>` and `POST /api/groups/assign`, all for an administrator and, for a
+write, from the same origin.
 
 A manifest `nav.icon` names one of: `app`, `home`, `apps`, `settings`, `dashboard`, `documents`, `chart`,
 `megaphone`, `users`, `database`, `mail`, `calendar`, `folder`, `shield`, `bolt`. Anything else gets the generic

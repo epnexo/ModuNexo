@@ -7,6 +7,14 @@ checked against, and it changes only when the contract with modules changes. See
 
 ## [Unreleased]
 
+### Added
+
+- Menu groups. An administrator creates, renames, reorders and deletes the titled blocks of the sidebar from a new **Groups**
+  screen, and chooses the group of each installed module; the choice shows without a rebuild. A module with no assigned group
+  keeps the group its manifest declares in `nav.group`. A group can also be chosen when installing: a selector on the Apps
+  screen, an optional `groupId` in `POST /api/apps/operations` and `modules apply <sha256> --group <id>`. New migration
+  `0014_module_groups.sql` (a table, and a nullable `group_id` on `core.modules`; existing modules are unchanged).
+
 ### Fixed
 
 - The dashboard no longer alerts about an install or upgrade that failed and was retried with success, or that was followed
