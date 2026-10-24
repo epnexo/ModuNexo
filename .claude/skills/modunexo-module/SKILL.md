@@ -38,7 +38,7 @@ The user wants a new module (documents, contacts, anything), a change to one, or
    Never import another module's code.
 6. **Everything else the manifest can declare:** `permissions` (and `permission` on `nav`/`pages`, enforced at the
    gate), `settings` read with `getSetting("my-module", "key")`, `hooks` (`onInstall`, `onEnable`, `onDisable`,
-   `onUpgrade`, `onUninstall`). See the README sections "The module contract" and "Settings and appearance".
+   `onUpgrade`, `onUninstall`). See docs/REFERENCE.md sections "The module contract" and "Settings and appearance".
 7. **Package and install.**
    ```bash
    npm run modunexo -- modules pack modules-src/<id> --out <id>.tgz     # prints the SHA-256
@@ -57,31 +57,31 @@ The user wants a new module (documents, contacts, anything), a change to one, or
 - An inbound webhook is a `kind: "route"` page with `public: { signature: { secret, header } }`, declared under
   `/hooks/<module-id>/` with explicit `methods` (no GET), and a `secret` setting that holds the shared key. The shell
   verifies the HMAC-SHA256 of the body before your handler runs; never open a route without a signature, and
-  deduplicate events yourself (the shell does not). See the README section "Public routes".
+  deduplicate events yourself (the shell does not). See docs/REFERENCE.md section "Public routes".
 - An API for machine callers is a `kind: "route"` page with `scope: "<key>"`, declared under `/svc/<module-id>/`, and
   the key listed in the module's `scopes`. The operator issues tokens with `tokens create`; the shell checks the bearer
   token and scope before your handler runs and reads no body, so cap and validate it yourself. Never combine `scope`
-  with `public` or `permission`. See the README section "Service tokens".
+  with `public` or `permission`. See docs/REFERENCE.md section "Service tokens".
 - Work outside a request (syncs, cleanups, retries) is a job: declare `jobs: [{ name, entry, every? }]`, make the default
   export of `entry` an `async (ctx: JobContext) => void`, and call `enqueueJob(moduleId, name, payload?, { dedupeKey? })`.
   A worker process runs it with `getDb` and `getSetting`; it can run more than once (at-least-once), so make it
   idempotent, and honour `ctx.signal`. Keep the job file free of Next.js imports: it does not run inside Next. See
-  the README section "Background jobs".
+  docs/REFERENCE.md section "Background jobs".
 - To tell other modules or the browser that something happened, declare `events: [{ name, permission? }]` and call
   `publishEvent(moduleId, name, payload?, { tx })` as the last step of the transaction that wrote the data (`tx` from
   `getDb(...).transaction`). Only an event with a `permission` is streamed to browsers (`GET /api/events`); never put a
   secret in a payload. Another module reacts with `subscriptions: [{ event, job }]` (the module must be in `dependsOn`),
-  and the job receives `{ event: { id, type, payload, createdAt } }`. See the README section "Events and realtime".
+  and the job receives `{ event: { id, type, payload, createdAt } }`. See docs/REFERENCE.md section "Events and realtime".
 - To keep a file (an attachment, an export, an image), declare `files: { maxBytes?, accept?, permission? }` and use
   `putFile(moduleId, { name, data, ref? }, { tx })`, `getFile`, `statFile`, `listFiles`, `deleteFile`; never write to the
   disk yourself. Keep the returned `id` in your own table, pass `tx` so the file and your row commit together, and read the
   body in your route (the platform has no multipart parser). The type is decided from the bytes, not the name. Only a file
   of a module with `files.permission` can be downloaded by a browser, at `GET /api/files/<module>/<id>`, always as an
-  attachment. See the README section "Stored files".
+  attachment. See docs/REFERENCE.md section "Stored files".
 - To call a chat model, declare the three settings (`string` endpoint, `secret` key, `string` model) and
   `llm: { baseUrlSetting, apiKeySetting?, modelSetting? }`, then use `chat(moduleId, { messages, ... })` and `probeLlm`; never
   use `fetch` or a provider SDK, and never read the key yourself. Catch `LlmError` and branch on `error.code`. The wire format
-  is OpenAI-compatible, so a local server works too. Do not build the endpoint from user input. See the README section
+  is OpenAI-compatible, so a local server works too. Do not build the endpoint from user input. See docs/REFERENCE.md section
   "Language models".
 - UI: reuse the shell's tokens and classes (`bg-surface`, `border-border`, `text-muted`, `bg-accent`), English copy,
   one concern per screen (tabs or on-demand panels, not a stack of sections).

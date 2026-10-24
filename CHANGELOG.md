@@ -3,7 +3,7 @@
 All notable changes to the platform. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 version follows [Semantic Versioning](https://semver.org/). The platform has one version (`CORE_VERSION`, written in the
 root, `packages/core` and `apps/web`); the SDK keeps its own (`SDK_VERSION`), the number a module's `platform` range is
-checked against, and it changes only when the contract with modules changes. See "Versioning" in the README.
+checked against, and it changes only when the contract with modules changes. See "Versioning" in docs/REFERENCE.md.
 
 ## [Unreleased]
 
@@ -16,7 +16,7 @@ checked against, and it changes only when the contract with modules changes. See
 
 - The statements a module declares for the dashboard now run as a role that can read that module's schema and nothing else, so
   `select … from core.settings` or from another module's schema is refused by the database. It is a second line of defense, not
-  isolation: a statement crafted to switch role from inside can still get out (see the README). The platform creates the role
+  isolation: a statement crafted to switch role from inside can still get out (see docs/REFERENCE.md). The platform creates the role
   (`mnx_ro_<schema>`, no login) on first use; the database user needs `CREATEROLE` for that, and a card is "not available"
   without it. Migrations and a module's own code are unchanged and still run with the platform's credentials.
 

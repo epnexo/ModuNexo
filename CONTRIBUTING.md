@@ -22,5 +22,5 @@ npm test
 
 - Conventional commits (`feat:`, `fix:`, `docs:`, `test:`).
 - A behaviour change comes with its test and its documentation. Add or change a command, option or message: update the
-  help text and the README too.
+  help text and docs/REFERENCE.md too.
 - Security issues go through [`SECURITY.md`](SECURITY.md), not a public issue.
