@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { GroupService } from "@modunexo/core/groups";
 import { AppsManager, type AppsState, type InstalledModule } from "../../../components/apps/apps-manager";
 import { modules } from "../../../generated/modules";
 import { appsDeps } from "../../../server/apps-deps";
@@ -43,7 +44,7 @@ export default async function AppsPage() {
     const rows = (await pool.query("select id, state, installed_version from core.modules order by id")).rows as { id: string; state: "enabled" | "disabled"; installed_version: string }[];
     const names = new Map(modules.map((module) => [module.id, module.name]));
     const installedModules: InstalledModule[] = rows.map((row) => ({ id: row.id, name: names.get(row.id) ?? row.id, version: row.installed_version, state: row.state }));
-    manager = <AppsManager initial={initial} installed={Object.fromEntries(rows.map((row) => [row.id, row.installed_version]))} modules={installedModules} />;
+    manager = <AppsManager initial={initial} installed={Object.fromEntries(rows.map((row) => [row.id, row.installed_version]))} modules={installedModules} groups={(await new GroupService(pool).list()).map(({ id, name }) => ({ id, name }))} />;
   }
 
   return (

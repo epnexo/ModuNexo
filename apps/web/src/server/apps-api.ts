@@ -11,7 +11,9 @@ export interface AppsDeps {
   /** Whether a package with this SHA-256 was staged and its tree is still on disk. */
   isStaged: (sha256: string) => Promise<boolean>;
   /** Starts `modules apply` detached. */
-  launch: (sha256: string, actor: string) => Promise<{ pid: number; logFile: string }>;
+  launch: (sha256: string, actor: string, groupId?: number) => Promise<{ pid: number; logFile: string }>;
+  /** Whether a menu group with this id exists. */
+  groupExists: (groupId: number) => Promise<boolean>;
   /** Starts `modules <action> <id> --rebuild` detached. */
   launchChange: (moduleId: string, action: "enable" | "disable" | "uninstall", mode: "keep" | "purge" | undefined, actor: string) => Promise<{ pid: number; logFile: string }>;
   /** What the screen shows: recent runs, received packages, the run in progress. */
@@ -52,7 +54,7 @@ export async function handleUpload(request: Request, deps: AppsDeps): Promise<Re
   }
 }
 
-/** `POST /api/apps/operations` `{ sha256, acknowledge: true }`: starts the install or upgrade of a staged package. Answers at once. */
+/** `POST /api/apps/operations` `{ sha256, acknowledge: true, groupId? }`: starts the install or upgrade of a staged package, in the menu group chosen. Answers at once. */
 export async function handleStart(request: Request, deps: AppsDeps): Promise<Response> {
   const authorized = await authorize(request, deps, { write: true });
   if (authorized instanceof Response) return authorized;
@@ -63,17 +65,20 @@ export async function handleStart(request: Request, deps: AppsDeps): Promise<Res
   if (!parsed.ok) return json({ error: parsed.message }, 400);
   const body = parsed.body;
   if (typeof body !== "object" || body === null || Array.isArray(body)) return json({ error: "the request body must be an object" }, 400);
-  const keys = Object.keys(body);
+  const keys = Object.keys(body).filter((key) => key !== "groupId");
+  const groupId = (body as { groupId?: unknown }).groupId ?? null;
   // Installing runs the package's code with the platform's permissions: the screen shows that and the server
   // insists it was acknowledged, so a script or a forged request cannot skip the warning by accident.
   if ((body as { acknowledge?: unknown }).acknowledge !== true) return json({ error: "send acknowledge: true to confirm the module runs with full access to the platform and its database" }, 400);
   const rawSha = (body as { sha256?: unknown }).sha256;
   const sha256 = typeof rawSha === "string" ? rawSha.toLowerCase() : rawSha;
   if (keys.length !== 2 || typeof sha256 !== "string" || !SHA256.test(sha256)) return json({ error: "send { sha256, acknowledge: true }: the 64 lowercase hexadecimal characters of a staged package" }, 400);
+  if (groupId !== null && !(typeof groupId === "number" && Number.isSafeInteger(groupId) && groupId > 0)) return json({ error: "groupId must be the id of a menu group, or null for none" }, 400);
   if (!(await deps.isStaged(sha256))) return json({ error: "no staged package has that SHA-256; upload it first" }, 404);
+  if (groupId !== null && !(await deps.groupExists(groupId))) return json({ error: "that menu group does not exist" }, 404);
 
   try {
-    await deps.launch(sha256, authorized.actor);
+    await deps.launch(sha256, authorized.actor, ...(groupId === null ? [] : [groupId as number]));
   } catch (error) {
     if (error instanceof LaunchBusyError) return json({ error: error.message }, 409);
     // The process ended at once: a refusal (not newer, no longer valid) or a failure to start. Say what it said.

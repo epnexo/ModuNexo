@@ -8,7 +8,7 @@ const USER = { actor: "user@example.test", canWrite: false };
 
 interface Calls {
   receive: { expectedSha256?: string; actor: string }[];
-  launch: { sha256: string; actor: string }[];
+  launch: { sha256: string; actor: string; groupId?: number }[];
   change: { moduleId: string; action: string; mode?: string; actor: string }[];
 }
 
@@ -21,8 +21,9 @@ function deps(overrides: Partial<AppsDeps> = {}): { deps: AppsDeps; calls: Calls
       return { ok: true, sha256: SHA, sizeBytes: 10, alreadyStaged: false, review: { id: "reports", version: "1.0.0" } } as never;
     },
     isStaged: async () => true,
-    launch: async (sha256, actor) => {
-      calls.launch.push({ sha256, actor });
+    groupExists: async (id) => id === 7,
+    launch: async (sha256, actor, groupId) => {
+      calls.launch.push({ sha256, actor, ...(groupId === undefined ? {} : { groupId }) });
       return { pid: 4242, logFile: "/var/logs/x.log" };
     },
     launchChange: async (moduleId, action, mode, actor) => {
@@ -86,6 +87,23 @@ describe("handleUpload", () => {
 
 describe("handleStart", () => {
   const json = (body: unknown) => post("/api/apps/operations", { body: JSON.stringify(body), headers: { "content-type": "application/json" } });
+
+  it("starts the apply in the chosen menu group, or in none when groupId is null or left out", async () => {
+    const { deps: d, calls } = deps();
+    assert.equal((await handleStart(json({ sha256: SHA, acknowledge: true, groupId: 7 }), d)).status, 202);
+    assert.equal((await handleStart(json({ sha256: SHA, acknowledge: true, groupId: null }), d)).status, 202);
+    assert.deepEqual(calls.launch, [{ sha256: SHA, actor: ADMIN.actor, groupId: 7 }, { sha256: SHA, actor: ADMIN.actor }]);
+  });
+
+  it("refuses a group that does not exist with 404, and one that is not a group id with 400, before launching anything", async () => {
+    const { deps: d, calls } = deps();
+    const missing = await handleStart(json({ sha256: SHA, acknowledge: true, groupId: 8 }), d);
+    assert.equal(missing.status, 404);
+    assert.match(((await missing.json()) as { error: string }).error, /group/);
+    for (const groupId of ["7", 0, -3, 1.5]) assert.equal((await handleStart(json({ sha256: SHA, acknowledge: true, groupId }), d)).status, 400, String(groupId));
+    assert.equal((await handleStart(json({ sha256: SHA, acknowledge: true, other: 1 }), d)).status, 400);
+    assert.deepEqual(calls.launch, []);
+  });
 
   it("refuses to start without an explicit acknowledgement that the module runs with full permissions", async () => {
     for (const body of [{ sha256: SHA }, { sha256: SHA, acknowledge: false }, { sha256: SHA, acknowledge: "yes" }, { sha256: SHA, acknowledge: 1 }]) {

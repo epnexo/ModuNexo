@@ -67,7 +67,7 @@ function formatSize(bytes: number): string {
 
 type Pending = { id: string; action: "enable" | "disable" | "uninstall"; mode?: "keep" | "purge" };
 
-export function AppsManager({ initial, installed, modules }: { initial: AppsState; installed: Record<string, string>; modules: InstalledModule[] }) {
+export function AppsManager({ initial, installed, modules, groups }: { initial: AppsState; installed: Record<string, string>; modules: InstalledModule[]; groups: { id: number; name: string }[] }) {
   const router = useRouter();
   const [state, setState] = useState<AppsState>(initial);
   const [tab, setTab] = useState<"apps" | "history">("apps");
@@ -83,6 +83,7 @@ export function AppsManager({ initial, installed, modules }: { initial: AppsStat
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [starting, setStarting] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
+  const [groupId, setGroupId] = useState("");
   const [pending, setPending] = useState<Pending | null>(null);
   const [typedId, setTypedId] = useState("");
   const wasRunning = useRef(initial.running !== null);
@@ -164,11 +165,12 @@ export function AppsManager({ initial, installed, modules }: { initial: AppsStat
     setStarting(true);
     setMessage(null);
     try {
-      const response = await fetch("/api/apps/operations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sha256, acknowledge: true }) });
+      const response = await fetch("/api/apps/operations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sha256, acknowledge: true, ...(groupId === "" ? {} : { groupId: Number(groupId) }) }) });
       const data = (await response.json().catch(() => ({}))) as { error?: string };
       if (response.ok) {
         setStaged(null);
         setAcknowledged(false);
+        setGroupId("");
         setAdding(false);
         setFile(null);
         setExpected("");
@@ -444,6 +446,26 @@ export function AppsManager({ initial, installed, modules }: { initial: AppsStat
               <p role="alert" className="rounded-md bg-warning-soft px-3 py-2 text-sm">
                 {action.blocked}
               </p>
+            ) : null}
+            {installed[staged.review.id] === undefined && groups.length > 0 ? (
+              <div className="flex max-w-xs flex-col gap-1.5">
+                <label htmlFor="install-group" className="text-sm font-medium">
+                  Menu group
+                </label>
+                <select
+                  id="install-group"
+                  value={groupId}
+                  onChange={(event) => setGroupId(event.target.value)}
+                  className="h-10 rounded-md border border-border-strong bg-surface px-3 text-sm outline-none transition-colors duration-150 focus-visible:border-accent"
+                >
+                  <option value="">No group</option>
+                  {groups.map((group) => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             ) : null}
             <label className="flex max-w-xl items-start gap-2 text-sm">
               <input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} className="mt-1 size-4 accent-[var(--accent)]" />

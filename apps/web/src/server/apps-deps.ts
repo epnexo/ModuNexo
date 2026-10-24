@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { ARCHIVE_LIMITS, buildPackageContext, closeStaleOperations, launchApply, launchChange, listIntakes, listOperations, liveOperation, receiveUpload, stagingPath } from "@modunexo/core/apps";
+import { GroupService } from "@modunexo/core/groups";
 import { type AppsDeps, plainActor } from "./apps-api.ts";
 import { platform } from "./platform.ts";
 import { resolveViewer } from "./viewer.ts";
@@ -41,11 +42,13 @@ export function appsDeps(): AppsDeps {
       const rows = await listIntakes(platform().pool, { sha256, limit: 20 });
       return rows.some((row) => row.status === "staged") && existsSync(stagingPath(dataDir(root), sha256));
     },
-    launch: async (sha256, actor) => {
+    groupExists: async (groupId) => (await new GroupService(platform().pool).list()).some((group) => group.id === groupId),
+    launch: async (sha256, actor, groupId) => {
       const root = repoRoot();
       return launchApply({
         pool: platform().pool,
         sha256,
+        ...(groupId === undefined ? {} : { groupId }),
         actor: plainActor(actor),
         dataDir: dataDir(root),
         entry: ["--import", "tsx", join(root, "packages", "core", "src", "cli", "index.ts")],
