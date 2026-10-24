@@ -14,6 +14,8 @@ checked against, and it changes only when the contract with modules changes. See
   keeps the group its manifest declares in `nav.group`. A group can also be chosen when installing: a selector on the Apps
   screen, an optional `groupId` in `POST /api/apps/operations` and `modules apply <sha256> --group <id>`. New migration
   `0014_module_groups.sql` (a table, and a nullable `group_id` on `core.modules`; existing modules are unchanged).
+- Each titled block of the sidebar opens and closes like Admin. It starts open, stays open while the current page is inside it,
+  and what a person closed is remembered in their browser.
 
 ### Fixed
 
