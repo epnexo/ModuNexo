@@ -85,6 +85,27 @@ export function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(href.endsWith("/") ? href : `${href}/`);
 }
 
+/** The current page is one of the group's entries or below one. */
+export function groupHasActive(group: NavGroup, pathname: string): boolean {
+  return group.entries.some((entry) => isActive(pathname, entry.href));
+}
+
+/** The names of the collapsed groups as the browser stored them; anything that is not a list of names counts as none. */
+export function parseCollapsed(raw: string | null): string[] {
+  if (raw === null) return [];
+  try {
+    const value: unknown = JSON.parse(raw);
+    return Array.isArray(value) && value.every((item) => typeof item === "string") ? [...new Set(value as string[])] : [];
+  } catch {
+    return [];
+  }
+}
+
+export function toggleCollapsed(collapsed: readonly string[], label: string): string[] {
+  const rest = [...new Set(collapsed)].filter((item) => item !== label);
+  return collapsed.includes(label) ? rest : [...rest, label];
+}
+
 /** What the Admin block of the sidebar holds. Each page already refuses anyone who is not an administrator. */
 export const ADMIN_ENTRIES: { label: string; href: string; icon: IconName }[] = [
   { label: "Apps", href: "/apps", icon: "apps" },

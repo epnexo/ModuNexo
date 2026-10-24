@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { ADMIN_ENTRIES, type NavEntry, arrangeNavigation, groupNavigation, isActive, isAdminPath, resolveIcon, subjectCan } from "../src/server/nav.ts";
+import { ADMIN_ENTRIES, type NavEntry, arrangeNavigation, groupHasActive, groupNavigation, isActive, isAdminPath, parseCollapsed, resolveIcon, subjectCan, toggleCollapsed } from "../src/server/nav.ts";
 
 const entry = (overrides: Partial<NavEntry>): NavEntry => ({ moduleId: "m", label: "Item", href: "/item", ...overrides });
 const everything = () => true;
@@ -164,5 +164,27 @@ describe("arrangeNavigation: the groups an administrator manages, over the ones 
   it("falls back to the manifest's group when the assigned group is not in the list", () => {
     const entries = [entry({ moduleId: "crm", label: "Contacts", group: "Tools" })];
     assert.deepEqual(labels(arrangeNavigation(entries, { groups: layout.groups, assignments: { crm: 99 } })), [["Tools", ["Contacts"]]]);
+  });
+});
+
+describe("collapsible groups", () => {
+  const group = { label: "Sales", entries: [entry({ href: "/deals" }), entry({ href: "/quotes" })] };
+
+  it("knows when the current page is inside a group, on a segment boundary", () => {
+    assert.equal(groupHasActive(group, "/deals"), true);
+    assert.equal(groupHasActive(group, "/quotes/42"), true);
+    assert.equal(groupHasActive(group, "/dealsx"), false);
+    assert.equal(groupHasActive(group, "/"), false);
+  });
+
+  it("reads the collapsed groups back from what was stored, and ignores anything that is not a list of names", () => {
+    assert.deepEqual(parseCollapsed('["Sales","Support"]'), ["Sales", "Support"]);
+    for (const bad of [null, "", "nope", "{}", '"Sales"', "[1,2]", '["ok",3]']) assert.deepEqual(parseCollapsed(bad), [], String(bad));
+  });
+
+  it("toggles a group in the collapsed list without repeating it", () => {
+    assert.deepEqual(toggleCollapsed([], "Sales"), ["Sales"]);
+    assert.deepEqual(toggleCollapsed(["Sales", "Support"], "Sales"), ["Support"]);
+    assert.deepEqual(toggleCollapsed(["Sales", "Sales"], "Support"), ["Sales", "Support"]);
   });
 });
