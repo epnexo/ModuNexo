@@ -86,6 +86,9 @@ describe("groups API: list, create, rename, move, delete, assign", () => {
     assert.equal((await handleAssign(send("POST", { moduleId: "crm" }), d)).status, 400);
     assert.equal((await handleAssign(send("POST", { moduleId: "crm", groupId: "7" }), d)).status, 400);
     assert.equal((await handleAssign(send("POST", { moduleId: 5, groupId: 7 }), d)).status, 400);
+    assert.equal((await handleAssign(send("POST", { moduleId: "crm", groupId: 1e30 }), d)).status, 400);
+    assert.equal((await handleAssign(send("POST", { moduleId: "crm", groupId: 0 }), d)).status, 400);
+    assert.equal((await handleUpdate(send("PATCH", { position: 1e30 }), 7, d)).status, 400);
     assert.equal(calls.assign.length, 2);
   });
 

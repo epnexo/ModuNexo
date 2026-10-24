@@ -82,6 +82,12 @@ describe("GroupService: create, rename, reorder, delete", () => {
     assert.equal((await service.list()).length, 1);
   });
 
+  test("counts characters, not UTF-16 units, and refuses a name the database cannot store", async (service) => {
+    assert.equal((await service.create("😀".repeat(40))).name, "😀".repeat(40));
+    await rejectsWith(service.create("😀".repeat(41)), "invalid-name");
+    await rejectsWith(service.create("bad\u0000name"), "invalid-name");
+  });
+
   test("renames a group, and refuses a name another group has or a group that is not there", async (service) => {
     const sales = await service.create("Sales");
     await service.create("Support");

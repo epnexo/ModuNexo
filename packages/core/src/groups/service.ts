@@ -36,7 +36,8 @@ const UNIQUE_VIOLATION = "23505";
 
 function cleanName(raw: string): string {
   const name = raw.trim();
-  if (name === "" || name.length > MAX_GROUP_NAME) {
+  // Postgres counts characters, not UTF-16 units, and cannot store a NUL.
+  if (name === "" || [...name].length > MAX_GROUP_NAME || name.includes("\u0000")) {
     throw new GroupError("invalid-name", `A group name has 1 to ${MAX_GROUP_NAME} characters.`);
   }
   return name;

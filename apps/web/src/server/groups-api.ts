@@ -75,7 +75,7 @@ export async function handleUpdate(request: Request, id: number, deps: GroupsDep
   if (unknown.length > 0) return json({ error: `unknown field "${unknown[0]}"` }, 400);
   if (body.name === undefined && body.position === undefined) return json({ error: "send { name }, { position } or both" }, 400);
   if (body.name !== undefined && typeof body.name !== "string") return json({ error: "name must be a string" }, 400);
-  if (body.position !== undefined && !Number.isInteger(body.position)) return json({ error: "position must be a whole number" }, 400);
+  if (body.position !== undefined && !Number.isSafeInteger(body.position)) return json({ error: "position must be a whole number" }, 400);
   const { name, position } = body as { name?: string; position?: number };
   return answer(async () => {
     if (name !== undefined) await deps.service.rename(id, name);
@@ -102,7 +102,7 @@ export async function handleAssign(request: Request, deps: GroupsDeps): Promise<
   if (body instanceof Response) return body;
   const { moduleId, groupId } = body;
   if (typeof moduleId !== "string" || moduleId === "") return json({ error: "send the module's id as { moduleId }" }, 400);
-  if (groupId !== null && !Number.isInteger(groupId)) return json({ error: "groupId must be a group's id or null" }, 400);
+  if (groupId !== null && !(typeof groupId === "number" && Number.isSafeInteger(groupId) && groupId > 0)) return json({ error: "groupId must be a group's id or null" }, 400);
   return answer(async () => {
     await deps.service.assign(moduleId, groupId as number | null);
     return json(await deps.service.overview());
