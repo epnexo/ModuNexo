@@ -27,3 +27,6 @@ apps/web/src/app/(shell)/hello/
 
 # Modules are made outside the platform and installed as archives (modules pack, modules add).
 modules-src/
+
+# Working notes of the maintainer (feature logs with the owner's own words). Kept locally, never published.
+odd/

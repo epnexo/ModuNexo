@@ -2,7 +2,7 @@
 
 A module platform: a small core that installs, enables, disables, upgrades and uninstalls modules, each living
 in its own repository, and generates the registration the web app needs from the modules that are enabled. This
-repository holds the SDK modules compile against and the core. The feature plan lives in `odd/tasks/`.
+repository holds the SDK modules compile against and the core.
 
 ## Layout
 
@@ -15,7 +15,6 @@ repository holds the SDK modules compile against and the core. The feature plan 
 | `modules-src/` | Where `modules new` writes a module by default. Not tracked: the platform ships no module, so keep yours in their own repository (`--dir`) and install the packed archive. |
 | `.claude/skills/modunexo-module/` | The skill that walks an author (or an agent) through building a module. |
 | `apps/` | Applications built on the core. Empty today; the web shell is a later feature. |
-| `odd/tasks/` | Feature documents. |
 
 Everything is TypeScript consumed from source; there is no build step for packages. The core never imports a
 module by name, and modules never import each other's code.

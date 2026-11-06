@@ -48,8 +48,7 @@ Status of the table: capability 1 (public routes with signature, `/hooks/<module
 tokens with scopes, `/svc/<module-id>/`), capability 3 (background jobs run by a separate worker process, a Postgres
 queue), capability 4 (events and realtime), capability 5 (files behind a storage adapter, a disk folder first) and capability 6 (a chat model through an
 OpenAI-compatible adapter, configured by the module's own settings) are built;
-see `odd/tasks/public-routes.md`, `odd/tasks/service-tokens.md`, `odd/tasks/background-jobs.md`,
-`odd/tasks/events-realtime.md`, `odd/tasks/files-attachments.md` and `odd/tasks/llm-adapter.md`.
+see the "Public routes", "Service tokens", "Background jobs", "Events and realtime", "Stored files" and "Language models" sections of the README.
 Open question 2 of section 7 is answered for jobs and events: they persist in Postgres. Events are written in the
 publisher's own transaction (an outbox that is also the bus), announced with `LISTEN`/`NOTIFY` at commit, delivered to
 modules as jobs and to browsers as server-sent events with a cursor.
@@ -81,7 +80,7 @@ modules as jobs and to browsers as server-sent events with a cursor.
 
 ## 7. Open questions
 
-1. **Install downtime.** Answered by `odd/tasks/install-without-downtime.md`: a module change builds into a build
+1. **Install downtime.** Answered: a module change builds into a build
    directory of its own while the server keeps serving the current one, and the restart that follows is the switch. The
    only gap left is that restart, seconds long; a restart with no gap at all would need a proxy in front of the server.
    (Originally: installing or enabling a module needed a cold build during which pages failed, acceptable for passive
