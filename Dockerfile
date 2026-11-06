@@ -2,7 +2,7 @@
 #
 # The image keeps the whole workspace and its dev dependencies on purpose: installing a module from the Apps screen
 # rebuilds the web app inside the running container. Modules and received packages live in volumes, not in the image.
-FROM node:22-bookworm-slim
+FROM node:25-bookworm-slim
 
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
