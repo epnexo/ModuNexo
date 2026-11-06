@@ -16,6 +16,7 @@
     "stack:up": "docker compose --profile app up -d --build",
     "stack:down": "docker compose --profile app stop",
     "stack:status": "docker compose --profile app ps",
+    "mcp": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/index.ts mcp",
     "epnexo": "npm run modunexo --",
     "modules": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/index.ts modules",
     "web:dev": "node --env-file-if-exists=.env --import tsx apps/web/scripts/run.ts dev",

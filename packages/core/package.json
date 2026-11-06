@@ -10,6 +10,7 @@
     "./pool": "./src/pool.ts",
     "./auth": "./src/auth/index.ts",
     "./cli": "./src/cli/run.ts",
+    "./mcp": "./src/mcp/index.ts",
     "./settings": "./src/settings/index.ts",
     "./tokens": "./src/tokens/index.ts",
     "./events": "./src/events/index.ts",

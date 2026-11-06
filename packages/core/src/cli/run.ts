@@ -108,6 +108,9 @@ commands:
   auth status                      whether the shell asks for a sign-in
   auth require                     ask for a sign-in (refused while no administrator exists)
   auth disable                     serve local requests without a sign-in
+  mcp                              serve the platform to an MCP client (Claude Code, for one) over standard input and
+                                   output: read tools, and with MODUNEXO_MCP_WRITE=1 a bounded set of write tools.
+                                   Never offered: passwords, secrets, tokens, install, uninstall, purge, auth disable
 
 options for every command:
   --modules-dir <path>             where module packages are unpacked (default: modules/ at the repository root)

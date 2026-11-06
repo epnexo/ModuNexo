@@ -284,6 +284,32 @@ Exit codes: `0` done, `1` unexpected error or an accepted action that failed, `2
 rule: a lifecycle rule, a registration conflict, an administrator rule, the sign-in mode or a package that is
 refused (see "Module packages").
 
+### MCP server (use the platform from Claude Code)
+
+`modunexo mcp` serves the platform to an MCP client over standard input and output. Each tool runs one CLI command with
+arguments checked against a fixed shape, so an agent can do only what is listed here. It is part of the core: no module
+to install.
+
+```sh
+claude mcp add modunexo -- npm run --silent mcp                       # read-only
+claude mcp add modunexo -e MODUNEXO_MCP_WRITE=1 -- npm run --silent mcp   # with the write tools
+```
+
+Run it from the repository root (it reads `.env` there, so `DATABASE_URL` and the master key are the CLI's own).
+`--silent` matters: npm's banner would otherwise go to the protocol's output.
+
+- **Read** (always): `modules_list`, `users_list`, `settings_list`, `tokens_list`, `jobs_list`, `events_list`, `files_list`,
+  `auth_status`, `llm_probe`, and `validate`, which checks module flags, the sign-in mode and that an active administrator
+  exists. Job, event and file lists never include payloads or content.
+- **Write** (only with `MODUNEXO_MCP_WRITE=1`; hidden and refused otherwise): `modules_enable`, `modules_disable` (no web
+  rebuild), `jobs_enqueue`, `jobs_retry`, `jobs_cancel`, `events_publish`.
+- **Never offered**, whatever the switch says: creating administrators or users, setting a secret, issuing tokens,
+  `auth disable`, installing, uninstalling or purging modules, deleting files.
+
+A value that is not a plain name (letters, digits and `. _ : -`, not starting with `-`) is refused before any command
+runs. One call runs at a time and a long output is cut at 100,000 characters. What an MCP client can do is what the
+database in your `.env` allows: point it only at a platform you would let that agent operate.
+
 ### Administrators
 
 Sign-in is email and password through [Better Auth](https://www.better-auth.com). Nobody can sign up: the public

@@ -9,6 +9,10 @@ checked against, and it changes only when the contract with modules changes. See
 
 ### Added
 
+- `modunexo mcp`: an MCP server in the core, over stdio, so Claude Code (or any MCP client) can validate and operate the
+  platform through the CLI. Read tools plus a `validate` report by default; enable or disable a module, queue, retry or
+  cancel a job and publish an event only with `MODUNEXO_MCP_WRITE=1`. Passwords, secrets, tokens, installs and purges are
+  never offered. No new dependency.
 - Menu groups. An administrator creates, renames, reorders and deletes the titled blocks of the sidebar from a new **Groups**
   screen, and chooses the group of each installed module; the choice shows without a rebuild. A module with no assigned group
   keeps the group its manifest declares in `nav.group`. A group can also be chosen when installing: a selector on the Apps
