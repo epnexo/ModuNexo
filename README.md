@@ -1213,6 +1213,18 @@ docker compose --profile app up -d --build               # db + web on 127.0.0.1
 docker compose exec web npm run modunexo -- admin create --email you@example.com --name "Your Name"
 ```
 
+Start and stop the whole stack together, so the database never keeps running after the web app is down:
+
+```sh
+npm run stack:up        # db + web + worker
+npm run stack:status
+npm run stack:down      # stops all three; the data volumes are kept
+```
+
+`docker compose stop web` stops only the web app and leaves the database up; use `stack:down` to stop everything. The
+development flow below (`docker compose up -d db`) starts the database alone on purpose, because the tests and `npm run
+web:dev` need it without the container; stop it with `docker compose stop db`.
+
 The `web` service is behind the `app` profile, so the development flow (`docker compose up -d db`) is unchanged. The
 image runs as a non-root user, applies the migrations on every start, and has a health check on `/api/health`.
 A `worker` service (same profile, same image) runs the background jobs; restart it after installing or upgrading a
