@@ -8,7 +8,10 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: epnexo
-      POSTGRES_PASSWORD: epnexo
+      # Development default. For any shared or production host set POSTGRES_PASSWORD in .env (letters and digits only,
+      # e.g. `openssl rand -hex 24`: it is embedded in DATABASE_URL). It only applies when the data volume is created;
+      # changing it later needs `ALTER USER epnexo PASSWORD '...'` inside the running database.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-epnexo}
       POSTGRES_DB: epnexo
     ports:
       - "127.0.0.1:5436:5432"
@@ -35,7 +38,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgres://epnexo:epnexo@db:5432/epnexo
+      DATABASE_URL: postgres://epnexo:${POSTGRES_PASSWORD:-epnexo}@db:5432/epnexo
       # Empty when unset: the app then refuses to start naming the variable. A required-variable check here would
       # break every compose command (the database-only development flow included), even for a stopped profile.
       # The old name is passed through too, so an existing .env that only sets EPNEXO_MASTER_KEY keeps working.
@@ -67,7 +70,7 @@ services:
     healthcheck:
       disable: true
     environment:
-      DATABASE_URL: postgres://epnexo:epnexo@db:5432/epnexo
+      DATABASE_URL: postgres://epnexo:${POSTGRES_PASSWORD:-epnexo}@db:5432/epnexo
       MODUNEXO_MASTER_KEY: ${MODUNEXO_MASTER_KEY:-}
       EPNEXO_MASTER_KEY: ${EPNEXO_MASTER_KEY:-}
     volumes:
