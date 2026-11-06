@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && npm run typecheck -w @modunexo/web",
     "db:migrate": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/index.ts db:migrate",
     "modunexo": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/index.ts",
-    "stack:up": "docker compose --profile app up -d --build",
+    "stack:up": "sh scripts/stack-up.sh",
     "stack:down": "docker compose --profile app stop",
     "stack:status": "docker compose --profile app ps",
     "mcp": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/index.ts mcp",

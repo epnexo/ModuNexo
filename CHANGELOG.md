@@ -7,6 +7,13 @@ checked against, and it changes only when the contract with modules changes. See
 
 ## [Unreleased]
 
+### Fixed
+
+- The Docker image no longer breaks the build with routes generated on the host, and a container started against a
+  database with installed modules now links, registers and builds them on its own (`scripts/docker-entrypoint.sh`)
+  instead of listing them as orphaned. `stack:up` seeds missing module packages into the volume; `WEB_PORT` sets the host
+  port.
+
 ### Added
 
 - `modunexo mcp`: an MCP server in the core, over stdio, so Claude Code (or any MCP client) can validate and operate the

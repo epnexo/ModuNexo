@@ -1247,6 +1247,11 @@ npm run stack:status
 npm run stack:down      # stops all three; the data volumes are kept
 ```
 
+`stack:up` first copies the packages under `modules/` into the container's module volume when they are not there yet
+(never overwriting one that is), and the container's entrypoint links them, writes their registration and builds the web
+app once when the modules changed, so the first start with modules takes a few minutes and a restart is quick. Set
+`WEB_PORT` to publish the web app on another host port (default 3000).
+
 `docker compose stop web` stops only the web app and leaves the database up; use `stack:down` to stop everything. The
 development flow below (`docker compose up -d db`) starts the database alone on purpose, because the tests and `npm run
 web:dev` need it without the container; stop it with `docker compose stop db`.
