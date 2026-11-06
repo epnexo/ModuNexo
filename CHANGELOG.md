@@ -16,6 +16,9 @@ checked against, and it changes only when the contract with modules changes. See
 
 ### Added
 
+- Settings > MCP: a four-step screen to connect Claude Code to the platform (where it runs, look only or look and change,
+  one command to copy, how to check it), with the tools folded below. The commands follow the `claude mcp add` syntax, with
+  an option between `--env` and the server name.
 - `modunexo mcp`: an MCP server in the core, over stdio, so Claude Code (or any MCP client) can validate and operate the
   platform through the CLI. Read tools plus a `validate` report by default; enable or disable a module, queue, retry or
   cancel a job and publish an event only with `MODUNEXO_MCP_WRITE=1`. Passwords, secrets, tokens, installs and purges are

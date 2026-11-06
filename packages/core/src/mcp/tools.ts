@@ -30,6 +30,16 @@ export interface ToolDef {
 
 export class ArgumentError extends Error {}
 
+/** What the server never offers, whatever the write switch says. The settings screen shows this same list. */
+export const NEVER_OFFERED: readonly { label: string; reason: string }[] = [
+  { label: "admin create / user create", reason: "They handle passwords, which never travel through an agent." },
+  { label: "settings set", reason: "It writes secrets such as API keys." },
+  { label: "tokens create", reason: "The token is printed once and would end up in the conversation." },
+  { label: "auth disable", reason: "It opens the platform to the local network without a sign-in." },
+  { label: "modules install / uninstall / purge", reason: "Installing runs code with database access; purging drops data for good." },
+  { label: "files delete", reason: "It removes stored files and their bytes irreversibly." },
+];
+
 const JOB_STATUSES = ["queued", "running", "succeeded", "dead", "cancelled"] as const;
 
 const moduleId = (what = "The module id"): Field => ({ kind: "name", description: `${what} (letters, digits and . _ : -).` });

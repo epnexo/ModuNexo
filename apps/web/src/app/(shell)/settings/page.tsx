@@ -7,10 +7,12 @@ import { Tabs } from "../../../components/ui/tabs";
 import { BrandForm } from "../../../components/settings/brand-form";
 import { AppearanceForm } from "../../../components/settings/appearance-form";
 import { ResetIdentity } from "../../../components/settings/reset-identity";
+import { McpPanel } from "../../../components/settings/mcp-panel";
 import { ModuleSettings } from "../../../components/settings/module-settings";
 import { SecurityForm } from "../../../components/settings/security-form";
 import { modules } from "../../../generated/modules";
 import { resolvePublicUrl } from "../../../server/launch";
+import { mcpConnection } from "../../../server/mcp-connection";
 import { platform } from "../../../server/platform";
 import { enabledModuleIds, webRegistry } from "../../../server/registry";
 import { resolveViewer } from "../../../server/viewer";
@@ -97,6 +99,7 @@ export default async function SettingsPage() {
       </section>
 
           </>) },
+          { id: "mcp", label: "MCP", content: <McpPanel view={mcpConnection()} /> },
           { id: "modules", label: "Modules", content: (<>
       {sections.length === 0 ? (
         <p className="text-sm text-muted">No modules are enabled, so there are no module settings yet.</p>
