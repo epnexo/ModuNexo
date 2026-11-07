@@ -1,0 +1,72 @@
+# Production stack: runs a published, versioned image and never builds from source.
+#
+# Release flow: push a tag vX.Y.Z -> the "Release image" workflow publishes ghcr.io/epnexo/modunexo:X.Y.Z ->
+# change the tag below (web and worker together) -> redeploy. Rolling back is putting the previous tag back.
+#
+# Required variables (set them in the deploy platform, never in this file or the repository):
+#   POSTGRES_PASSWORD     letters and digits only (it is embedded in DATABASE_URL), e.g. `openssl rand -hex 24`.
+#                         It only applies when the data volume is created.
+#   MODUNEXO_MASTER_KEY   keep it identical across deploys: changing it breaks the secrets encrypted with it.
+# Optional:
+#   WEB_PUBLIC_URL        the public https URL of the app.
+#
+# No port is published: route your domain to the "web" service on port 3000 through the platform's reverse proxy.
+# The three volumes hold everything that must survive a redeploy (database, installed modules, files). Keep them
+# persistent and back up the database before a release that carries migrations: they run on every start.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: epnexo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: epnexo
+    volumes:
+      - epnexo-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U epnexo -d epnexo"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  web:
+    image: ghcr.io/epnexo/modunexo:0.3.1
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://epnexo:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/epnexo
+      MODUNEXO_MASTER_KEY: ${MODUNEXO_MASTER_KEY:?set MODUNEXO_MASTER_KEY}
+      WEB_PUBLIC_URL: ${WEB_PUBLIC_URL:-}
+    expose:
+      - "3000"
+    volumes:
+      - epnexo-modules:/app/modules
+      - epnexo-data:/app/var
+
+  # The background-job worker: the same image and volumes as the web app. It loads each job's code once, so restart it
+  # after installing or upgrading a module.
+  worker:
+    image: ghcr.io/epnexo/modunexo:0.3.1
+    restart: unless-stopped
+    command: ["node", "--import", "tsx", "packages/core/src/cli/index.ts", "worker"]
+    stop_grace_period: 40s
+    # The web service applies the migrations on start, so wait for it.
+    depends_on:
+      web:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    environment:
+      DATABASE_URL: postgres://epnexo:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/epnexo
+      MODUNEXO_MASTER_KEY: ${MODUNEXO_MASTER_KEY:?set MODUNEXO_MASTER_KEY}
+    volumes:
+      - epnexo-modules:/app/modules
+      - epnexo-data:/app/var
+
+volumes:
+  epnexo-db-data:
+  epnexo-modules:
+  epnexo-data:
