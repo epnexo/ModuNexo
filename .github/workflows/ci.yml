@@ -13,7 +13,8 @@ concurrency:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to a release whose repositories no longer carry the PostgreSQL 16 client tools.
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     services:
       postgres:
