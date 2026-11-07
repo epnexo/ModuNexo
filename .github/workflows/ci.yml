@@ -37,6 +37,14 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # backup.sh and restore.sh use the PostgreSQL client tools on the PATH. The runner ships a newer client than the
+      # postgres:16 service, and a newer pg_dump writes settings (transaction_timeout) that a 16 server rejects on restore.
+      - name: Use the PostgreSQL 16 client tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-16
+          echo /usr/lib/postgresql/16/bin >> "$GITHUB_PATH"
+      - run: pg_dump --version
       - run: npm ci
       # Known vulnerabilities in what ships to production fail the build; dev-only tooling is not counted.
       - run: npm audit --omit=dev --audit-level=high
