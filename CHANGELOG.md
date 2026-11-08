@@ -7,6 +7,7 @@ checked against, and it changes only when the contract with modules changes. See
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-08
 ## [0.3.3] - 2026-11-08
 ### Fixed
 
