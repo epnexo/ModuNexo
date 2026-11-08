@@ -14,6 +14,7 @@
     "./mcp-tools": "./src/mcp/tools.ts",
     "./settings": "./src/settings/index.ts",
     "./tokens": "./src/tokens/index.ts",
+    "./api-access": "./src/api-access/index.ts",
     "./events": "./src/events/index.ts",
     "./files": "./src/files/index.ts",
     "./llm": "./src/llm/index.ts",
