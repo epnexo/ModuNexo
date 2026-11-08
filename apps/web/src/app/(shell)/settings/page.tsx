@@ -1,5 +1,7 @@
 import { readTrustedProxyState, resolveMasterKey } from "@modunexo/core/auth";
+import { ApiAddressService, normalizeApiAddress, resolveApiAddress } from "@modunexo/core/api-access";
 import { AppearanceService, SettingsService, readBrand } from "@modunexo/core/settings";
+import { TokenService } from "@modunexo/core/tokens";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -8,10 +10,12 @@ import { BrandForm } from "../../../components/settings/brand-form";
 import { AppearanceForm } from "../../../components/settings/appearance-form";
 import { ResetIdentity } from "../../../components/settings/reset-identity";
 import { McpPanel } from "../../../components/settings/mcp-panel";
+import { ApiAccess } from "../../../components/settings/api-access";
 import { ModuleSettings } from "../../../components/settings/module-settings";
 import { SecurityForm } from "../../../components/settings/security-form";
 import { modules } from "../../../generated/modules";
 import { resolvePublicUrl } from "../../../server/launch";
+import { buildAccessView } from "../../../server/api-access-view";
 import { mcpConnection } from "../../../server/mcp-connection";
 import { platform } from "../../../server/platform";
 import { enabledModuleIds, webRegistry } from "../../../server/registry";
@@ -19,6 +23,26 @@ import { resolveViewer } from "../../../server/viewer";
 
 export const metadata: Metadata = { title: "Settings" };
 export const dynamic = "force-dynamic";
+
+/** `WEB_PUBLIC_URL` as an origin, or undefined when it is unset or malformed (the settings page must still open). */
+function publicUrlOrigin(): string | undefined {
+  try {
+    return resolvePublicUrl().baseURL;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The address this page was reached at, from the Host header, or null when it cannot be read as one. */
+function requestOrigin(requestHeaders: Headers): string | null {
+  const host = requestHeaders.get("host");
+  if (host === null) return null;
+  try {
+    return normalizeApiAddress(`${cookiesAreSecure() ? "https" : "http"}://${host}`);
+  } catch {
+    return null;
+  }
+}
 
 /** Whether session cookies are marked Secure. A malformed `WEB_PUBLIC_URL` is reported as not secure, never thrown. */
 function cookiesAreSecure(): boolean {
@@ -49,7 +73,19 @@ export default async function SettingsPage() {
   const brand = await readBrand(pool);
   const trustedProxies = await readTrustedProxyState(pool);
   const settings = new SettingsService(pool, registry, { masterKey: resolveMasterKey() });
-  const sections = await Promise.all(modules.filter((manifest) => enabled.has(manifest.id)).map(async (manifest) => ({ id: manifest.id, name: manifest.name, entries: await settings.describe(manifest.id) })));
+  const tokens = new TokenService(pool, registry);
+  const address = resolveApiAddress({ saved: await new ApiAddressService(pool).get(), publicUrl: publicUrlOrigin(), requestOrigin: requestOrigin(await headers()) });
+  const now = new Date();
+  const sections = await Promise.all(
+    modules
+      .filter((manifest) => enabled.has(manifest.id))
+      .map(async (manifest) => ({
+        id: manifest.id,
+        name: manifest.name,
+        entries: await settings.describe(manifest.id),
+        access: buildAccessView({ manifest, tokens: (manifest.scopes ?? []).length > 0 ? await tokens.list(manifest.id) : [], address, now }),
+      })),
+  );
 
   return (
     <div className="flex max-w-3xl flex-col gap-10">
@@ -105,15 +141,17 @@ export default async function SettingsPage() {
         <p className="text-sm text-muted">No modules are enabled, so there are no module settings yet.</p>
       ) : (
         sections.map((section) => (
-          <ModuleSettings
-            key={section.id}
-            moduleId={section.id}
-            name={section.name}
-            entries={section.entries}
-            override={appearance.modules[section.id] ?? {}}
-            platform={{ accentHue: appearance.platform.accentHue, radius: appearance.platform.radius }}
-            canWrite={viewer.canWrite}
-          />
+          <div key={section.id} className="flex flex-col gap-4">
+            <ModuleSettings
+              moduleId={section.id}
+              name={section.name}
+              entries={section.entries}
+              override={appearance.modules[section.id] ?? {}}
+              platform={{ accentHue: appearance.platform.accentHue, radius: appearance.platform.radius }}
+              canWrite={viewer.canWrite}
+            />
+            {section.access === null ? null : <ApiAccess moduleId={section.id} name={section.name} view={section.access} canWrite={viewer.canWrite} />}
+          </div>
         ))
       )}
           </>) },
