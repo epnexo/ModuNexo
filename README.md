@@ -631,6 +631,18 @@ curl -H "Authorization: Bearer mdnx_..." https://host/svc/inbox/messages
   The install review lists the module's scopes and its token routes.
 - **Not here yet.** A screen to manage tokens (the CLI is the only way), rotation, and per-token rate limits.
 
+**From Settings.** An administrator manages the same tokens without the command line. In Settings > Modules, every
+module that declares `scopes` has an **API access** block under its settings: the module's service endpoints with the
+platform address in front, its tokens (name, prefix, scopes, who created it, last use, expiry, state), and a form to
+create a token with a name, the scopes it may use and a lifetime. Create one token per computer or person and name it
+after them, so the audit trail (`core.service_token_events`) and the last-use date tell the callers apart. A token is
+shown once, when it is created or regenerated, with a button to copy it. **Regenerate** issues a new token with the same
+name, scopes and length of life and revokes the old one in the same transaction; **Revoke** stops a token at once. Both
+ask first. The address shown (`api.address` in `core.platform_settings`, else `WEB_PUBLIC_URL`, else the address of the
+page) is the same for every module and changes only what the page shows, never sign-in or cookies. The calls are
+`GET|POST /api/settings/modules/<id>/tokens`, `POST .../tokens/<tokenId>/regenerate`, `DELETE .../tokens/<tokenId>` and
+`PUT /api/settings/api-address`; like every settings write they need the same origin and an administrator.
+
 ### Background jobs
 
 A module can run work outside a request: a sync, a cleanup, a retry. It declares the job, writes the handler and

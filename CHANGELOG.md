@@ -20,6 +20,12 @@ checked against, and it changes only when the contract with modules changes. See
 
 ### Added
 
+- Settings > Modules: an **API access** block under every module that declares scopes. An administrator sees the
+  module's endpoints and its service tokens, creates a token per computer or person, copies it (shown once), regenerates
+  it (a new token with the same name, scopes and life, the old one revoked in the same transaction) or revokes it. The
+  address shown can be changed there. New: `TokenService.regenerate`, `find` and `tokenState`, `@modunexo/core/api-access`,
+  and the `/api/settings/modules/<id>/tokens` and `/api/settings/api-address` routes.
+
 - Settings > MCP: a four-step screen to connect Claude Code to the platform (where it runs, look only or look and change,
   one command to copy, how to check it), with the tools folded below. The commands follow the `claude mcp add` syntax, with
   an option between `--env` and the server name.
