@@ -66,6 +66,14 @@ describe("tokenState", () => {
   });
 });
 
+describe("find", () => {
+  test("returns one token without its value, or null", async () => {
+    const made = await issue();
+    assert.deepEqual(await service.find(made.record.id), made.record);
+    assert.equal(await service.find(2_000_000_000), null);
+  });
+});
+
 describe("regenerate", () => {
   test("issues a new token with the same name and scopes and revokes the old one", async () => {
     const old = await issue();
