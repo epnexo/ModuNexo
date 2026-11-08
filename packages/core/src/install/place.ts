@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, rmdirSync, symlinkSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
+import { type Rename, moveDir } from "./move.ts";
 
 /** The package could not be put in place; nothing was changed. */
 export class PlacementRefusedError extends Error {
@@ -32,6 +33,8 @@ export interface PlaceOptions {
    * that dies half way can be undone by the next run from `undoPlacement`.
    */
   beforeChange?: (state: PlacementState) => void;
+  /** How a folder is renamed; only a test replaces it, to behave as if the two folders were on different volumes. */
+  rename?: Rename;
 }
 
 /** What a placement changes, as plain data: enough to undo it later without the process that made it. */
@@ -66,16 +69,16 @@ export interface Placement {
  * repeat: it removes only what the state says the placement made, and an upgrade's current folder is replaced by
  * the kept previous one only when that one exists, so a run that died before moving anything destroys nothing.
  */
-export function undoPlacement(state: PlacementState): void {
+export function undoPlacement(state: PlacementState, rename?: Rename): void {
   if (existsSync(state.modulesDir)) {
     for (const name of readdirSync(state.modulesDir)) {
-      if (name.startsWith(`.${state.moduleId}.incoming-`)) rmSync(join(state.modulesDir, name), { recursive: true, force: true });
+      if (name.startsWith(`.${state.moduleId}.incoming-`) || name.startsWith(`.${state.moduleId}.moving-`)) rmSync(join(state.modulesDir, name), { recursive: true, force: true });
     }
   }
   if (state.kind === "upgrade") {
     if (state.previousDir !== null && existsSync(state.previousDir)) {
       rmSync(state.moduleDir, { recursive: true, force: true });
-      renameSync(state.previousDir, state.moduleDir);
+      moveDir(state.previousDir, state.moduleDir, rename);
     }
     return;
   }
@@ -119,7 +122,7 @@ function freshPreviousDir(dataDir: string, moduleId: string, version: string): s
  * `var/removed/<id>-<version>` (kept, never deleted) and its workspace link is removed. Returns where it went,
  * or null when there was nothing to move.
  */
-export function removePackage(options: { moduleId: string; packageName: string; version: string; modulesDir: string; nodeModulesDir: string; dataDir: string }): string | null {
+export function removePackage(options: { moduleId: string; packageName: string; version: string; modulesDir: string; nodeModulesDir: string; dataDir: string; rename?: Rename }): string | null {
   const { moduleId, packageName, version } = options;
   if (!MODULE_ID.test(moduleId) || !PACKAGE_NAME.test(packageName) || !VERSION.test(version)) throw new PlacementRefusedError("not a module to remove");
   const moduleDir = join(options.modulesDir, moduleId);
@@ -137,7 +140,7 @@ export function removePackage(options: { moduleId: string; packageName: string; 
     target = `${base}.${n}`;
   }
   mkdirSync(dirname(target), { recursive: true });
-  renameSync(moduleDir, target);
+  moveDir(moduleDir, target, options.rename);
   return target;
 }
 
@@ -196,7 +199,7 @@ export function placePackage(options: PlaceOptions): Placement {
   const state: PlacementState = { kind, moduleId, modulesDir: options.modulesDir, moduleDir, linkPath, linkTarget, createLink, scopeDir, previousDir };
 
   const incoming = join(options.modulesDir, `.${moduleId}.incoming-${randomBytes(6).toString("hex")}`);
-  const undo = () => undoPlacement(state);
+  const undo = () => undoPlacement(state, options.rename);
 
   try {
     options.beforeChange?.(state);
@@ -204,7 +207,7 @@ export function placePackage(options: PlaceOptions): Placement {
     cpSync(options.stagingDir, incoming, { recursive: true, errorOnExist: true, force: false, dereference: false, verbatimSymlinks: true });
     if (previousDir !== null) {
       mkdirSync(dirname(previousDir), { recursive: true });
-      renameSync(moduleDir, previousDir);
+      moveDir(moduleDir, previousDir, options.rename);
     }
     renameSync(incoming, moduleDir);
     if (createLink) {

@@ -9,6 +9,9 @@ checked against, and it changes only when the contract with modules changes. See
 
 ### Fixed
 
+- Upgrading or uninstalling a module no longer fails with `EXDEV: cross-device link not permitted` when the modules folder
+  and the data folder are separate volumes, as in a container deployment. The installer moves the replaced or removed
+  folder by copying it when a plain rename is refused, and a copy that fails leaves the original untouched.
 - The Docker image no longer breaks the build with routes generated on the host, and a container started against a
   database with installed modules now links, registers and builds them on its own (`scripts/docker-entrypoint.sh`)
   instead of listing them as orphaned. `stack:up` seeds missing module packages into the volume; `WEB_PORT` sets the host
