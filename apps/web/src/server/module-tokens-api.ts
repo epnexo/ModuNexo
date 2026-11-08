@@ -44,6 +44,11 @@ async function readObject(request: Request): Promise<Record<string, unknown> | R
   return parsed.body as Record<string, unknown>;
 }
 
+/** A token id from an address: digits only, so `1e0` or `0x1` are not ids. NaN when it is not one. */
+export function parseTokenId(raw: string): number {
+  return /^[1-9][0-9]{0,15}$/.test(raw) ? Number(raw) : Number.NaN;
+}
+
 const STATUS = { invalid: 400, "not-found": 404, revoked: 409 } as const;
 
 /** A refusal of the platform becomes its status and its message; anything else is not ours to explain. */
@@ -121,10 +126,9 @@ export async function handleSetAddress(request: Request, deps: ApiAccessDeps): P
   if (viewer instanceof Response) return viewer;
   const body = await readObject(request);
   if (body instanceof Response) return body;
-  if (body.address === null) {
-    await deps.service.unsetAddress(viewer.actor);
-    return json({ address: null });
-  }
+  const unknown = Object.keys(body).filter((key) => key !== "address");
+  if (unknown.length > 0) return json({ error: `unknown field "${unknown[0]}"` }, 400);
+  if (body.address === null) return answer(async () => (await deps.service.unsetAddress(viewer.actor), json({ address: null })));
   if (typeof body.address !== "string") return json({ error: "send the address as { address }, or null to clear it" }, 400);
   const address = body.address;
   return answer(async () => json({ address: await deps.service.setAddress(address, viewer.actor) }));

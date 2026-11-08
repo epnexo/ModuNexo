@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { TokenError, type TokenRecord } from "@modunexo/core/tokens";
 import { SettingValueError } from "@modunexo/core/settings";
-import { type ApiAccessDeps, handleCreateToken, handleListTokens, handleRegenerateToken, handleRevokeToken, handleSetAddress } from "../src/server/module-tokens-api.ts";
+import { type ApiAccessDeps, parseTokenId, handleCreateToken, handleListTokens, handleRegenerateToken, handleRevokeToken, handleSetAddress } from "../src/server/module-tokens-api.ts";
 
 const ADMIN = { actor: "admin@example.test", canWrite: true };
 const USER = { actor: "user@example.test", canWrite: false };
@@ -132,6 +132,13 @@ describe("API access: tokens", () => {
   });
 });
 
+describe("parseTokenId", () => {
+  it("takes digits only", () => {
+    assert.equal(parseTokenId("42"), 42);
+    for (const bad of ["", "0", "01", "-1", "1e0", "0x1", "1.5", " 1", "abc", "9".repeat(17)]) assert.ok(Number.isNaN(parseTokenId(bad)), bad);
+  });
+});
+
 describe("API access: address", () => {
   it("saves the address the service normalizes, and clears it with null", async () => {
     const { deps: d, calls } = deps();
@@ -148,6 +155,7 @@ describe("API access: address", () => {
     const { deps: d } = deps();
     assert.equal((await handleSetAddress(send("PUT", {}), d)).status, 400);
     assert.equal((await handleSetAddress(send("PUT", { address: 5 }), d)).status, 400);
+    assert.equal((await handleSetAddress(send("PUT", { address: "https://a.test", extra: 1 }), d)).status, 400);
     const refusing = deps({ service: { ...d.service, setAddress: async () => { throw new SettingValueError("the address must start with http:// or https://"); } } }).deps;
     const response = await handleSetAddress(send("PUT", { address: "ftp://x" }), refusing);
     assert.equal(response.status, 400);
