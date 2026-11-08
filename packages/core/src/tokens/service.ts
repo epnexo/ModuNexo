@@ -113,9 +113,9 @@ export class TokenService {
   async regenerate(id: number, actor: string): Promise<{ record: TokenRecord; token: string; revoked: TokenRecord }> {
     return this.issue(async (client, generated) => {
       const found = await client.query(`select ${ROW} from core.service_tokens where id = $1 for update`, [id]);
-      if (found.rowCount === 0) throw new TokenError(`there is no token ${id}`);
+      if (found.rowCount === 0) throw new TokenError(`there is no token ${id}`, "not-found");
       const old = toRecord(found.rows[0]);
-      if (old.revokedAt !== null) throw new TokenError(`token ${id} is already revoked; issue a new one`);
+      if (old.revokedAt !== null) throw new TokenError(`token ${id} is already revoked; issue a new one`, "revoked");
       const manifest = this.registry.get(old.moduleId);
       if (manifest === undefined) throw new TokenError(`module "${old.moduleId}" is not registered`);
       const declared = new Set((manifest.scopes ?? []).map((scope) => scope.key));
@@ -177,6 +177,12 @@ export class TokenService {
     return result.rows.map(toRecord);
   }
 
+  /** One token by id, or null. Never the token's value, which is not kept. */
+  async find(id: number): Promise<TokenRecord | null> {
+    const result = await this.pool.query(`select ${ROW} from core.service_tokens where id = $1`, [id]);
+    return result.rowCount === 0 ? null : toRecord(result.rows[0]);
+  }
+
   /** Revokes a token. Revoking one that is already revoked changes nothing and records nothing. */
   async revoke(id: number, actor: string): Promise<TokenRecord> {
     const client = await this.pool.connect();
@@ -185,7 +191,7 @@ export class TokenService {
       const found = await client.query(`select ${ROW} from core.service_tokens where id = $1 for update`, [id]);
       if (found.rowCount === 0) {
         await client.query("rollback");
-        throw new TokenError(`there is no token ${id}`);
+        throw new TokenError(`there is no token ${id}`, "not-found");
       }
       let record = toRecord(found.rows[0]);
       if (record.revokedAt === null) {
