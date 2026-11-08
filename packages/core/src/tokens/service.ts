@@ -58,6 +58,13 @@ function toRecord(row: Record<string, unknown>): TokenRecord {
   };
 }
 
+/** Where a token stands at `now`: revoked wins over expired. */
+export function tokenState(record: TokenRecord, now: Date): "active" | "revoked" | "expired" {
+  if (record.revokedAt !== null) return "revoked";
+  if (record.expiresAt !== null && record.expiresAt.getTime() <= now.getTime()) return "expired";
+  return "active";
+}
+
 /** Service tokens: issued per module for a subset of the scopes the module declares, revoked at will. */
 export class TokenService {
   private readonly now: () => Date;
@@ -92,23 +99,52 @@ export class TokenService {
       throw new TokenError("the expiry must be in the future");
     }
 
+    return this.issue(async (client, generated) => {
+      const record = await this.insert(client, generated, { moduleId: input.moduleId, name, scopes, expiresAt: input.expiresAt ?? null, actor: input.actor });
+      return { record, token: generated.token };
+    });
+  }
+
+  /**
+   * Replaces a token: a new one with the same name, scopes and length of life, and the old one revoked, in one
+   * transaction, so the old token never stays valid beside its replacement and a failure leaves it untouched.
+   * A token that was already revoked is not renewed; issue a new one instead.
+   */
+  async regenerate(id: number, actor: string): Promise<{ record: TokenRecord; token: string; revoked: TokenRecord }> {
+    return this.issue(async (client, generated) => {
+      const found = await client.query(`select ${ROW} from core.service_tokens where id = $1 for update`, [id]);
+      if (found.rowCount === 0) throw new TokenError(`there is no token ${id}`);
+      const old = toRecord(found.rows[0]);
+      if (old.revokedAt !== null) throw new TokenError(`token ${id} is already revoked; issue a new one`);
+      const manifest = this.registry.get(old.moduleId);
+      if (manifest === undefined) throw new TokenError(`module "${old.moduleId}" is not registered`);
+      const declared = new Set((manifest.scopes ?? []).map((scope) => scope.key));
+      for (const scope of old.scopes) {
+        if (!declared.has(scope)) throw new TokenError(`module "${old.moduleId}" does not declare the scope "${scope}" any more`);
+      }
+      const now = this.now();
+      const life = old.expiresAt === null ? null : old.expiresAt.getTime() - old.createdAt.getTime();
+      const expiresAt = life === null ? null : new Date(now.getTime() + life);
+      const record = await this.insert(client, generated, { moduleId: old.moduleId, name: old.name, scopes: old.scopes, expiresAt, actor });
+      const updated = await client.query(`update core.service_tokens set revoked_at = $2 where id = $1 returning ${ROW}`, [id, now]);
+      const revoked = toRecord(updated.rows[0]);
+      await client.query("insert into core.service_token_events (token_id, module_id, action, actor) values ($1, $2, 'revoked', $3)", [id, old.moduleId, actor]);
+      return { record, token: generated.token, revoked };
+    });
+  }
+
+  /** Runs `work` in a transaction with a freshly drawn token, drawing again when two tokens share the 32-bit prefix. */
+  private async issue<T>(work: (client: pg.PoolClient, generated: ReturnType<typeof generateToken>) => Promise<T>): Promise<T> {
     for (let attempt = 0; attempt < PREFIX_ATTEMPTS; attempt++) {
-      const { token, prefix, hash } = generateToken(this.random);
+      const generated = generateToken(this.random);
       const client = await this.pool.connect();
       try {
         await client.query("begin");
-        const inserted = await client.query(
-          `insert into core.service_tokens (module_id, name, prefix, token_hash, scopes, expires_at, created_by)
-           values ($1, $2, $3, $4, $5, $6, $7) returning ${ROW}`,
-          [input.moduleId, name, prefix, hash, scopes, input.expiresAt ?? null, input.actor],
-        );
-        const record = toRecord(inserted.rows[0]);
-        await client.query("insert into core.service_token_events (token_id, module_id, action, actor) values ($1, $2, 'created', $3)", [record.id, record.moduleId, input.actor]);
+        const result = await work(client, generated);
         await client.query("commit");
-        return { record, token };
+        return result;
       } catch (error) {
         await client.query("rollback").catch(() => undefined);
-        // Two tokens drew the same 32-bit prefix: draw again.
         if ((error as { code?: string }).code === UNIQUE_VIOLATION) continue;
         throw error;
       } finally {
@@ -116,6 +152,21 @@ export class TokenService {
       }
     }
     throw new TokenError("could not find a free token prefix; try again");
+  }
+
+  private async insert(
+    client: pg.PoolClient,
+    generated: ReturnType<typeof generateToken>,
+    row: { moduleId: string; name: string; scopes: string[]; expiresAt: Date | null; actor: string },
+  ): Promise<TokenRecord> {
+    const inserted = await client.query(
+      `insert into core.service_tokens (module_id, name, prefix, token_hash, scopes, expires_at, created_by)
+       values ($1, $2, $3, $4, $5, $6, $7) returning ${ROW}`,
+      [row.moduleId, row.name, generated.prefix, generated.hash, row.scopes, row.expiresAt, row.actor],
+    );
+    const record = toRecord(inserted.rows[0]);
+    await client.query("insert into core.service_token_events (token_id, module_id, action, actor) values ($1, $2, 'created', $3)", [record.id, record.moduleId, row.actor]);
+    return record;
   }
 
   async list(moduleId?: string): Promise<TokenRecord[]> {

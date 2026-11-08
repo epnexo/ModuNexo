@@ -1,6 +1,6 @@
 import type pg from "pg";
 import type { Registry } from "../registry.ts";
-import { TokenService, type TokenRecord } from "../tokens/service.ts";
+import { TokenService, tokenState, type TokenRecord } from "../tokens/service.ts";
 
 export interface TokensCommand {
   action: "create" | "list" | "revoke";
@@ -21,17 +21,11 @@ export interface TokensCommandDeps {
 const ACTOR = "cli";
 const DAY_MS = 86_400_000;
 
-function stateOf(record: TokenRecord, now: Date): "active" | "revoked" | "expired" {
-  if (record.revokedAt !== null) return "revoked";
-  if (record.expiresAt !== null && record.expiresAt.getTime() <= now.getTime()) return "expired";
-  return "active";
-}
-
 const day = (date: Date | null) => (date === null ? "-" : date.toISOString().slice(0, 10));
 
 function printTable(records: TokenRecord[], io: TokensCommandDeps["io"]): void {
   const now = new Date();
-  const rows = records.map((r) => [String(r.id), r.moduleId, r.name, r.prefix, r.scopes.join(","), stateOf(r, now), day(r.expiresAt), day(r.lastUsedAt)]);
+  const rows = records.map((r) => [String(r.id), r.moduleId, r.name, r.prefix, r.scopes.join(","), tokenState(r, now), day(r.expiresAt), day(r.lastUsedAt)]);
   const titles = ["ID", "MODULE", "NAME", "PREFIX", "SCOPES", "STATE", "EXPIRES", "LAST USED"];
   const widths = titles.map((title, i) => Math.max(title.length, ...rows.map((row) => row[i]!.length)));
   const line = (cells: string[]) => cells.map((cell, i) => cell.padEnd(widths[i]!)).join("  ").trimEnd();
