@@ -78,3 +78,99 @@
     text-wrap: balance;
   }
 }
+
+/*
+ * Sidebar: open, or a rail of icons. The state is a cookie the server reads, so the first paint is already right, and
+ * `data-sidebar` on the shell is all the CSS needs. Motion here shows a state change, takes 150-260 ms, and moves
+ * transform, opacity and one width; it is off for anyone who asked for less motion.
+ */
+.shell-sidebar {
+  width: var(--sidebar-width);
+  transition: width var(--duration-slow) var(--ease-out);
+  contain: layout paint style;
+}
+.nav-txt {
+  display: inline-block;
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition:
+    opacity var(--duration) var(--ease-out),
+    max-width var(--duration-slow) var(--ease-out);
+}
+.nav-chev {
+  flex: none;
+  transition: transform var(--duration-slow) var(--ease-out);
+}
+.nav-group[data-open="true"] > .nav-group-btn > .nav-chev {
+  transform: rotate(90deg);
+}
+/* A group opens and closes by its height; a closed one is taken out of the tab order once it has finished closing. */
+.nav-group-body {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows var(--duration-slow) var(--ease-out);
+}
+.nav-group-body > .nav-group-list {
+  min-height: 0;
+  overflow: hidden;
+}
+.nav-group[data-open="false"] > .nav-group-body {
+  grid-template-rows: 0fr;
+}
+.nav-group[data-open="false"] .nav-group-list {
+  visibility: hidden;
+  transition: visibility 0s linear var(--duration-slow);
+}
+
+/* The rail: icons only. The names stay as each link's title and accessible name. */
+[data-sidebar="rail"] .shell-sidebar {
+  width: var(--sidebar-rail);
+  padding-inline: 0.625rem;
+}
+[data-sidebar="rail"] .shell-sidebar .nav-txt {
+  opacity: 0;
+  max-width: 0;
+}
+[data-sidebar="rail"] .shell-sidebar .nav-link {
+  justify-content: center;
+  gap: 0;
+  padding-inline: 0;
+}
+[data-sidebar="rail"] .shell-sidebar .nav-group-btn {
+  height: 0;
+  padding-block: 0;
+  overflow: hidden;
+  opacity: 0;
+}
+[data-sidebar="rail"] .shell-sidebar .nav-group[data-open="false"] > .nav-group-body {
+  grid-template-rows: 1fr;
+}
+[data-sidebar="rail"] .shell-sidebar .nav-group[data-open="false"] .nav-group-list {
+  visibility: visible;
+}
+[data-sidebar="rail"] .shell-sidebar .nav-group-list {
+  margin-left: 0;
+  padding-left: 0;
+  border-left-width: 0;
+}
+[data-sidebar="rail"] .shell-sidebar .nav-group:not(.nav-admin) {
+  border-top: 1px solid var(--border);
+  padding-top: 0.5rem;
+}
+[data-sidebar="rail"] .shell-sidebar .shell-brand {
+  padding-inline: 0;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell-sidebar,
+  .nav-txt,
+  .nav-chev,
+  .nav-group-body,
+  .nav-group-list {
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+  }
+}

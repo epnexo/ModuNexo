@@ -55,6 +55,7 @@
 
   /* Layout. */
   --sidebar-width: 15.5rem;
+  --sidebar-rail: 3.5rem;
   --topbar-height: 3.5rem;
 }
 
