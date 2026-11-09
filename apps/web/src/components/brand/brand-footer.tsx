@@ -8,7 +8,7 @@ export function BrandFooter({ profile }: { profile: BrandProfile | null }) {
   const link = "underline-offset-4 hover:text-foreground hover:underline";
   return (
     <footer className="border-t border-border px-4 py-5 text-sm text-muted sm:px-8">
-      <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-x-4 gap-y-1">
+      <div className="mx-auto flex w-full flex-wrap items-center gap-x-4 gap-y-1">
         <span>
           &copy; {year} {profile.name}
         </span>

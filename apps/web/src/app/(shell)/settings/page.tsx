@@ -104,7 +104,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         };
 
   return (
-    <div className="flex max-w-5xl flex-col gap-10">
+    <div className="flex flex-col gap-10">
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
