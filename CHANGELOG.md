@@ -21,6 +21,9 @@ checked against, and it changes only when the contract with modules changes. See
 
 ### Changed
 
+- The browser no longer downloads a cryptography library it never used: a client component imported `initialsOf` from a module that also imports
+  `node:crypto`, so the bundler shipped a 461 KB Node crypto polyfill. `initialsOf` now lives in `@modunexo/core/brand-profile` (still
+  re-exported from `@modunexo/core/brand`). Client JavaScript of a production build goes from 1.33 MB to 0.89 MB.
 - The page area is wider (up to `96rem` instead of `64rem`) and a little tighter at the top, so tables and forms use the
   space they were losing. With the sidebar collapsed the page grows again (`120rem`, `96rem` with it open), so hiding it gives the content the room. The layout of the shell (Dashboard, module groups, Admin at the bottom) is unchanged.
 - Settings, Modules tab: pick a module from a searchable list and see only its settings and API access, instead of every

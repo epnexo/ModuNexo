@@ -1,4 +1,5 @@
-import { type BrandProfile, initialsOf } from "@modunexo/core/brand";
+import type { BrandProfile } from "@modunexo/core/brand";
+import { initialsOf } from "@modunexo/core/brand-profile";
 
 export const DEFAULT_BRAND_NAME = "Modunexo";
 
