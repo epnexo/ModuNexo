@@ -136,13 +136,14 @@
 /* The rail: icons only. The names stay as each link's title and accessible name. */
 [data-sidebar="rail"] .shell-sidebar {
   width: var(--sidebar-rail);
-  padding-inline: 0.625rem;
+  padding-inline: 0.75rem;
 }
 [data-sidebar="rail"] .shell-sidebar .nav-txt {
   opacity: 0;
   max-width: 0;
 }
 [data-sidebar="rail"] .shell-sidebar .nav-link {
+  height: 2.75rem;
   justify-content: center;
   gap: 0;
   padding-inline: 0;
