@@ -136,7 +136,7 @@
 /* The rail: icons only. The names stay as each link's title and accessible name. */
 [data-sidebar="rail"] .shell-sidebar {
   width: var(--sidebar-rail);
-  padding-inline: 0.75rem;
+  padding-inline: 0.5rem;
 }
 [data-sidebar="rail"] .shell-sidebar .nav-txt {
   opacity: 0;
