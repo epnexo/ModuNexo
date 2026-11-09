@@ -1,10 +1,9 @@
 "use client";
 
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 import { type NavGroup, groupHasActive, parseCollapsed, resolveIcon, toggleCollapsed } from "../../server/nav";
-import { NavIcon } from "./icon";
 import { NavLink } from "./nav-link";
 
 const STORAGE_KEY = "modunexo.nav.collapsed";
@@ -39,7 +38,6 @@ export function GroupNav({ group }: { group: NavGroup & { label: string } }) {
   }, [group.label]);
 
   const open = !collapsed || inside;
-  const Chevron = open ? ChevronDown : ChevronRight;
   function toggle() {
     const next = toggleCollapsed(readCollapsed(), group.label);
     writeCollapsed(next);
@@ -47,29 +45,26 @@ export function GroupNav({ group }: { group: NavGroup & { label: string } }) {
   }
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="nav-group flex flex-col gap-1" data-open={open}>
       <button
         type="button"
         onClick={toggle}
         aria-expanded={open}
         aria-controls={listId}
-        className="flex h-9 items-center gap-2 rounded-md px-2.5 text-sm font-semibold text-foreground transition-colors duration-150 hover:bg-panel-hover"
+        className="nav-group-btn flex h-9 items-center gap-2 rounded-md px-2.5 text-sm font-semibold text-foreground transition-colors duration-150 hover:bg-panel-hover"
       >
-        <Chevron aria-hidden className="size-4 text-muted" />
+        <ChevronRight aria-hidden className="nav-chev size-4 text-muted" />
         {group.label}
       </button>
-      {open ? (
-        <ul id={listId} className="ml-4 flex flex-col gap-0.5 border-l border-border pl-2">
+      <div className="nav-group-body">
+        <ul id={listId} className="nav-group-list ml-4 flex flex-col gap-0.5 border-l border-border pl-2">
           {group.entries.map((entry) => (
             <li key={`${entry.moduleId}:${entry.href}`}>
-              <NavLink href={entry.href}>
-                <NavIcon name={resolveIcon(entry.icon)} />
-                {entry.label}
-              </NavLink>
+              <NavLink href={entry.href} label={entry.label} icon={resolveIcon(entry.icon)} />
             </li>
           ))}
         </ul>
-      ) : null}
+      </div>
     </div>
   );
 }
