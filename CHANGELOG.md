@@ -7,6 +7,14 @@ checked against, and it changes only when the contract with modules changes. See
 
 ## [Unreleased]
 
+### Security
+
+- Updated `better-auth` from 1.7.7 to 1.7.18. It includes the fixes of the Better Auth security release of 2026-11-03
+  (1.7.16), among them one in how revoked sessions are honoured and one in the admin plugin. None was exploitable with
+  this configuration (no cookie cache or secondary storage, no OAuth, phone, email-code or passkey sign-in), so this is
+  a precaution; sign-in, sessions, the administrator guards and the rate limit behave as before. npm keeps one copy under
+  `packages/core` and one under `apps/web` instead of one shared copy; both are 1.7.18.
+
 ## [0.5.0] - 2026-11-10
 ### Fixed
 
