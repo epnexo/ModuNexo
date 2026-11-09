@@ -10,7 +10,7 @@ checked against, and it changes only when the contract with modules changes. See
 ### Added
 
 - The sidebar can be collapsed to a rail of icons and opened again, with the button in the top bar or the `[` key (not while
-  typing in a field). The choice is a cookie, so the server draws the right sidebar on the next page and nothing jumps. The
+  typing in a field). The rail is 64 px wide with 44 px targets. The choice is a cookie, so the server draws the right sidebar on the next page and nothing jumps. The
   names stay as each link's title and accessible name. Groups open and close with an animated height and a turning chevron.
   Motion shows a state change, lasts 150-260 ms, moves transform, opacity and one width, and is off for anyone who asked for
   less motion.
