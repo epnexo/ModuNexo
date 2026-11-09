@@ -11,12 +11,14 @@ import { AppearanceForm } from "../../../components/settings/appearance-form";
 import { ResetIdentity } from "../../../components/settings/reset-identity";
 import { McpPanel } from "../../../components/settings/mcp-panel";
 import { ApiAccess } from "../../../components/settings/api-access";
+import { ModulePicker } from "../../../components/settings/module-picker";
 import { ModuleSettings } from "../../../components/settings/module-settings";
 import { SecurityForm } from "../../../components/settings/security-form";
 import { modules } from "../../../generated/modules";
 import { resolvePublicUrl } from "../../../server/launch";
 import { buildAccessView } from "../../../server/api-access-view";
 import { mcpConnection } from "../../../server/mcp-connection";
+import { pickModule } from "../../../server/module-picker";
 import { platform } from "../../../server/platform";
 import { enabledModuleIds, webRegistry } from "../../../server/registry";
 import { resolveViewer } from "../../../server/viewer";
@@ -53,7 +55,7 @@ function cookiesAreSecure(): boolean {
   }
 }
 
-export default async function SettingsPage() {
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ module?: string | string[] }> }) {
   const viewer = await resolveViewer(await headers());
   if (viewer === null) redirect("/login");
 
@@ -76,19 +78,28 @@ export default async function SettingsPage() {
   const tokens = new TokenService(pool, registry);
   const address = resolveApiAddress({ saved: await new ApiAddressService(pool).get(), publicUrl: publicUrlOrigin(), requestOrigin: requestOrigin(await headers()) });
   const now = new Date();
-  const sections = await Promise.all(
-    modules
-      .filter((manifest) => enabled.has(manifest.id))
-      .map(async (manifest) => ({
-        id: manifest.id,
-        name: manifest.name,
-        entries: await settings.describe(manifest.id),
-        access: buildAccessView({ manifest, tokens: (manifest.scopes ?? []).length > 0 ? await tokens.list(manifest.id) : [], address, now }),
-      })),
-  );
+  // Only the module that is open is described and rendered: its settings, its token list and its HTML are the cost of one
+  // module, however many are installed. The id comes from the address, so it is checked against the enabled modules.
+  const enabledModules = modules.filter((manifest) => enabled.has(manifest.id)).map((manifest) => ({ id: manifest.id, name: manifest.name }));
+  const selectedId = pickModule(enabledModules, (await searchParams).module);
+  const selectedManifest = selectedId === null ? undefined : modules.find((manifest) => manifest.id === selectedId);
+  const selected =
+    selectedManifest === undefined
+      ? null
+      : {
+          id: selectedManifest.id,
+          name: selectedManifest.name,
+          entries: await settings.describe(selectedManifest.id),
+          access: buildAccessView({
+            manifest: selectedManifest,
+            tokens: (selectedManifest.scopes ?? []).length > 0 ? await tokens.list(selectedManifest.id) : [],
+            address,
+            now,
+          }),
+        };
 
   return (
-    <div className="flex max-w-3xl flex-col gap-10">
+    <div className="flex max-w-5xl flex-col gap-10">
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="text-muted">Everything here is stored by the platform; nothing needs an environment variable.</p>
@@ -137,22 +148,21 @@ export default async function SettingsPage() {
           </>) },
           { id: "mcp", label: "MCP", content: <McpPanel view={mcpConnection()} /> },
           { id: "modules", label: "Modules", content: (<>
-      {sections.length === 0 ? (
+      {selected === null ? (
         <p className="text-sm text-muted">No modules are enabled, so there are no module settings yet.</p>
       ) : (
-        sections.map((section) => (
-          <div key={section.id} className="flex flex-col gap-4">
-            <ModuleSettings
-              moduleId={section.id}
-              name={section.name}
-              entries={section.entries}
-              override={appearance.modules[section.id] ?? {}}
-              platform={{ accentHue: appearance.platform.accentHue, radius: appearance.platform.radius }}
-              canWrite={viewer.canWrite}
-            />
-            {section.access === null ? null : <ApiAccess moduleId={section.id} name={section.name} view={section.access} canWrite={viewer.canWrite} />}
-          </div>
-        ))
+        <ModulePicker entries={enabledModules} selected={selected.id}>
+          <ModuleSettings
+            key={selected.id}
+            moduleId={selected.id}
+            name={selected.name}
+            entries={selected.entries}
+            override={appearance.modules[selected.id] ?? {}}
+            platform={{ accentHue: appearance.platform.accentHue, radius: appearance.platform.radius }}
+            canWrite={viewer.canWrite}
+          />
+          {selected.access === null ? null : <ApiAccess key={`${selected.id}-access`} moduleId={selected.id} name={selected.name} view={selected.access} canWrite={viewer.canWrite} />}
+        </ModulePicker>
       )}
           </>) },
         ]}

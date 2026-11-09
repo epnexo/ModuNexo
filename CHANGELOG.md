@@ -7,6 +7,14 @@ checked against, and it changes only when the contract with modules changes. See
 
 ## [Unreleased]
 
+### Changed
+
+- Settings, Modules tab: pick a module from a searchable list and see only its settings and API access, instead of every
+  module stacked on one page. The choice is in the address (`/settings?module=<id>#modules`), so it survives a reload and
+  can be shared. The server describes and renders only that module, so the page no longer grows with the number of
+  installed modules. An id that is not an enabled module is never described; the first enabled module is shown instead.
+  Administrator-only access to the page is unchanged.
+
 ## [0.4.0] - 2026-11-08
 ## [0.3.3] - 2026-11-08
 ### Fixed
