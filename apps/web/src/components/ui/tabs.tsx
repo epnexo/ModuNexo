@@ -17,6 +17,9 @@ export function Tabs({ tabs, label, actions, value, onValueChange }: { tabs: Tab
   const [inner, setInner] = useState(tabs[0]!.id);
   const current = tabs.some((tab) => tab.id === (value ?? inner)) ? (value ?? inner) : tabs[0]!.id;
   const refs = useRef<Record<string, HTMLButtonElement | null>>({});
+  // The underline is one element that slides to the current tab. Until it is measured the current tab draws its own.
+  const [ink, setInk] = useState<{ x: number; w: number } | null>(null);
+  const [slide, setSlide] = useState(false);
 
   const select = (id: string) => {
     setInner(id);
@@ -38,6 +41,31 @@ export function Tabs({ tabs, label, actions, value, onValueChange }: { tabs: Tab
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Another part of the page (the Settings search) can ask for a tab.
+  useEffect(() => {
+    const onTab = (event: Event) => {
+      const id = (event as CustomEvent<string>).detail;
+      if (tabs.some((tab) => tab.id === id)) select(id);
+    };
+    window.addEventListener("modunexo:tab", onTab);
+    return () => window.removeEventListener("modunexo:tab", onTab);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabs]);
+
+  useEffect(() => {
+    const measure = () => {
+      const node = refs.current[current];
+      if (node) setInk({ x: node.offsetLeft, w: node.offsetWidth });
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    const frame = requestAnimationFrame(() => setSlide(true)); // the first position is set without moving
+    return () => {
+      window.removeEventListener("resize", measure);
+      cancelAnimationFrame(frame);
+    };
+  }, [current, tabs.length]);
+
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     const at = tabs.findIndex((tab) => tab.id === current);
     const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
@@ -53,7 +81,7 @@ export function Tabs({ tabs, label, actions, value, onValueChange }: { tabs: Tab
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border">
-        <div role="tablist" aria-label={label} onKeyDown={onKeyDown} className="-mb-px flex max-w-full gap-1 overflow-x-auto">
+        <div role="tablist" aria-label={label} onKeyDown={onKeyDown} className="relative -mb-px flex max-w-full gap-1 overflow-x-auto">
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -69,12 +97,24 @@ export function Tabs({ tabs, label, actions, value, onValueChange }: { tabs: Tab
               onClick={() => select(tab.id)}
               className={
                 "shrink-0 border-b-2 px-3 py-2 text-sm font-medium transition-colors duration-150 " +
-                (current === tab.id ? "border-accent text-foreground" : "border-transparent text-muted hover:text-foreground")
+                (current === tab.id ? "text-foreground " : "text-muted hover:text-foreground ") +
+                (ink === null && current === tab.id ? "border-accent" : "border-transparent")
               }
             >
               {tab.label}
             </button>
           ))}
+          {ink === null ? null : (
+            <span
+              aria-hidden
+              className="pointer-events-none absolute bottom-0 left-0 h-0.5 bg-accent motion-reduce:transition-none"
+              style={{
+                width: ink.w,
+                transform: `translateX(${ink.x}px)`,
+                transition: slide ? "transform 220ms cubic-bezier(0.16, 1, 0.3, 1), width 220ms cubic-bezier(0.16, 1, 0.3, 1)" : "none",
+              }}
+            />
+          )}
         </div>
         {actions !== undefined ? <div className="mb-2">{actions}</div> : null}
       </div>

@@ -9,7 +9,7 @@ import type { PickerEntry } from "../../server/module-picker";
  * The list is made of links (`?module=<id>`), so a choice survives a reload, can be shared, and is rendered by the server,
  * which describes only that one module. Below the `md` breakpoint the list sits above the panel.
  */
-export function ModulePicker({ entries, selected, children }: { entries: PickerEntry[]; selected: string; children: ReactNode }) {
+export function ModulePicker({ entries, selected, children }: { entries: (PickerEntry & { needs?: number })[]; selected: string; children: ReactNode }) {
   const [query, setQuery] = useState("");
   const searchId = useId();
   const needle = query.trim().toLowerCase();
@@ -46,7 +46,8 @@ export function ModulePicker({ entries, selected, children }: { entries: PickerE
                       (entry.id === selected ? "bg-accent-soft font-semibold text-accent-soft-foreground" : "hover:bg-panel-hover")
                     }
                   >
-                    {entry.name}
+                    <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+                    {entry.needs !== undefined && entry.needs > 0 ? <span className="shrink-0 text-xs font-semibold text-accent">Needs setup</span> : null}
                   </Link>
                 </li>
               ))

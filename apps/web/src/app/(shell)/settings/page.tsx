@@ -12,6 +12,7 @@ import { ResetIdentity } from "../../../components/settings/reset-identity";
 import { McpPanel } from "../../../components/settings/mcp-panel";
 import { ApiAccess } from "../../../components/settings/api-access";
 import { ModulePicker } from "../../../components/settings/module-picker";
+import { SettingsSearch } from "../../../components/settings/settings-search";
 import { ModuleSettings } from "../../../components/settings/module-settings";
 import { SecurityForm } from "../../../components/settings/security-form";
 import { modules } from "../../../generated/modules";
@@ -19,6 +20,7 @@ import { resolvePublicUrl } from "../../../server/launch";
 import { buildAccessView } from "../../../server/api-access-view";
 import { mcpConnection } from "../../../server/mcp-connection";
 import { pickModule } from "../../../server/module-picker";
+import { buildSettingsIndex } from "../../../server/settings-index";
 import { platform } from "../../../server/platform";
 import { enabledModuleIds, webRegistry } from "../../../server/registry";
 import { resolveViewer } from "../../../server/viewer";
@@ -82,6 +84,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   // module, however many are installed. The id comes from the address, so it is checked against the enabled modules.
   const enabledModules = modules.filter((manifest) => enabled.has(manifest.id)).map((manifest) => ({ id: manifest.id, name: manifest.name }));
   const selectedId = pickModule(enabledModules, (await searchParams).module);
+  // Which modules still have a required setting to fill in: a count per module, no values, no rendering.
+  const pickerEntries = await Promise.all(enabledModules.map(async (entry) => ({ ...entry, needs: (await settings.incomplete(entry.id)).length })));
+  const settingsIndex = buildSettingsIndex(modules, enabled);
   const selectedManifest = selectedId === null ? undefined : modules.find((manifest) => manifest.id === selectedId);
   const selected =
     selectedManifest === undefined
@@ -100,9 +105,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="flex max-w-5xl flex-col gap-10">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="text-muted">Everything here is stored by the platform; nothing needs an environment variable.</p>
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
+          <p className="text-muted">Everything here is stored by the platform; nothing needs an environment variable.</p>
+        </div>
+        <SettingsSearch index={settingsIndex} />
       </div>
 
       <Tabs
@@ -151,7 +159,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       {selected === null ? (
         <p className="text-sm text-muted">No modules are enabled, so there are no module settings yet.</p>
       ) : (
-        <ModulePicker entries={enabledModules} selected={selected.id}>
+        <ModulePicker entries={pickerEntries} selected={selected.id}>
           <ModuleSettings
             key={selected.id}
             moduleId={selected.id}
