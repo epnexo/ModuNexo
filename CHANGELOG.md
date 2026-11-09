@@ -15,6 +15,10 @@ checked against, and it changes only when the contract with modules changes. See
   Motion shows a state change, lasts 150-260 ms, moves transform, opacity and one width, and is off for anyone who asked for
   less motion.
 
+- Settings has one search box for every setting: type part of a label, its help text or a module's name and go straight to
+  it. The index is built from what the modules declare, so it holds labels and links, never a value. The module list marks the
+  modules that still have a required setting to fill in with "Needs setup". The tabs underline slides to the current tab.
+
 ### Changed
 
 - The page area is wider (`max-w-7xl` instead of `max-w-5xl`) and a little tighter at the top, so tables and forms use the
