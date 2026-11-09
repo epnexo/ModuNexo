@@ -45,7 +45,12 @@ export function Tabs({ tabs, label, actions, value, onValueChange }: { tabs: Tab
   useEffect(() => {
     const onTab = (event: Event) => {
       const id = (event as CustomEvent<string>).detail;
-      if (tabs.some((tab) => tab.id === id)) select(id);
+      // Only show the tab: the caller owns the address (its own push already carries the hash), and a replaceState here
+      // would overwrite that navigation with the old address.
+      if (tabs.some((tab) => tab.id === id)) {
+        setInner(id);
+        onValueChange?.(id);
+      }
     };
     window.addEventListener("modunexo:tab", onTab);
     return () => window.removeEventListener("modunexo:tab", onTab);
