@@ -38,7 +38,7 @@
   },
   "dependencies": {
     "@modunexo/sdk": "^0.1.0",
-    "better-auth": "^1.7.7",
+    "better-auth": "^1.7.18",
     "kysely": "^0.29.6",
     "pg": "^8.23.1",
     "semver": "^7.6.0",
