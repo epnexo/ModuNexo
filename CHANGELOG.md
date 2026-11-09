@@ -21,8 +21,8 @@ checked against, and it changes only when the contract with modules changes. See
 
 ### Changed
 
-- The page area is wider (`max-w-7xl` instead of `max-w-5xl`) and a little tighter at the top, so tables and forms use the
-  space they were losing. With the sidebar collapsed the page grows again (`104rem`), so hiding it gives the content the room. The layout of the shell (Dashboard, module groups, Admin at the bottom) is unchanged.
+- The page area is wider (up to `96rem` instead of `64rem`) and a little tighter at the top, so tables and forms use the
+  space they were losing. With the sidebar collapsed the page grows again (`120rem`, `96rem` with it open), so hiding it gives the content the room. The layout of the shell (Dashboard, module groups, Admin at the bottom) is unchanged.
 - Settings, Modules tab: pick a module from a searchable list and see only its settings and API access, instead of every
   module stacked on one page. The choice is in the address (`/settings?module=<id>#modules`), so it survives a reload and
   can be shared. The server describes and renders only that module, so the page no longer grows with the number of

@@ -67,7 +67,7 @@ export default async function StatusPage() {
   const models = modelRows(registry.all(), enabled);
 
   return (
-    <div className="flex max-w-5xl flex-col gap-10">
+    <div className="flex flex-col gap-10">
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-tight">Status</h1>
         <p className="text-muted">What the platform is doing in the background. Reload the page to see it again.</p>

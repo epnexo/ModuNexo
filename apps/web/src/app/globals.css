@@ -126,11 +126,11 @@
 
 /* The page grows into the space the sidebar gives back: a collapsed sidebar is for having more room. */
 .shell-main {
-  max-width: 80rem;
+  max-width: 96rem;
   transition: max-width var(--duration-slow) var(--ease-out);
 }
 [data-sidebar="rail"] .shell-main {
-  max-width: 104rem;
+  max-width: 120rem;
 }
 
 /* The rail: icons only. The names stay as each link's title and accessible name. */
