@@ -65,7 +65,7 @@ export default async function ShellLayout({ children }: { children: ReactNode })
             <ThemeToggle />
           </div>
         </header>
-        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-8">
+        <main className="shell-main mx-auto w-full flex-1 px-4 py-6 sm:px-8">
           <ModuleScope scopes={scopes}>{children}</ModuleScope>
         </main>
         <BrandFooter profile={brand.profile} />
