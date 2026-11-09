@@ -1,4 +1,8 @@
 import { createHash } from "node:crypto";
+import { initialsOf } from "./brand-profile.ts";
+
+// Re-exported so existing imports keep working; client code imports it from `./brand-profile` (no Node modules).
+export { initialsOf };
 
 export const BRAND_KINDS = ["business", "personal"] as const;
 export type BrandKind = (typeof BRAND_KINDS)[number];
@@ -110,13 +114,4 @@ export function validateImage(bytes: Uint8Array): Checked<{ contentType: ImageTy
   const contentType = sniffImage(bytes);
   if (contentType === null) return { ok: false, message: "the image must be a PNG, JPEG or WebP file" };
   return { ok: true, value: { contentType, sha256: createHash("sha256").update(bytes).digest("hex") } };
-}
-
-/** Up to two initials for a monogram: first letters of the first and last words. */
-export function initialsOf(name: string): string {
-  const words = name.trim().split(/\s+/).filter((word) => word !== "");
-  if (words.length === 0) return "?";
-  const first = Array.from(words[0]!)[0]!;
-  const last = words.length > 1 ? Array.from(words[words.length - 1]!)[0]! : "";
-  return (first + last).toUpperCase();
 }

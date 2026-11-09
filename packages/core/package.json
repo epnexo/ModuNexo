@@ -20,6 +20,7 @@
     "./llm": "./src/llm/index.ts",
     "./jobs": "./src/jobs/index.ts",
     "./brand": "./src/settings/brand.ts",
+    "./brand-profile": "./src/settings/brand-profile.ts",
     "./version": "./src/version.ts",
     "./registry": "./src/registry.ts",
     "./packages": "./src/packages/index.ts",
