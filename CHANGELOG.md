@@ -7,6 +7,7 @@ checked against, and it changes only when the contract with modules changes. See
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-10
 ### Fixed
 
 - The petrol accent now reaches the pages. The appearance layer wrote `--accent` and its companions with the previous blue values
