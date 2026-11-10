@@ -54,7 +54,7 @@ export default async function ShellLayout({ children }: { children: ReactNode })
           </div>
           <div className="ml-auto flex items-center gap-2">
             {who === null ? (
-              <span className="rounded-md bg-warning-soft px-2 py-1 text-xs font-medium" title="Sign-in is switched off; this shell serves the local network only.">
+              <span className="badge badge-warning" title="Sign-in is switched off; this shell serves the local network only.">
                 Local operator · sign-in off
               </span>
             ) : (
