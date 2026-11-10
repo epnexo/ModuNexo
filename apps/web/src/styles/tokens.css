@@ -53,6 +53,13 @@
   --duration-slow: 260ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 
+  /* Spacing and cards: the defaults every page and module starts from. A module may read them as they are, or set its
+     own value for its own page (for example `--card-pad: 1rem` on its root element) and keep the rest. */
+  --layout-gap: 1.25rem;
+  --card-pad: 1.125rem;
+  --card-gap: 0.75rem;
+  --card-radius: var(--radius);
+
   /* Layout. */
   --sidebar-width: 15.5rem;
   --sidebar-rail: 4rem;

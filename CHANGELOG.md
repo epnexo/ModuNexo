@@ -32,6 +32,10 @@ checked against, and it changes only when the contract with modules changes. See
   that brings the same figures), and not at all with reduced motion. An older platform refuses a manifest that declares `charts`.
   `modules add` counts the charts in its review.
 
+- The spacing every page and module starts from is now a set of variables in the global tokens (`--layout-gap`, `--card-pad`,
+  `--card-gap`, `--card-radius`). A module reads them to match the platform and can set its own value on its page without
+  losing the rest. Nothing is enforced: they are defaults.
+
 ### Changed
 
 - The browser no longer downloads a cryptography library it never used: a client component imported `initialsOf` from a module that also imports
