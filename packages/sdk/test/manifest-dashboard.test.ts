@@ -40,8 +40,8 @@ describe("validateManifest: dashboard", () => {
 
   it("refuses a dashboard that is not an object, is empty, or has unknown fields", () => {
     assert.match(problemsOf(withDashboard([]))[0] ?? "", /dashboard must be an object/);
-    assert.match(problemsOf(withDashboard({}))[0] ?? "", /dashboard must declare at least one stat or alert/);
-    assert.match(problemsOf(withDashboard({ stats: [], alerts: [] }))[0] ?? "", /dashboard must declare at least one stat or alert/);
+    assert.match(problemsOf(withDashboard({}))[0] ?? "", /dashboard must declare at least one stat, alert or chart/);
+    assert.match(problemsOf(withDashboard({ stats: [], alerts: [] }))[0] ?? "", /dashboard must declare at least one stat, alert or chart/);
     assert.match(problemsOf(withDashboard({ stats: [stat], widgets: [] })).join("\n"), /dashboard has unknown field "widgets"/);
   });
 
