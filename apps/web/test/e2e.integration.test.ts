@@ -892,11 +892,11 @@ describe("web app: with a module installed", () => {
     assert.equal(saved.status, 200, saved.body);
     for (const path of ["/", "/settings", "/e2e-fixture"]) {
       const page = await call("GET", path, { cookie });
-      assert.match(html(page), /oklch\(0\.49 0\.15 140\)/, `${path} carries the new accent`);
+      assert.match(html(page), /oklch\(0\.45 0\.075 140\)/, `${path} carries the new accent`);
       assert.match(html(page), /--radius:1rem/);
     }
     const login = await call("GET", "/login");
-    assert.match(html(login), /oklch\(0\.49 0\.15 140\)/, "the sign-in page follows it too");
+    assert.match(html(login), /oklch\(0\.45 0\.075 140\)/, "the sign-in page follows it too");
     assert.match(html(login), /matchMedia|"dark"/);
   });
 
@@ -907,13 +907,13 @@ describe("web app: with a module installed", () => {
     const set = await put(`/api/settings/modules/${FIXTURE_ID}/appearance`, { accentHue: 20, radius: "sharp" }, { cookie });
     assert.equal(set.status, 200, set.body);
     const page = await call("GET", "/e2e-fixture", { cookie });
-    assert.match(html(page), /\[data-module="e2e-fixture"\]\{[^}]*--accent:oklch\(0\.49 0\.15 20\)/);
+    assert.match(html(page), /\[data-module="e2e-fixture"\]\{[^}]*--accent:oklch\(0\.45 0\.075 20\)/);
     assert.match(html(page), /\[data-module="e2e-fixture"\]\{--radius:0\.25rem/);
 
     // Text that is not a number is refused and must not clear the override that is stored.
     const garbage = await put(`/api/settings/modules/${FIXTURE_ID}/appearance`, { accentHue: "abc" }, { cookie });
     assert.equal(garbage.status, 422);
-    assert.match(html(await call("GET", "/e2e-fixture", { cookie })), /\[data-module="e2e-fixture"\]\{[^}]*--accent:oklch\(0\.49 0\.15 20\)/);
+    assert.match(html(await call("GET", "/e2e-fixture", { cookie })), /\[data-module="e2e-fixture"\]\{[^}]*--accent:oklch\(0\.45 0\.075 20\)/);
 
     const cleared = await put(`/api/settings/modules/${FIXTURE_ID}/appearance`, { accentHue: null, radius: null }, { cookie });
     assert.equal(cleared.status, 200);
