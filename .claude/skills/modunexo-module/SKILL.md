@@ -18,11 +18,11 @@ Do these three checks first; they are what keeps a new module on the platform's 
 1. **Start from a sibling.** Open the module closest to yours in the modules repository (`ModuNexo-modules`, folder
    `modules/<id>`): `contacts` for lists, forms and a pipeline, `agenda` for settings and bookings, `inbox` for a
    conversation view, `ai-usage` for charts. Copy its structure, not its code, and keep its file names and `tests/<id>/` layout.
-2. **Use what the platform already gives** (see "Styling" under Rules): tokens, the global classes `card`, `badge` and
-   `icon-tile`, the spacing variables, the SDK. A module that needs a pattern none of them offers writes only that
+2. **Use what the platform already gives** (see "Styling" under Rules): tokens, the global classes (`card`, `badge`,
+   `icon-tile`, `seg`, `stat`, `notice`, `data-table`), the spacing variables, the SDK. A module that needs a pattern none of them offers writes only that
    pattern, scoped and prefixed.
-3. **A pattern needed twice belongs in the platform.** If a second module would need what a first one built (a segmented
-   control, a figure with its label, a notice, a data table), stop and add it to the platform's styles instead of
+3. **A pattern needed twice belongs in the platform.** If a second module would need what a first one built (a form
+   field, a dialog, a tab strip, an empty state), stop and add it to the platform's styles instead of
    copying it. The full contract is the section "Styling a module" of `docs/GUIDE.md` in the modules repository.
 
 ## Steps
@@ -104,6 +104,13 @@ Do these three checks first; they are what keeps a new module on the platform's 
   - Global classes, one look everywhere: `card` (surface, border, radius, padding, accent line; add layout utilities,
     `p-3` for a dense one), `badge` with a tone `badge-info|success|warning|danger` (a state in one word, with a dot) and
     `icon-tile` (a square holding one icon). Do not hand-write the box recipe `rounded-lg border border-border bg-surface p-4`.
+    Also `seg` (a segmented control; the current link has `aria-current`), `stats` > `stat` with `stat-label`, `stat-value`
+    and `stat-sub` (a figure; `--stat-tone` colours it, `--stat-line` sets its top line), `notice` (a banner: warning by
+    default, `notice-info`, `notice-error`) and `data-table` inside `table-scroll` (a table of records; `right` and `num` on
+    cells). Use them in markup; never rebuild them.
+  - The style is closed: a module's stylesheet never names a platform class and never redefines one. Whatever it adds is
+    its own, in `modules/<id>/web/<id>.css`, with every selector under its root class or prefix and colour values only in
+    custom properties. `tests/styles` in the modules repository fails otherwise.
   - Spacing and shape are variables with the platform's value as default: `--layout-gap`, `--card-pad`, `--card-gap`,
     `--card-radius`, `--card-line-opacity` (`0` removes the accent line). To differ, set them once on the module's page
     root; do not restyle the global classes.
