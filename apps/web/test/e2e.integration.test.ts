@@ -234,14 +234,15 @@ describe("web app: sign-in required", () => {
     const home = await call("GET", "/", { cookie });
     assert.equal(home.status, 200);
     assert.match(home.body, new RegExp(EMAIL));
-    assert.match(home.body, /Dashboard<\/a>/, "the first entry of the sidebar is the dashboard");
+    assert.match(home.body, /aria-label="Dashboard"[^>]*>.*?Dashboard<\/span><\/a>/, "the first entry of the sidebar is the dashboard, with its name as the accessible name for the collapsed rail");
     assert.ok(home.body.includes(">Admin<"), "an administrator is given the Admin block at the bottom of the sidebar");
-    assert.ok(!home.body.includes('href="/status"'), "the block is closed on a page outside it");
+    assert.match(home.body, /aria-expanded="false"(?:(?!<\/button>).)*Admin/s, "the Admin block is closed on a page outside it (its links stay in the page for the rail, hidden from focus and from assistive technology by CSS)");
     assert.match(home.body, /No modules are installed yet/, "with zero modules the dashboard says so");
     assert.match(home.body, /Sign out/);
     assert.ok(home.body.includes(`Modunexo ${CORE_VERSION}`), "every screen of the shell says which version of the platform this is");
     const apps = await call("GET", "/apps", { cookie });
     for (const path of ["/apps", "/status", "/settings"]) assert.match(apps.body, new RegExp(`href="${path}"`), `the Admin block is open on /apps and lists ${path}`);
+    assert.match(apps.body, /aria-expanded="true"(?:(?!<\/button>).)*Admin/s, "and says so");
     assert.equal(apps.status, 200);
     assert.match(apps.body, /No modules are enabled in this build/);
     assert.equal((await call("GET", "/settings", { cookie })).status, 200);
