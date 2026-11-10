@@ -26,6 +26,12 @@ checked against, and it changes only when the contract with modules changes. See
 - Changing the theme reveals the new one with a circle that grows from the theme button (620 ms), using the browser's View Transitions.
   In a browser without View Transitions (for example Firefox before 144) the colors fade over 400 ms instead; with reduced motion the theme changes at once. The choice is stored as before.
 
+- Modules can put a **bar chart** on the dashboard: `dashboard.charts` in the manifest (SDK `0.1.2`, optional). Each chart is one read-only
+  statement run like a stat, one bar per row, drawn by the platform with the value above each bar, the average, a Replay button and a click
+  through to the module. The bars grow from the base in 820 ms, 65 ms apart, on first show and whenever the figures change (not on a refresh
+  that brings the same figures), and not at all with reduced motion. An older platform refuses a manifest that declares `charts`.
+  `modules add` counts the charts in its review.
+
 ### Changed
 
 - The browser no longer downloads a cryptography library it never used: a client component imported `initialsOf` from a module that also imports

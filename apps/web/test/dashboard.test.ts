@@ -6,7 +6,7 @@ import { buildDashboard } from "../src/server/dashboard.ts";
 const NOW = new Date("2026-10-23T12:00:00Z");
 const minutesAgo = (n: number) => new Date(NOW.getTime() - n * 60_000);
 
-const cards = (over: Partial<ModuleCards> = {}): ModuleCards => ({ stats: [], alerts: [], silent: [], enabled: 0, ...over });
+const cards = (over: Partial<ModuleCards> = {}): ModuleCards => ({ stats: [], charts: [], alerts: [], silent: [], enabled: 0, ...over });
 const overview = (over: Partial<PlatformOverview> = {}): PlatformOverview => ({ modules: { enabled: 2, disabled: 1 }, jobs: { queued: 0, running: 0 }, alerts: [], activity: [], ...over });
 const alertCard = (over: Record<string, unknown> = {}) => ({ moduleId: "inbox", moduleName: "Inbox", key: "unanswered", label: "Unanswered conversations", href: "/inbox", severity: "warning" as const, count: 3, ...over });
 const statCard = (over: Record<string, unknown> = {}) => ({ moduleId: "contacts", moduleName: "Contacts", key: "people", label: "People", href: "/contacts", value: 12 as number | string | null, ...over });
@@ -84,5 +84,29 @@ describe("buildDashboard: figures, silent modules and the platform block", () =>
     assert.deepEqual([shown.empty, shown.hidden], [false, false]);
     const admin = buildDashboard({ cards: cards({ enabled: 4 }), overview: overview(), now: NOW });
     assert.deepEqual([admin.empty, admin.hidden], [false, false], "an administrator always has the platform block");
+  });
+});
+
+const chartCard = (over: Record<string, unknown> = {}) => ({ moduleId: "ai-usage", moduleName: "AI usage", key: "tokens_by_day", label: "Tokens per day", href: "/ai-usage", points: [{ label: "08 Nov", value: 10 }, { label: "09 Nov", value: 31 }] as { label: string; value: number }[] | null, ...over });
+
+describe("buildDashboard: charts", () => {
+  it("lists a chart with its source, its bars and the rounded average of them", () => {
+    const view = buildDashboard({ cards: cards({ enabled: 1, charts: [chartCard()] }), overview: null, now: NOW });
+    assert.deepEqual(view.charts, [{ key: "ai-usage:tokens_by_day", label: "Tokens per day", source: "AI usage", href: "/ai-usage", bars: [{ label: "08 Nov", value: 10 }, { label: "09 Nov", value: 31 }], average: 21, max: 31, available: true }]);
+  });
+
+  it("marks a chart that could not be read as not available, with no bars and no average", () => {
+    const [chart] = buildDashboard({ cards: cards({ enabled: 1, charts: [chartCard({ points: null })] }), overview: null, now: NOW }).charts;
+    assert.deepEqual([chart?.available, chart?.bars, chart?.average], [false, [], null]);
+  });
+
+  it("has no average for a chart with no bars yet, but still lists it", () => {
+    const [chart] = buildDashboard({ cards: cards({ enabled: 1, charts: [chartCard({ points: [] })] }), overview: null, now: NOW }).charts;
+    assert.deepEqual([chart?.available, chart?.bars, chart?.average, chart?.max], [true, [], null, 0]);
+  });
+
+  it("does not call the dashboard hidden when the only thing this viewer may see is a chart", () => {
+    const view = buildDashboard({ cards: cards({ enabled: 1, charts: [chartCard()] }), overview: null, now: NOW });
+    assert.deepEqual([view.empty, view.hidden], [false, false]);
   });
 });
