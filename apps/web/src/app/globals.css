@@ -174,7 +174,25 @@
   overflow: hidden;
 }
 
+/* A new page fades and rises a little as it appears, so a change of screen is never an abrupt swap. */
+.page-enter {
+  animation: page-enter 420ms var(--ease-out) both;
+}
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .page-enter {
+    animation: none;
+  }
   .shell-sidebar,
   .nav-txt,
   .nav-chev,

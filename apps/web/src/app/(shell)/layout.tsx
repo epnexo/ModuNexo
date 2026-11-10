@@ -1,3 +1,4 @@
+import { PageEnter } from "@/components/shell/page-enter";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
@@ -66,7 +67,9 @@ export default async function ShellLayout({ children }: { children: ReactNode })
           </div>
         </header>
         <main className="shell-main mx-auto w-full flex-1 px-4 py-6 sm:px-8">
-          <ModuleScope scopes={scopes}>{children}</ModuleScope>
+          <ModuleScope scopes={scopes}>
+            <PageEnter>{children}</PageEnter>
+          </ModuleScope>
         </main>
         <BrandFooter profile={brand.profile} />
       </div>

@@ -36,6 +36,10 @@ checked against, and it changes only when the contract with modules changes. See
   `--card-gap`, `--card-radius`). A module reads them to match the platform and can set its own value on its page without
   losing the rest. Nothing is enforced: they are defaults.
 
+- A page now fades in and rises a little (420 ms) when the address changes: another module, another screen, or another tab of a module
+  that has its own address, such as one CLI of AI usage to another. A filter that only changes the query string does not replay it, and
+  with reduced motion there is no animation.
+
 ### Changed
 
 - The browser no longer downloads a cryptography library it never used: a client component imported `initialsOf` from a module that also imports
