@@ -1,6 +1,6 @@
 ---
 name: modunexo-module
-description: "Create, extend or upgrade a custom module for the modunexo platform: generate it, give it data, relate it to other modules, pack and install it. Trigger: creating or changing a module under modules-src/, a manifest.ts, a module migration, or a module page."
+description: "Create, extend or upgrade a custom module for the modunexo platform: generate it, give it data, relate it to other modules, pack and install it. Trigger: creating or changing a module under modules-src/, a manifest.ts, a module migration, or a module page; also its styling (CSS, cards, badges, theme)."
 license: Apache-2.0
 metadata:
   version: "1.0"
@@ -11,13 +11,27 @@ metadata:
 The user wants a new module (documents, contacts, anything), a change to one, or to connect two modules. The platform
 (this repository) stays as it is; a module is a separate package that is generated, packed and installed.
 
+## Before you build (do not redo what exists)
+
+Do these three checks first; they are what keeps a new module on the platform's line instead of a second copy of it.
+
+1. **Start from a sibling.** Open the module closest to yours in the modules repository (`ModuNexo-modules`, folder
+   `modules/<id>`): `contacts` for lists, forms and a pipeline, `agenda` for settings and bookings, `inbox` for a
+   conversation view, `ai-usage` for charts. Copy its structure, not its code, and keep its file names and `tests/<id>/` layout.
+2. **Use what the platform already gives** (see "Styling" under Rules): tokens, the global classes `card`, `badge` and
+   `icon-tile`, the spacing variables, the SDK. A module that needs a pattern none of them offers writes only that
+   pattern, scoped and prefixed.
+3. **A pattern needed twice belongs in the platform.** If a second module would need what a first one built (a segmented
+   control, a figure with its label, a notice, a data table), stop and add it to the platform's styles instead of
+   copying it. The full contract is the section "Styling a module" of `docs/GUIDE.md` in the modules repository.
+
 ## Steps
 
 1. **Decide the shape before generating.** One module is one concern. Pick the `id` (kebab-case, also the folder and
    the URL), what data it owns (its own Postgres schema, named after the id with `_`), and which other modules it must
    read. Ask the user only for what you cannot infer.
 2. **Generate.** `npm run modunexo -- modules new <id> --name "<Name>"` writes `modules-src/<id>/` (manifest, a first
-   migration, a page that lists and adds rows with `getDb`). Edit that folder; do not copy another module.
+   migration, a page that lists and adds rows with `getDb`). Edit that folder; do not copy another module's code. Keep real modules in their own repository: pass `--dir <parent>` (a module there is `<parent>/<id>/`); the default `modules-src/` is untracked and meant for trying things out.
 3. **Data.** Tables live in `migrations/NNNN_name.sql`, run with `search_path` set to the module's schema, so write
    `create table items (...)` without a schema prefix. **Applied files are append-only**: to change a table add
    `0002_*.sql` and raise `version` in `manifest.ts` AND `package.json` (they must match; an upgrade to the same
@@ -83,8 +97,19 @@ The user wants a new module (documents, contacts, anything), a change to one, or
   use `fetch` or a provider SDK, and never read the key yourself. Catch `LlmError` and branch on `error.code`. The wire format
   is OpenAI-compatible, so a local server works too. Do not build the endpoint from user input. See the README section
   "Language models".
-- UI: reuse the shell's tokens and classes (`bg-surface`, `border-border`, `text-muted`, `bg-accent`), English copy,
-  one concern per screen (tabs or on-demand panels, not a stack of sections).
+- **Styling.** A module looks like the platform because it reads the platform's tokens, never because it copies values.
+  - Colors, borders and text: token utilities only (`bg-surface`, `bg-panel`, `border-border`, `text-muted`,
+    `text-accent`, `bg-accent-soft`, `bg-danger-soft`, `bg-success-soft`, `bg-warning-soft`). No color values, no `dark:`
+    colors: the tokens follow the theme.
+  - Global classes, one look everywhere: `card` (surface, border, radius, padding, accent line; add layout utilities,
+    `p-3` for a dense one), `badge` with a tone `badge-info|success|warning|danger` (a state in one word, with a dot) and
+    `icon-tile` (a square holding one icon). Do not hand-write the box recipe `rounded-lg border border-border bg-surface p-4`.
+  - Spacing and shape are variables with the platform's value as default: `--layout-gap`, `--card-pad`, `--card-gap`,
+    `--card-radius`, `--card-line-opacity` (`0` removes the accent line). To differ, set them once on the module's page
+    root; do not restyle the global classes.
+  - Own CSS only for what the platform lacks (charts, a tool's colors): import it from the page, prefix every class with
+    the module's short name, scope it under one root class, and build it from the tokens so it follows the theme.
+  - English copy, one concern per screen (tabs or on-demand panels, not a stack of sections).
 - Code, comments, UI text and commits are in English.
 - Be honest about the limit: `getDb` is a contract for well-behaved modules, not a sandbox. A module runs inside the
   platform with its credentials, so install only packages whose source you trust.
@@ -92,4 +117,6 @@ The user wants a new module (documents, contacts, anything), a change to one, or
 ## Check before saying it works
 
 `npm run modunexo -- modules pack ...` exits 0, the module installs, its page renders with real data, and a second
-module that lists the first in `dependsOn` can read it and cannot write to it.
+module that lists the first in `dependsOn` can read it and cannot write to it. Toggle the theme on the module's page: it
+must read well in light and dark with no value of its own. The modules repository's `tests/styles` fails on a hand-written
+card or a hard-coded color.
