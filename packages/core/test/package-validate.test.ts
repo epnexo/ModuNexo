@@ -416,7 +416,14 @@ describe("validatePackageTree: dashboard", () => {
     writeGood({ manifest: { dashboard } });
     const full = validatePackageTree(root, context());
     assert.equal(full.ok, true, full.ok ? "" : full.problems.join("\n"));
-    if (full.ok) assert.deepEqual(full.review.dashboard, { stats: 1, alerts: 2 });
+    if (full.ok) assert.deepEqual(full.review.dashboard, { stats: 1, alerts: 2, charts: 0 });
+  });
+
+  it("counts the charts too", () => {
+    writeGood({ manifest: { dashboard: { charts: [{ key: "by_day", label: "By day", href: "/items", sql: "select 'a' as label, 1 as value" }] } } });
+    const full = validatePackageTree(root, context());
+    assert.equal(full.ok, true, full.ok ? "" : full.problems.join("\n"));
+    if (full.ok) assert.deepEqual(full.review.dashboard, { stats: 0, alerts: 0, charts: 1 });
   });
 
   it("shows null for a module that declares no dashboard, which stays valid", () => {

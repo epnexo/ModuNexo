@@ -66,7 +66,7 @@ export async function runAddCommand(
   if (open.length > 0) row("public", `${list(open.map((page) => page.path))} - answer without a sign-in, guarded only by their signature`);
   row("nav", list(review.nav.map((item) => item.label)));
   row("permissions", list(review.permissions.map((permission) => permission.key)));
-  row("dashboard", review.dashboard === null ? "none" : `${review.dashboard.stats} ${review.dashboard.stats === 1 ? "figure" : "figures"}, ${review.dashboard.alerts} ${review.dashboard.alerts === 1 ? "alert" : "alerts"}`);
+  row("dashboard", review.dashboard === null ? "none" : `${review.dashboard.stats} ${review.dashboard.stats === 1 ? "figure" : "figures"}, ${review.dashboard.alerts} ${review.dashboard.alerts === 1 ? "alert" : "alerts"}${review.dashboard.charts > 0 ? `, ${review.dashboard.charts} ${review.dashboard.charts === 1 ? "chart" : "charts"}` : ""}`);
   row("settings", list(review.settings.map((setting) => setting.key)));
   row("migrations", list(review.migrations));
   row("hooks", review.runsHooks ? "yes - the package's own code runs inside the platform when installed" : "none");

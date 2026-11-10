@@ -15,6 +15,8 @@ let box: Sandbox;
 let rich: string;
 let plain: string;
 let off: string;
+let oddCharts: string;
+let writing: string;
 let service: DashboardService;
 let incomplete: Record<string, string[]> = {};
 const logged: { level: string; event: string; fields: LogFields }[] = [];
@@ -38,7 +40,9 @@ before(async () => {
   const first = box.add();
   const second = box.add();
   const third = box.add();
-  for (const mod of [first, second, third]) mod.write("0001_init.sql", "create table items (id serial primary key, label text not null);");
+  const fourth = box.add();
+  const fifth = box.add();
+  for (const mod of [first, second, third, fifth]) mod.write("0001_init.sql", "create table items (id serial primary key, label text not null);");
   first.manifest.permissions = [{ key: "items.read", label: "Read items" }];
   first.manifest.dashboard = {
     stats: [
@@ -51,6 +55,12 @@ before(async () => {
       { key: "none", label: "None", href: "/items", sql: "select label from items where false" },
       { key: "private", label: "Private", href: "/items", permission: "items.read", sql: "select count(*) from items" },
     ],
+    charts: [
+      { key: "by_label", label: "Items by id", href: "/items", sql: "select label, row_number() over (order by id) as value from items order by id" },
+      { key: "many_rows", label: "Many rows", href: "/items", sql: "select 'r' || g as label, g as value from generate_series(1, 40) g" },
+      { key: "long_label", label: "Long label", href: "/items", sql: "select repeat('x', 40) as label, 5 as value" },
+      { key: "empty", label: "Empty", href: "/items", sql: "select label, id from items where false" },
+    ],
     alerts: [
       { key: "many", label: "Too many items", href: "/items", severity: "warning", sql: "select count(*) from items" },
       { key: "calm", label: "Nothing to see", href: "/items", severity: "error", sql: "select count(*) from items where false" },
@@ -59,6 +69,24 @@ before(async () => {
       { key: "gone", label: "Gone", href: "/items", severity: "error", sql: "select count(*) from no_such_table" },
     ],
   };
+  // Charts that cannot be drawn, and one behind a permission, live in modules of their own: a module declares at most four.
+  fourth.manifest.dashboard = {
+    charts: [
+      { key: "negative", label: "Negative", href: "/items", sql: "select 'a' as label, -3 as value" },
+      { key: "text_value", label: "Text value", href: "/items", sql: "select 'a' as label, 'many' as value" },
+      { key: "one_column", label: "One column", href: "/items", sql: "select 'a' as label" },
+      { key: "broken", label: "Broken", href: "/items", sql: "select label, id from no_such_table" },
+    ],
+  };
+  fifth.manifest.permissions = [{ key: "items.read", label: "Read items" }];
+  fifth.manifest.dashboard = {
+    charts: [
+      { key: "writes", label: "Writes", href: "/items", sql: "with w as (insert into items (label) values ('sneaky') returning label, id) select label, id from w" },
+      { key: "private", label: "Private", href: "/items", permission: "items.read", sql: "select 'a' as label, 1 as value" },
+    ],
+  };
+  oddCharts = fourth.manifest.id;
+  writing = fifth.manifest.id;
   rich = first.manifest.id;
   plain = second.manifest.id;
   off = third.manifest.id;
@@ -88,6 +116,8 @@ beforeEach(async () => {
   await setState(rich, "enabled");
   await setState(plain, "enabled");
   await setState(off, "disabled");
+  await setState(oddCharts, "enabled");
+  await setState(writing, "enabled");
   await pool.query(`delete from "${box.modules[0]!.manifest.schema}".items`);
   await pool.query(`insert into "${box.modules[0]!.manifest.schema}".items (label) values ('first'), ('second')`);
 });
@@ -121,8 +151,8 @@ describe("DashboardService.cards: what modules contribute", () => {
     await service.cards(everyone);
     const failures = logged.filter((entry) => entry.event === "dashboard.statement_failed");
     // The logger redacts a field named like a secret, and "key" is one, so the card is named "card".
-    assert.deepEqual(failures.map((entry) => entry.fields.card).sort(), ["broken", "gone", "slow", "writes"], "only a statement that raised an error is reported; an answer that is not a figure is not");
-    assert.ok(failures.every((entry) => entry.level === "warn" && entry.fields.module === rich && entry.fields.error instanceof Error));
+    assert.deepEqual(failures.map((entry) => entry.fields.card).sort(), ["broken", "broken", "gone", "slow", "writes", "writes"], "only a statement that raised an error is reported; an answer that is not a figure is not");
+    assert.ok(failures.every((entry) => entry.level === "warn" && [rich, oddCharts, writing].includes(entry.fields.module as string) && entry.fields.error instanceof Error));
     assert.match(String(failures.find((entry) => entry.fields.card === "broken")?.fields.error), /no_such_table/);
   });
 
@@ -161,7 +191,7 @@ describe("DashboardService.cards: what modules contribute", () => {
 
   guard("counts the enabled modules even when the viewer may see none of their cards", async () => {
     const cards = await service.cards(() => false);
-    assert.equal(cards.enabled, 2, "rich and plain are enabled; off is not");
+    assert.equal(cards.enabled, 4, "rich, plain and the two chart-only modules are enabled; off is not");
     assert.deepEqual([cards.stats.length, cards.alerts.length], [0, 0]);
   });
 
@@ -245,5 +275,53 @@ describe("DashboardService.overview: the platform's own signals", () => {
     assert.doesNotMatch(JSON.stringify(activity), /customer-data/);
     const times = activity.map((entry) => entry.at.getTime());
     assert.deepEqual([...times].sort((a, b) => b - a), times, "newest first");
+  });
+});
+
+describe("DashboardService.cards: charts", () => {
+  const chartOf = async (key: string, canSee: (moduleId: string, permission: string | undefined) => boolean = everyone) => (await service.cards(canSee)).charts.find((chart) => chart.key === key);
+
+  guard("turns each row into a bar: its label and its value, in the order the statement returns them", async () => {
+    const chart = await chartOf("by_label");
+    assert.deepEqual(chart?.points, [{ label: "first", value: 1 }, { label: "second", value: 2 }]);
+    assert.deepEqual([chart?.label, chart?.href, chart?.moduleId, chart?.moduleName], ["Items by id", "/items", rich, box.modules[0]!.manifest.name]);
+  });
+
+  guard("keeps the first 31 rows and cuts a label at 24 characters", async () => {
+    assert.equal((await chartOf("many_rows"))?.points?.length, 31);
+    assert.equal((await chartOf("many_rows"))?.points?.[30]?.value, 31);
+    assert.equal((await chartOf("long_label"))?.points?.[0]?.label.length, 24);
+  });
+
+  guard("shows an empty result as a chart with no bars, not as a failure", async () => {
+    assert.deepEqual((await chartOf("empty"))?.points, []);
+  });
+
+  guard("shows a chart as not available when a value is negative or not a number, or a row has one column", async () => {
+    for (const key of ["negative", "text_value", "one_column"]) assert.equal((await chartOf(key))?.points, null, key);
+  });
+
+  guard("shows a chart as not available, and never the database's message, when its statement fails or writes", async () => {
+    for (const key of ["broken", "writes"]) assert.equal((await chartOf(key))?.points, null, key);
+    assert.doesNotMatch(JSON.stringify((await service.cards(everyone)).charts), /no_such_table|relation|read-only|sneaky/i);
+    const schema = box.modules[4]!.manifest.schema;
+    assert.equal((await pool!.query(`select count(*)::int as n from "${schema}".items where label = 'sneaky'`)).rows[0].n, 0, "the READ ONLY transaction refused the write");
+  });
+
+  guard("reports a failed chart to the server's log by name, as a stat does", async () => {
+    logged.length = 0;
+    await service.cards(everyone);
+    const failed = logged.filter((entry) => entry.event === "dashboard.statement_failed").map((entry) => entry.fields.card);
+    assert.ok(failed.includes("broken") && failed.includes("writes"));
+  });
+
+  guard("hides a chart from someone who lacks its permission, and leaves out the charts of a disabled module", async () => {
+    assert.equal(await chartOf("private", (_id, permission) => permission !== "items.read"), undefined);
+    assert.notEqual(await chartOf("private", everyone), undefined);
+    assert.ok((await service.cards(everyone)).charts.every((chart) => chart.moduleId !== off));
+  });
+
+  guard("counts a module that declares only charts as reporting to the dashboard", async () => {
+    assert.ok(!(await service.cards(everyone)).silent.some((entry) => entry.moduleId === oddCharts));
   });
 });

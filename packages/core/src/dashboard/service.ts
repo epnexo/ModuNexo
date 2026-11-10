@@ -8,6 +8,9 @@ import type { Registry } from "../registry.ts";
 /** Longest a declared statement may run, so one slow module cannot hold the dashboard. */
 const DEFAULT_TIMEOUT_MS = 3000;
 const MAX_TEXT_CHARS = 60;
+/** A chart shows at most this many bars, each labelled with at most this many characters. */
+const MAX_CHART_POINTS = 31;
+const MAX_CHART_LABEL_CHARS = 24;
 /** How far back a stopped job or a failed operation still raises an alert. */
 const RECENT = "7 days";
 const OPERATION_NAME: Record<string, string> = { install: "Install", upgrade: "Upgrade", enable: "Enabling", disable: "Disabling", uninstall: "Uninstall" };
@@ -41,8 +44,19 @@ export interface AlertCard extends CardBase {
   count: number | null;
 }
 
+export interface ChartPoint {
+  label: string;
+  value: number;
+}
+
+/** `points` is null when the chart could not be read: the statement failed, was slow or wrote, or a row was not a label and a number of zero or more. An empty list is a chart with nothing to show yet. */
+export interface ChartCard extends CardBase {
+  points: ChartPoint[] | null;
+}
+
 export interface ModuleCards {
   stats: StatCard[];
+  charts: ChartCard[];
   alerts: AlertCard[];
   /** Enabled modules that contribute nothing to the dashboard. */
   silent: { moduleId: string; moduleName: string }[];
@@ -93,6 +107,18 @@ function toStat(value: unknown): number | string | null {
   return null;
 }
 
+/** The bars of a chart from the rows of its statement, or null when a row is not a label and a number of zero or more. */
+function toPoints(rows: Record<string, unknown>[]): ChartPoint[] | null {
+  const points: ChartPoint[] = [];
+  for (const row of rows.slice(0, MAX_CHART_POINTS)) {
+    const [label, value] = Object.values(row);
+    const number = typeof value === "number" ? value : typeof value === "string" && /^\d+(\.\d+)?$/.test(value) ? Number(value) : Number.NaN;
+    if (typeof label !== "string" || !Number.isFinite(number) || number < 0) return null;
+    points.push({ label: Array.from(label).slice(0, MAX_CHART_LABEL_CHARS).join(""), value: number });
+  }
+  return points;
+}
+
 function toCount(value: unknown): number | null {
   const number = wholeNumber(value);
   return number !== null && number >= 0 ? number : null;
@@ -131,10 +157,21 @@ export class DashboardService {
     }
   }
 
+  /** All rows of a declared statement, or undefined when it failed (reported to the server's log, never to the viewer). */
+  async #rows(moduleId: string, card: string, sql: string): Promise<Record<string, unknown>[] | undefined> {
+    try {
+      return (await this.#db.readOwn(moduleId).query(sql)).rows;
+    } catch (error) {
+      (this.options.log ?? platformLog).warn("dashboard.statement_failed", { module: moduleId, card, error });
+      return undefined;
+    }
+  }
+
   /** The figures and alerts of the enabled modules, leaving out what `canSee` refuses for a permission. */
   async cards(canSee: (moduleId: string, permission: string | undefined) => boolean): Promise<ModuleCards> {
     const stats: Promise<StatCard>[] = [];
     const alerts: Promise<AlertCard | null>[] = [];
+    const charts: Promise<ChartCard>[] = [];
     const silent: ModuleCards["silent"] = [];
     const enabledIds = await this.#enabledIds();
     for (const id of enabledIds) {
@@ -149,6 +186,10 @@ export class DashboardService {
         if (!canSee(id, stat.permission)) continue;
         stats.push(this.#first(id, stat.key, stat.sql).then((value) => ({ ...base(stat), value: toStat(value) })));
       }
+      for (const chart of dashboard.charts ?? []) {
+        if (!canSee(id, chart.permission)) continue;
+        charts.push(this.#rows(id, chart.key, chart.sql).then((rows) => ({ ...base(chart), points: rows === undefined ? null : toPoints(rows) })));
+      }
       for (const alert of dashboard.alerts ?? []) {
         if (!canSee(id, alert.permission)) continue;
         alerts.push(
@@ -161,7 +202,7 @@ export class DashboardService {
     }
     const shown = (await Promise.all(alerts)).filter((alert): alert is AlertCard => alert !== null);
     shown.sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]);
-    return { stats: await Promise.all(stats), alerts: shown, silent, enabled: enabledIds.length };
+    return { stats: await Promise.all(stats), charts: await Promise.all(charts), alerts: shown, silent, enabled: enabledIds.length };
   }
 
   /** The platform's own state: module and job totals, what needs a look, and the newest activity. */
