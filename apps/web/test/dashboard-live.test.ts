@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { AlertRow } from "../src/server/dashboard.ts";
-import { AUTO_REFRESH_MS, filterAlerts, severityCounts, shouldAutoRefresh, updatedLabel } from "../src/server/dashboard-live.ts";
+import { AUTO_REFRESH_MS, barAnimation, filterAlerts, severityCounts, shouldAutoRefresh, updatedLabel, valueAnimation } from "../src/server/dashboard-live.ts";
 
 const alert = (key: string, severity: AlertRow["severity"], source = "Platform"): AlertRow => ({ key, severity, source, label: key, detail: "", href: "/", when: null });
 const ALERTS = [alert("a", "error"), alert("b", "warning", "Inbox"), alert("c", "warning"), alert("d", "info")];
@@ -45,5 +45,17 @@ describe("updatedLabel", () => {
     assert.equal(updatedLabel(at, new Date("2026-11-10T09:05:09")), "Updated just now");
     assert.equal(updatedLabel(at, new Date("2026-11-10T09:05:47")), "Updated 40 s ago");
     assert.equal(updatedLabel(at, new Date("2026-11-10T09:08:07")), "Updated 3 min ago");
+  });
+});
+
+describe("barAnimation", () => {
+  it("grows each bar for 820 ms, 65 ms after the previous one, up to a delay of 585 ms", () => {
+    assert.deepEqual([0, 1, 2].map((i) => barAnimation(i).delay), [0, 65, 130]);
+    assert.equal(barAnimation(0).duration, 820);
+    assert.equal(barAnimation(9).delay, 585);
+    assert.equal(barAnimation(30).delay, 585);
+  });
+  it("shows the value after its bar has started", () => {
+    assert.ok(valueAnimation(3).delay > barAnimation(3).delay);
   });
 });

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
+import { BarChart } from "../../components/dashboard/bar-chart";
 import { AlertsList } from "../../components/dashboard/alerts-list";
 import { LiveRefresh } from "../../components/dashboard/live-refresh";
 import { loadDashboard } from "../../server/dashboard-data";
@@ -79,6 +80,16 @@ export default async function DashboardPage() {
       {view.alerts.length === 0 ? null : (
         <Section id="alerts" title="Needs attention">
           <AlertsList alerts={view.alerts} />
+        </Section>
+      )}
+
+      {view.charts.length === 0 ? null : (
+        <Section id="charts" title="Charts">
+          <div className="flex flex-col gap-4">
+            {view.charts.map((chart) => (
+              <BarChart key={chart.key} chart={chart} />
+            ))}
+          </div>
         </Section>
       )}
 

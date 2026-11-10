@@ -33,9 +33,24 @@ export interface StatRow {
   href: string;
 }
 
+export interface ChartRow {
+  key: string;
+  label: string;
+  source: string;
+  href: string;
+  bars: { label: string; value: number }[];
+  /** The rounded mean of the bars; null when there are none or the chart could not be read. */
+  average: number | null;
+  /** The tallest bar, the scale the bars are drawn against (0 when there are none). */
+  max: number;
+  /** False when the module's statement failed: the page says so instead of drawing an empty chart. */
+  available: boolean;
+}
+
 export interface DashboardView {
   headline: { tone: "ok" | DashboardSeverity; text: string };
   alerts: AlertRow[];
+  charts: ChartRow[];
   modules: { id: string; name: string; stats: StatRow[] }[];
   /** Names of enabled modules that contribute nothing. */
   silent: string[];
@@ -93,6 +108,20 @@ export function buildDashboard({ cards, overview, workerLine = null, now }: Dash
     byModule.set(stat.moduleId, entry);
   }
 
+  const charts: ChartRow[] = cards.charts.map((chart) => {
+    const bars = chart.points ?? [];
+    return {
+      key: `${chart.moduleId}:${chart.key}`,
+      label: chart.label,
+      source: chart.moduleName,
+      href: chart.href,
+      bars,
+      average: bars.length === 0 ? null : Math.round(bars.reduce((sum, bar) => sum + bar.value, 0) / bars.length),
+      max: bars.reduce((tallest, bar) => Math.max(tallest, bar.value), 0),
+      available: chart.points !== null,
+    };
+  });
+
   const platform = overview === null ? null : { modules: `${overview.modules.enabled} enabled, ${overview.modules.disabled} disabled`, jobs: `${overview.jobs.queued} queued, ${overview.jobs.running} running` };
   const activity = (overview?.activity ?? []).map((entry) => ({ text: entry.text, when: formatAgo(entry.at, now), href: entry.href }));
   const modules = [...byModule.values()];
@@ -100,11 +129,12 @@ export function buildDashboard({ cards, overview, workerLine = null, now }: Dash
   return {
     headline,
     alerts,
+    charts,
     modules,
     silent: cards.silent.map((entry) => entry.moduleName),
     platform,
     activity,
     empty,
-    hidden: !empty && platform === null && alerts.length === 0 && modules.length === 0 && cards.silent.length === 0,
+    hidden: !empty && platform === null && alerts.length === 0 && charts.length === 0 && modules.length === 0 && cards.silent.length === 0,
   };
 }

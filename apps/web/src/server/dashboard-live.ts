@@ -28,3 +28,15 @@ export function updatedLabel(updatedAt: Date, now: Date): string {
   if (seconds < 60) return `Updated ${seconds} s ago`;
   return `Updated ${Math.round(seconds / 60)} min ago`;
 }
+
+/** How a bar grows from its base: 820 ms, each bar 65 ms after the one before, the delay capped so a long chart does not make anyone wait. */
+export const BAR_MS = 820;
+export const BAR_STAGGER_MS = 65;
+export const BAR_MAX_DELAY_MS = 585;
+export function barAnimation(index: number): { duration: number; delay: number; easing: string } {
+  return { duration: BAR_MS, delay: Math.min(index * BAR_STAGGER_MS, BAR_MAX_DELAY_MS), easing: "cubic-bezier(.22, .78, .26, 1)" };
+}
+/** The value above a bar fades in a little after the bar starts growing. */
+export function valueAnimation(index: number): { duration: number; delay: number } {
+  return { duration: 350, delay: barAnimation(index).delay + 340 };
+}
