@@ -19,7 +19,9 @@ checked against, and it changes only when the contract with modules changes. See
   open.
 - Components every module can use, built from the tokens: `seg` (a segmented control of links or buttons), `stats`/`stat`
   (a figure with its label; tone with `--stat-tone`, top line with `--stat-line`), `notice` (a banner: warning by default,
-  `notice-info`, `notice-error`) and `data-table` inside `table-scroll`. A module changes them only through those variables.
+  `notice-info`, `notice-success`, `notice-error`) and `data-table` inside `table-scroll`. A forms kit: `btn` (`btn-primary`, `btn-sm`),
+  `input`, `field` with `field-label`, `field-help` and `field-error`, `form`, `form-grid` and `form-actions`; and `detail-list` for
+  label and value pairs. A module changes them only through the documented variables.
 - The sidebar can be collapsed to a rail of icons and opened again, with the button in the top bar or the `[` key (not while
   typing in a field). The rail is 64 px wide with 44 px targets. The choice is a cookie, so the server draws the right sidebar on the next page and nothing jumps. The
   names stay as each link's title and accessible name. Groups open and close with an animated height and a turning chevron.
