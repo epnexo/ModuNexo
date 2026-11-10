@@ -24,11 +24,11 @@
   --border-strong: oklch(0.82 0.014 217);
 
   /* Accent: primary actions, the current selection and state indicators only. */
-  --accent: oklch(0.45 0.075 225);
-  --accent-hover: oklch(0.39 0.075 225);
+  --accent: oklch(0.45 0.075 220);
+  --accent-hover: oklch(0.39 0.075 220);
   --accent-foreground: oklch(0.99 0.003 224);
-  --accent-soft: oklch(0.93 0.02 224);
-  --accent-soft-foreground: oklch(0.34 0.07 225);
+  --accent-soft: oklch(0.93 0.02 220);
+  --accent-soft-foreground: oklch(0.34 0.07 220);
 
   /* Status. */
   --danger: oklch(0.53 0.2 27);
@@ -39,7 +39,7 @@
   --warning: oklch(0.62 0.14 75);
   --warning-soft: oklch(0.96 0.04 85);
 
-  --ring: oklch(0.45 0.075 225 / 0.55);
+  --ring: oklch(0.45 0.075 220 / 0.55);
   --shadow-raised: 0 1px 2px oklch(0.22 0.022 224 / 0.06), 0 8px 24px -12px oklch(0.22 0.022 224 / 0.18);
 
   /* Shape and type. */
@@ -92,11 +92,11 @@
   --border: oklch(0.329 0.023 223);
   --border-strong: oklch(0.45 0.026 223);
 
-  --accent: oklch(0.826 0.07 216);
-  --accent-hover: oklch(0.88 0.065 216);
+  --accent: oklch(0.826 0.07 220);
+  --accent-hover: oklch(0.88 0.065 220);
   --accent-foreground: oklch(0.265 0.038 225);
-  --accent-soft: oklch(0.312 0.029 225);
-  --accent-soft-foreground: oklch(0.88 0.06 214);
+  --accent-soft: oklch(0.312 0.03 220);
+  --accent-soft-foreground: oklch(0.88 0.06 220);
 
   --danger: oklch(0.7 0.17 27);
   --danger-soft: oklch(0.3 0.06 27);
@@ -106,7 +106,7 @@
   --warning: oklch(0.84 0.09 88);
   --warning-soft: oklch(0.331 0.03 88);
 
-  --ring: oklch(0.826 0.07 216 / 0.6);
+  --ring: oklch(0.826 0.07 220 / 0.6);
   --shadow-raised: 0 1px 2px oklch(0 0 0 / 0.3), 0 14px 32px -16px oklch(0 0 0 / 0.65);
 
   --card-line-opacity: 0.55;

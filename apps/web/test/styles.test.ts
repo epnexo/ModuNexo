@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { DEFAULT_APPEARANCE, appearanceCss } from "@modunexo/core/settings";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
@@ -134,6 +135,12 @@ describe("components every module can use", () => {
     assert.match(rule(".notice-info"), /--accent-soft/);
   });
 
+  it("keeps a row header in a table readable, not styled as a column heading", () => {
+    const row = rule(".data-table tbody th");
+    assert.match(row, /text-transform:\s*none/);
+    assert.match(row, /color:\s*var\(--foreground\)/);
+  });
+
   it("keeps a larger target for the segmented control on coarse pointers", () => {
     assert.match(layer, /@media \(pointer: coarse\)\s*\{[^@]*\.seg a[^}]*min-height:\s*2\.75rem/);
   });
@@ -146,8 +153,32 @@ describe("components every module can use", () => {
     assert.match(layer, /\.input\[aria-invalid="true"\]\s*\{[^}]*--danger/);
   });
 
+  it("packs a field's rows at the top, so a field with help does not push its neighbours' controls down", () => {
+    assert.match(rule(".field"), /align-content:\s*start/);
+  });
+
   it("keeps the page's focus ring on a control instead of hiding it", () => {
     assert.doesNotMatch(layer, /outline:\s*(none|0)/);
     assert.match(layer, /\.input:focus-visible\s*\{[^}]*border-color:\s*var\(--accent\)/);
   });
+});
+
+describe("the accent in tokens.css and in the appearance layer", () => {
+  // The appearance layer writes --accent and its companions on :root for every page, so whatever it writes is what people see.
+  // If tokens.css says something else, tokens.css is not the look: this keeps the two equal at the default hue.
+  const written = appearanceCss({ platform: DEFAULT_APPEARANCE, modules: {} });
+  const names = ["--accent", "--accent-hover", "--accent-soft", "--accent-soft-foreground", "--ring"];
+  const read = (css: string, selector: string, name: string) => css.match(new RegExp(`${selector.replace(/[[\]"=]/g, "\\$&")}\\s*\\{[^}]*?${name}\\s*:\\s*(oklch\\([^)]*\\))`))?.[1];
+  const darkTokens = tokens.slice(tokens.indexOf(':root[data-theme="dark"]'));
+
+  for (const name of names) {
+    it(`${name} is the same in light`, () => {
+      const lightTokens = tokens.slice(0, tokens.indexOf(':root[data-theme="dark"]'));
+      assert.equal(lightTokens.match(new RegExp(`${name}\\s*:\\s*(oklch\\([^)]*\\))`))?.[1], written.match(new RegExp(`:root\\[data-theme="light"\\]\\{[^}]*?${name}:(oklch\\([^)]*\\))`))?.[1]);
+    });
+    it(`${name} is the same in dark`, () => {
+      assert.equal(darkTokens.match(new RegExp(`${name}\\s*:\\s*(oklch\\([^)]*\\))`))?.[1], written.match(new RegExp(`:root\\[data-theme="dark"\\]\\{[^}]*?${name}:(oklch\\([^)]*\\))`))?.[1]);
+    });
+  }
+  void read;
 });

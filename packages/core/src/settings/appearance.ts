@@ -28,8 +28,8 @@ export interface AppearanceState {
   modules: Record<string, ModuleAppearance>;
 }
 
-/** The shipped look: the hue the tokens file was tuned for. */
-export const DEFAULT_APPEARANCE: Appearance = { theme: "system", accentHue: 258, radius: "default" };
+/** The shipped look: the hue the tokens file was tuned for (petrol). `tokens.css` carries the same values, and a test keeps the two equal. */
+export const DEFAULT_APPEARANCE: Appearance = { theme: "system", accentHue: 220, radius: "default" };
 
 export type AppearanceName = keyof Appearance;
 export const APPEARANCE_NAMES: readonly AppearanceName[] = ["theme", "accentHue", "radius"];
@@ -93,12 +93,12 @@ const hue = (value: number): string => String(Number(value.toFixed(2)));
 
 function accentLight(h: number): string {
   const n = hue(h);
-  return `--accent:oklch(0.49 0.15 ${n});--accent-hover:oklch(0.43 0.15 ${n});--accent-soft:oklch(0.94 0.035 ${n});--accent-soft-foreground:oklch(0.36 0.14 ${n});--ring:oklch(0.49 0.15 ${n} / 0.55);`;
+  return `--accent:oklch(0.45 0.075 ${n});--accent-hover:oklch(0.39 0.075 ${n});--accent-soft:oklch(0.93 0.02 ${n});--accent-soft-foreground:oklch(0.34 0.07 ${n});--ring:oklch(0.45 0.075 ${n} / 0.55);`;
 }
 
 function accentDark(h: number): string {
   const n = hue(h);
-  return `--accent:oklch(0.7 0.13 ${n});--accent-hover:oklch(0.76 0.12 ${n});--accent-soft:oklch(0.29 0.06 ${n});--accent-soft-foreground:oklch(0.86 0.08 ${n});--ring:oklch(0.7 0.13 ${n} / 0.6);`;
+  return `--accent:oklch(0.826 0.07 ${n});--accent-hover:oklch(0.88 0.065 ${n});--accent-soft:oklch(0.312 0.03 ${n});--accent-soft-foreground:oklch(0.88 0.06 ${n});--ring:oklch(0.826 0.07 ${n} / 0.6);`;
 }
 
 /**

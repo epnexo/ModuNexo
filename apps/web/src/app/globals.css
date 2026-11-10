@@ -357,6 +357,7 @@
   }
   .field {
     display: grid;
+    align-content: start;
     gap: 0.375rem;
     min-width: 0;
   }
@@ -432,6 +433,15 @@
     text-transform: uppercase;
     color: var(--muted-foreground);
     white-space: nowrap;
+  }
+  /* A row header (<th scope="row">) is a label for its row, not a column heading. */
+  .data-table tbody th {
+    font-size: inherit;
+    font-weight: 500;
+    letter-spacing: normal;
+    text-transform: none;
+    color: var(--foreground);
+    white-space: normal;
   }
   .data-table th.right,
   .data-table td.right {
