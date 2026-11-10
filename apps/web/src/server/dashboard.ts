@@ -1,5 +1,6 @@
 import type { DashboardSeverity } from "@modunexo/sdk";
 import type { ModuleCards, PlatformOverview } from "@modunexo/core/dashboard";
+import { type IconName, resolveIcon } from "./nav.ts";
 import { formatAgo } from "./status.ts";
 
 const NOT_AVAILABLE = "not available";
@@ -11,6 +12,8 @@ export interface DashboardInput {
   overview: PlatformOverview | null;
   /** The line that says jobs wait for a worker nobody started, when there is one. */
   workerLine?: string | null;
+  /** The icon name each module's first menu entry uses, by module id; a module not listed gets the generic one. */
+  icons?: ReadonlyMap<string, string | undefined>;
   now: Date;
 }
 
@@ -51,7 +54,7 @@ export interface DashboardView {
   headline: { tone: "ok" | DashboardSeverity; text: string };
   alerts: AlertRow[];
   charts: ChartRow[];
-  modules: { id: string; name: string; stats: StatRow[] }[];
+  modules: { id: string; name: string; icon: IconName; stats: StatRow[] }[];
   /** Names of enabled modules that contribute nothing. */
   silent: string[];
   platform: { modules: string; jobs: string } | null;
@@ -65,7 +68,7 @@ export interface DashboardView {
 const plural = (count: number, one: string, many: string) => (count === 1 ? one : many);
 
 /** Everything the dashboard page draws, as plain strings, so the page holds no rules of its own. */
-export function buildDashboard({ cards, overview, workerLine = null, now }: DashboardInput): DashboardView {
+export function buildDashboard({ cards, overview, workerLine = null, icons, now }: DashboardInput): DashboardView {
   const platformAlerts: AlertRow[] = (overview?.alerts ?? []).map((alert) => ({
     key: `${alert.kind}:${alert.moduleId}:${alert.label}`,
     severity: alert.severity,
@@ -96,9 +99,9 @@ export function buildDashboard({ cards, overview, workerLine = null, now }: Dash
       ? { tone: "ok", text: "Everything looks fine." }
       : { tone: worst === "error" ? "error" : worst === "warning" ? "warning" : "info", text: `${alerts.length} ${plural(alerts.length, "thing needs", "things need")} attention.` };
 
-  const byModule = new Map<string, { id: string; name: string; stats: StatRow[] }>();
+  const byModule = new Map<string, DashboardView["modules"][number]>();
   for (const stat of cards.stats) {
-    const entry = byModule.get(stat.moduleId) ?? { id: stat.moduleId, name: stat.moduleName, stats: [] };
+    const entry = byModule.get(stat.moduleId) ?? { id: stat.moduleId, name: stat.moduleName, icon: resolveIcon(icons?.get(stat.moduleId)), stats: [] };
     entry.stats.push({
       key: stat.key,
       label: stat.label,

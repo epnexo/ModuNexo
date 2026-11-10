@@ -47,6 +47,18 @@ describe("buildDashboard: alerts", () => {
   });
 });
 
+describe("buildDashboard: module icons", () => {
+  it("gives each module card the icon its menu names, the generic one when none or an unknown one", () => {
+    const view = buildDashboard({
+      cards: cards({ stats: [statCard({ moduleId: "contacts", moduleName: "Contacts" }), statCard({ moduleId: "agenda", moduleName: "Agenda" }), statCard({ moduleId: "other", moduleName: "Other" })] }),
+      overview: null,
+      icons: new Map([["contacts", "users"], ["agenda", "no-such-icon"]]),
+      now: NOW,
+    });
+    assert.deepEqual(view.modules.map((entry) => [entry.id, entry.icon]), [["contacts", "users"], ["agenda", "app"], ["other", "app"]]);
+  });
+});
+
 describe("buildDashboard: figures, silent modules and the platform block", () => {
   it("groups the figures by module, shows a missing figure as not available and a number with separators", () => {
     const view = buildDashboard({
