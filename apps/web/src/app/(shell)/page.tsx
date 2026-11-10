@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { BarChart } from "../../components/dashboard/bar-chart";
 import { AlertsList } from "../../components/dashboard/alerts-list";
 import { LiveRefresh } from "../../components/dashboard/live-refresh";
+import { NavIcon } from "../../components/shell/icon";
 import { loadDashboard } from "../../server/dashboard-data";
 import type { DashboardView } from "../../server/dashboard";
 import { resolveViewer } from "../../server/viewer";
@@ -98,7 +99,12 @@ export default async function DashboardPage() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {view.modules.map((module) => (
               <div key={module.id} className="card flex flex-col gap-3">
-                <h3 className="text-sm font-medium text-muted">{module.name}</h3>
+                <div className="flex items-center gap-2.5">
+                  <span className="icon-tile">
+                    <NavIcon name={module.icon} />
+                  </span>
+                  <h3 className="text-sm font-medium text-muted">{module.name}</h3>
+                </div>
                 <ul className="flex flex-col gap-2">
                   {module.stats.map((stat) => (
                     <li key={stat.key}>

@@ -3,6 +3,7 @@ import { DashboardService } from "@modunexo/core/dashboard";
 import { JobService } from "@modunexo/core/jobs";
 import { SettingsService } from "@modunexo/core/settings";
 import { type DashboardView, buildDashboard } from "./dashboard.ts";
+import { navigation } from "../generated/modules.ts";
 import { subjectCan } from "./nav.ts";
 import { platform } from "./platform.ts";
 import { webRegistry } from "./registry.ts";
@@ -23,5 +24,8 @@ export async function loadDashboard(viewer: Viewer): Promise<DashboardView> {
     viewer.canWrite ? service.overview() : null,
     viewer.canWrite ? new JobService(pool, registry).dueWaiting() : null,
   ]);
-  return buildDashboard({ cards, overview, workerLine: due === null ? null : workerLine(due), now: new Date() });
+  // A module has no icon of its own: its first menu entry that names one stands for it.
+  const icons = new Map<string, string | undefined>();
+  for (const entry of navigation) if (!icons.has(entry.moduleId) || icons.get(entry.moduleId) === undefined) icons.set(entry.moduleId, entry.icon);
+  return buildDashboard({ cards, overview, icons, workerLine: due === null ? null : workerLine(due), now: new Date() });
 }
