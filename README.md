@@ -464,8 +464,11 @@ write, from the same origin.
 A manifest `nav.icon` names one of: `app`, `home`, `apps`, `settings`, `dashboard`, `documents`, `chart`,
 `megaphone`, `users`, `database`, `mail`, `calendar`, `folder`, `shield`, `bolt`. Anything else gets the generic
 icon. The theme (light or dark) follows the system preference until it is switched from the top bar; the choice is
-kept in the browser. Colors, radius, fonts and motion durations are the variables in
-`apps/web/src/styles/tokens.css`, and nothing else in the app hard-codes one.
+kept in the browser. Colors, radius, fonts, motion durations and spacing are the variables in
+`apps/web/src/styles/tokens.css`, and nothing else in the app hard-codes one. A module's page can use them as they
+are and look like the rest of the platform, or set its own value on its root element (for example
+`--card-pad: 1rem`, or its own accent) and keep every other default: the spacing variables are `--layout-gap`
+(between blocks), `--card-pad`, `--card-gap` and `--card-radius`.
 
 ### Who gets in
 
