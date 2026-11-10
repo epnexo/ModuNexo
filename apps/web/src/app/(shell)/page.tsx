@@ -5,8 +5,9 @@ import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { BarChart } from "../../components/dashboard/bar-chart";
 import { AlertsList } from "../../components/dashboard/alerts-list";
+import { FoldSection } from "../../components/dashboard/fold-section";
+import { ModuleFigures } from "../../components/dashboard/module-figures";
 import { LiveRefresh } from "../../components/dashboard/live-refresh";
-import { NavIcon } from "../../components/shell/icon";
 import { loadDashboard } from "../../server/dashboard-data";
 import type { DashboardView } from "../../server/dashboard";
 import { resolveViewer } from "../../server/viewer";
@@ -85,40 +86,19 @@ export default async function DashboardPage() {
       )}
 
       {view.charts.length === 0 ? null : (
-        <Section id="charts" title="Charts">
+        <FoldSection id="charts" title="Charts">
           <div className="flex flex-col gap-4">
             {view.charts.map((chart) => (
               <BarChart key={chart.key} chart={chart} />
             ))}
           </div>
-        </Section>
+        </FoldSection>
       )}
 
       {view.modules.length === 0 ? null : (
-        <Section id="figures" title="Modules">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {view.modules.map((module) => (
-              <div key={module.id} className="card flex flex-col gap-3">
-                <div className="flex items-center gap-2.5">
-                  <span className="icon-tile">
-                    <NavIcon name={module.icon} />
-                  </span>
-                  <h3 className="text-sm font-medium text-muted">{module.name}</h3>
-                </div>
-                <ul className="flex flex-col gap-2">
-                  {module.stats.map((stat) => (
-                    <li key={stat.key}>
-                      <Link href={stat.href} className="flex items-baseline justify-between gap-3 rounded-md px-2 py-1 -mx-2 transition-colors duration-150 hover:bg-panel-hover focus-visible:bg-panel-hover">
-                        <span className="text-sm">{stat.label}</span>
-                        <span className="text-lg font-semibold tabular-nums">{stat.value}</span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        </Section>
+        <FoldSection id="figures" title="Modules">
+          <ModuleFigures modules={view.modules} />
+        </FoldSection>
       )}
 
       {view.silent.length === 0 ? null : (
@@ -128,7 +108,7 @@ export default async function DashboardPage() {
       )}
 
       {view.platform === null ? null : (
-        <Section id="platform" title="Platform">
+        <FoldSection id="platform" title="Platform">
           <dl className="grid max-w-xl grid-cols-[max-content_1fr] gap-x-6 gap-y-1 text-sm">
             <dt className="text-muted">Modules</dt>
             <dd>{view.platform.modules}</dd>
@@ -149,7 +129,7 @@ export default async function DashboardPage() {
               ))}
             </ul>
           )}
-        </Section>
+        </FoldSection>
       )}
     </div>
   );

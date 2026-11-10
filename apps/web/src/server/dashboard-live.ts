@@ -40,3 +40,35 @@ export function barAnimation(index: number): { duration: number; delay: number; 
 export function valueAnimation(index: number): { duration: number; delay: number } {
   return { duration: 350, delay: barAnimation(index).delay + 340 };
 }
+
+/** What a bar says when it is hovered or focused: its label and value, and how far it is from the chart's average when there is one. */
+export function barReadout(label: string, value: number, average: number | null): string {
+  const base = `${label}: ${value.toLocaleString("en-US")}`;
+  if (average === null || average === 0) return base;
+  const percent = Math.round(((value - average) / average) * 100);
+  if (percent === 0) return `${base} · at the average`;
+  return `${base} · ${Math.abs(percent)}% ${percent > 0 ? "above" : "below"} the average`;
+}
+
+/** The bar a key moves to from `current`, or null when the key is not one the chart handles. The ends stop; they do not wrap. */
+export function stepBar(key: string, current: number, count: number): number | null {
+  if (count <= 0) return null;
+  if (key === "ArrowRight") return Math.min(current + 1, count - 1);
+  if (key === "ArrowLeft") return Math.max(current - 1, 0);
+  if (key === "Home") return 0;
+  if (key === "End") return count - 1;
+  return null;
+}
+
+/** The module cards whose name or one of whose figures' names contains the search text, in their order. Blank text keeps all. */
+export function filterModules<T extends { name: string; stats: readonly { label: string }[] }>(modules: readonly T[], query: string): T[] {
+  const needle = query.trim().toLowerCase();
+  if (needle === "") return [...modules];
+  return modules.filter((entry) => entry.name.toLowerCase().includes(needle) || entry.stats.some((stat) => stat.label.toLowerCase().includes(needle)));
+}
+
+/** A search box earns its place only when there is more to look through than fits at a glance. */
+export const MODULE_SEARCH_FROM = 4;
+
+/** The storage key of a section's folded state, one per section so each remembers its own. */
+export const foldKey = (section: string): string => `modunexo.dashboard.fold.${section}`;

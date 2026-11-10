@@ -79,4 +79,10 @@ describe("card, tile and chart styling", () => {
       assert.match(globals, new RegExp(`\\.badge-${tone}\\s*\\{[^}]*--badge-tone:\\s*var\\(--(accent|success|warning|danger)\\)`), `badge-${tone}`);
     }
   });
+
+  it("folds a dashboard section by its height and takes the closed body out of the tab order", () => {
+    assert.match(globals, /\.fold\[data-open="false"\]\s+\.fold-body\s*\{[^}]*grid-template-rows:\s*0fr/);
+    assert.match(globals, /\.fold\[data-open="false"\]\s+\.fold-inner\s*\{[^}]*visibility:\s*hidden/);
+    assert.match(globals, /\.fold-body\s*\{[^}]*transition:\s*grid-template-rows var\(--duration-slow\)/);
+  });
 });
