@@ -31,7 +31,7 @@ export function AdminNav() {
         Admin
       </button>
       <div className="nav-group-body">
-        <ul id={listId} className="nav-group-list flex flex-col gap-0.5">
+        <ul id={listId} className="nav-group-list ml-4 flex flex-col gap-0.5 border-l border-border pl-2">
           {ADMIN_ENTRIES.map((item) => (
             <li key={item.href}>
               <NavLink href={item.href} label={item.label} icon={item.icon} />
