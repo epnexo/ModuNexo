@@ -160,6 +160,169 @@
     --badge-tone: var(--danger);
     --badge-bg: var(--danger-soft);
   }
+  /* A segmented control: a few links or buttons side by side, the current one marked by aria-current (or aria-pressed)
+     and by a tick, so the state does not depend on colour alone. */
+  .seg {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--panel);
+  }
+  .seg a,
+  .seg button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    min-height: 1.5rem;
+    padding: 0.125rem 0.625rem;
+    border: 0;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--foreground);
+    font: inherit;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .seg a:hover,
+  .seg button:hover {
+    background: var(--panel-hover);
+  }
+  .seg [aria-current="page"],
+  .seg [aria-current="true"],
+  .seg [aria-pressed="true"] {
+    background: var(--accent-soft);
+    color: var(--accent-soft-foreground);
+    font-weight: 700;
+  }
+  .seg [aria-current="page"]::before,
+  .seg [aria-current="true"]::before,
+  .seg [aria-pressed="true"]::before {
+    content: "";
+    width: 9px;
+    height: 5px;
+    border-left: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: translateY(-1px) rotate(-45deg);
+  }
+  @media (pointer: coarse) {
+    .seg a,
+    .seg button {
+      min-height: 2.75rem;
+    }
+  }
+
+  /* A figure with its label: `<dl class="stats"><div class="stat"><dt class="stat-label">..<dd class="stat-value">..<dd
+     class="stat-sub">`. The number takes --stat-tone (set it per stat), the line along the top takes --stat-line. */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(10.625rem, 1fr));
+    gap: var(--layout-gap);
+    margin: 0;
+  }
+  @media (max-width: 900px) {
+    .stats {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  .stat {
+    --stat-tone: var(--accent);
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+    padding: var(--card-pad) calc(var(--card-pad) * 1.25);
+    border: 1px solid var(--border);
+    border-top: var(--stat-line, 1px) solid var(--stat-tone);
+    border-radius: var(--card-radius);
+    background: var(--panel);
+  }
+  .stat-label {
+    margin: 0;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+  }
+  .stat-value {
+    margin: 0;
+    font-size: 1.75rem;
+    font-weight: 700;
+    line-height: 1.1;
+    color: var(--stat-tone);
+  }
+  .stat-sub {
+    margin: 0;
+    font-size: 0.75rem;
+    color: var(--muted-foreground);
+  }
+
+  /* A banner for something the person should read: a warning by default, or info or error. Add role="status", or
+     role="alert" for an error. */
+  .notice {
+    padding: 0.625rem var(--card-pad);
+    border-radius: var(--card-radius);
+    background: var(--warning-soft);
+    color: var(--foreground);
+  }
+  .notice-warning {
+    background: var(--warning-soft);
+    color: var(--foreground);
+  }
+  .notice-info {
+    background: var(--accent-soft);
+    color: var(--accent-soft-foreground);
+  }
+  .notice-error {
+    background: var(--danger-soft);
+    color: var(--danger-soft-foreground);
+  }
+  .notice strong {
+    display: block;
+  }
+
+  /* A table of records: `<div class="table-scroll"><table class="data-table">`. A column of numbers takes `right`, and
+     `num` gives figures that line up. */
+  .table-scroll {
+    overflow-x: auto;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .data-table th,
+  .data-table td {
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  .data-table th {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+    white-space: nowrap;
+  }
+  .data-table th.right,
+  .data-table td.right {
+    text-align: right;
+  }
+  .data-table tbody tr:nth-child(even) {
+    background: var(--panel-hover);
+  }
+  .data-table tbody tr:last-child td {
+    border-bottom: 0;
+  }
+  .data-table .num {
+    font-variant-numeric: tabular-nums;
+  }
+
   /* A dashboard section that folds: the body animates by its height; once closed it leaves the tab order. */
   .fold-chev {
     flex: none;
