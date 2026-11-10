@@ -24,7 +24,7 @@ checked against, and it changes only when the contract with modules changes. See
   may see; no new endpoint. Alerts can be filtered by severity when there is more than one kind, and a module figure highlights as a link.
 
 - Changing the theme reveals the new one with a circle that grows from the theme button (620 ms), using the browser's View Transitions.
-  With reduced motion, or a browser without View Transitions, the theme changes at once. The choice is stored as before.
+  In a browser without View Transitions (for example Firefox before 144) the colors fade over 400 ms instead; with reduced motion the theme changes at once. The choice is stored as before.
 
 ### Changed
 

@@ -6,7 +6,7 @@ import { flushSync } from "react-dom";
 
 type Theme = "light" | "dark";
 import { THEME_STORAGE_KEY } from "../../lib/theme";
-import { REVEAL_EASING, REVEAL_MS, canReveal, revealClip } from "../../lib/theme-reveal";
+import { FADE_MS, REVEAL_EASING, REVEAL_MS, canReveal, revealClip, shouldFade } from "../../lib/theme-reveal";
 
 const read = (): Theme => (document.documentElement.dataset.theme === "dark" ? "dark" : "light");
 
@@ -33,7 +33,14 @@ export function ThemeToggle() {
     if (busy.current) return;
     const next: Theme = read() === "dark" ? "light" : "dark";
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (!canReveal(typeof document.startViewTransition === "function", reduced) || button.current === null) {
+    const hasTransitions = typeof document.startViewTransition === "function";
+    if (!canReveal(hasTransitions, reduced) || button.current === null) {
+      if (shouldFade(hasTransitions, reduced)) {
+        // No View Transitions (for example Firefox before 144): fade the colors so the change is still seen.
+        const root = document.documentElement;
+        root.classList.add("theme-fade");
+        window.setTimeout(() => root.classList.remove("theme-fade"), FADE_MS + 50);
+      }
       apply(next);
       return;
     }

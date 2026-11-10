@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { REVEAL_MS, canReveal, revealClip } from "../src/lib/theme-reveal.ts";
+import { FADE_MS, REVEAL_MS, canReveal, revealClip, shouldFade } from "../src/lib/theme-reveal.ts";
 
 describe("revealClip", () => {
   it("starts as a point at the center of the button and ends as a circle that covers the whole window", () => {
@@ -27,5 +27,17 @@ describe("canReveal", () => {
 describe("REVEAL_MS", () => {
   it("is the 620 ms the design was approved with", () => {
     assert.equal(REVEAL_MS, 620);
+  });
+});
+
+describe("shouldFade", () => {
+  it("fades the colors only where the circle is not available, and never for reduced motion", () => {
+    assert.equal(shouldFade(false, false), true);
+    assert.equal(shouldFade(true, false), false);
+    assert.equal(shouldFade(false, true), false);
+    assert.equal(shouldFade(true, true), false);
+  });
+  it("is long enough to be seen and short enough to feel like a response", () => {
+    assert.ok(FADE_MS >= 300 && FADE_MS <= 600);
   });
 });
