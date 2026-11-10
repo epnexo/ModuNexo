@@ -137,4 +137,17 @@ describe("components every module can use", () => {
   it("keeps a larger target for the segmented control on coarse pointers", () => {
     assert.match(layer, /@media \(pointer: coarse\)\s*\{[^@]*\.seg a[^}]*min-height:\s*2\.75rem/);
   });
+
+  it("offers the forms kit: buttons, a control, a field and its states, and the form layouts", () => {
+    for (const selector of [".btn", ".btn-primary", ".btn-sm", ".input", ".field", ".field-label", ".field-help", ".field-error", ".form", ".form-grid", ".form-actions", ".detail-list", ".notice-success"]) {
+      assert.notEqual(rule(selector), "", `${selector} is defined`);
+    }
+    assert.match(rule(".btn-primary"), /background:\s*var\(--accent\)/);
+    assert.match(layer, /\.input\[aria-invalid="true"\]\s*\{[^}]*--danger/);
+  });
+
+  it("keeps the page's focus ring on a control instead of hiding it", () => {
+    assert.doesNotMatch(layer, /outline:\s*(none|0)/);
+    assert.match(layer, /\.input:focus-visible\s*\{[^}]*border-color:\s*var\(--accent\)/);
+  });
 });
