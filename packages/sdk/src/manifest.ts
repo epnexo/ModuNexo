@@ -199,10 +199,31 @@ export interface DashboardAlert {
   sql: string;
 }
 
-/** What the module contributes to the platform's dashboard. At least one stat or alert. */
+/**
+ * A bar chart the module shows on the dashboard: one bar per row, with the value above it. The platform draws it and
+ * animates it; the module only supplies the rows.
+ */
+export interface DashboardChart {
+  /** Stable identifier, unique among the module's charts. */
+  key: string;
+  label: string;
+  /** The screen the chart opens when it is clicked; a path of this platform that starts with "/". */
+  href: string;
+  /** Key of a permission declared in `permissions`; the chart is hidden from anyone without it. */
+  permission?: string;
+  /**
+   * One `select` (or `with`) statement run READ ONLY with the module's own schema as `search_path`, like a stat's. Each row
+   * is a bar: the first column is its label (short text, 24 characters at most) and the second its value (a number, zero
+   * or more). The first 31 rows are used, in the order the statement returns them, so write the `order by`.
+   */
+  sql: string;
+}
+
+/** What the module contributes to the platform's dashboard. At least one stat, alert or chart. */
 export interface DashboardDeclaration {
   stats?: DashboardStat[];
   alerts?: DashboardAlert[];
+  charts?: DashboardChart[];
 }
 
 /** The contract every module declares in its `manifest.ts` (manifest v2). */
@@ -265,8 +286,10 @@ const RESERVED_SCHEMAS = new Set(["public", "information_schema", "core"]);
 const KNOWN_FIELDS = new Set([
   "id", "version", "name", "platform", "dependsOn", "schema", "migrationsDir", "nav", "pages", "settings", "permissions", "scopes", "jobs", "events", "subscriptions", "files", "llm", "dashboard", "hooks",
 ]);
-const KNOWN_DASHBOARD_FIELDS = new Set(["stats", "alerts"]);
+const KNOWN_DASHBOARD_FIELDS = new Set(["stats", "alerts", "charts"]);
 const KNOWN_STAT_FIELDS = new Set(["key", "label", "href", "permission", "sql"]);
+const KNOWN_CHART_FIELDS = KNOWN_STAT_FIELDS;
+const MAX_DASHBOARD_CHARTS = 4;
 const KNOWN_ALERT_FIELDS = new Set(["key", "label", "href", "severity", "permission", "sql"]);
 const DASHBOARD_SEVERITIES = ["info", "warning", "error"];
 const MAX_DASHBOARD_ENTRIES = 12;
@@ -674,11 +697,16 @@ function checkDashboard(dashboard: unknown, permissionKeys: Set<string>, problem
   checkUnknownFields(dashboard, KNOWN_DASHBOARD_FIELDS, "dashboard", problems);
   const stats = dashboard.stats;
   const alerts = dashboard.alerts;
+  const charts = dashboard.charts;
   if (stats !== undefined) checkDashboardEntries(stats, "dashboard.stats", KNOWN_STAT_FIELDS, false, permissionKeys, problems);
   if (alerts !== undefined) checkDashboardEntries(alerts, "dashboard.alerts", KNOWN_ALERT_FIELDS, true, permissionKeys, problems);
+  if (charts !== undefined) {
+    checkDashboardEntries(charts, "dashboard.charts", KNOWN_CHART_FIELDS, false, permissionKeys, problems);
+    if (Array.isArray(charts) && charts.length > MAX_DASHBOARD_CHARTS) problems.push(`dashboard.charts must have at most ${MAX_DASHBOARD_CHARTS} entries`);
+  }
   const empty = (list: unknown) => list === undefined || (Array.isArray(list) && list.length === 0);
-  if (empty(stats) && empty(alerts)) {
-    problems.push("dashboard must declare at least one stat or alert");
+  if (empty(stats) && empty(alerts) && empty(charts)) {
+    problems.push("dashboard must declare at least one stat, alert or chart");
   }
 }
 
