@@ -19,10 +19,10 @@ Do these three checks first; they are what keeps a new module on the platform's 
    `modules/<id>`): `contacts` for lists, forms and a pipeline, `agenda` for settings and bookings, `inbox` for a
    conversation view, `ai-usage` for charts. Copy its structure, not its code, and keep its file names and `tests/<id>/` layout.
 2. **Use what the platform already gives** (see "Styling" under Rules): tokens, the global classes (`card`, `badge`,
-   `icon-tile`, `seg`, `stat`, `notice`, `data-table`), the spacing variables, the SDK. A module that needs a pattern none of them offers writes only that
+   `icon-tile`, `seg`, `stat`, `notice`, `data-table`, `btn`, `input`, `field`), the spacing variables, the SDK. A module that needs a pattern none of them offers writes only that
    pattern, scoped and prefixed.
-3. **A pattern needed twice belongs in the platform.** If a second module would need what a first one built (a form
-   field, a dialog, a tab strip, an empty state), stop and add it to the platform's styles instead of
+3. **A pattern needed twice belongs in the platform.** If a second module would need what a first one built (a dialog,
+   a tab strip, an empty state, a file field), stop and add it to the platform's styles instead of
    copying it. The full contract is the section "Styling a module" of `docs/GUIDE.md` in the modules repository.
 
 ## Steps
@@ -107,7 +107,9 @@ Do these three checks first; they are what keeps a new module on the platform's 
     Also `seg` (a segmented control; the current link has `aria-current`), `stats` > `stat` with `stat-label`, `stat-value`
     and `stat-sub` (a figure; `--stat-tone` colours it, `--stat-line` sets its top line), `notice` (a banner: warning by
     default, `notice-info`, `notice-error`) and `data-table` inside `table-scroll` (a table of records; `right` and `num` on
-    cells). Use them in markup; never rebuild them.
+    cells). The forms kit: `btn` (`btn-primary`, `btn-sm`), `input` (on every input, select and textarea), `field` with
+    `field-label`, `field-help` and `field-error`, `form`, `form-grid`, `form-actions`; also `detail-list` (label and value
+    pairs) and `notice-success`. Use them in markup; never rebuild them.
   - The style is closed: a module's stylesheet never names a platform class and never redefines one. Whatever it adds is
     its own, in `modules/<id>/web/<id>.css`, with every selector under its root class or prefix and colour values only in
     custom properties. `tests/styles` in the modules repository fails otherwise.
