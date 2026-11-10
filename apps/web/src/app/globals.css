@@ -185,3 +185,14 @@
     transition-delay: 0ms !important;
   }
 }
+
+/* Theme change: the new theme is revealed by a circle (see components/shell/theme-toggle.tsx). The browser's own cross-fade is turned
+   off so the clip-path animation is the only motion; with reduced motion the code never starts a transition. */
+::view-transition-image-pair(root) {
+  isolation: auto;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
