@@ -90,22 +90,22 @@ describe("appearanceCss", () => {
   it("sets the radius and the accent for light and for dark from the platform hue", () => {
     const out = css({ "appearance.accentHue": 140, "appearance.radius": "round" });
     assert.match(out, /:root\{[^}]*--radius:1rem/);
-    assert.match(out, /:root\[data-theme="light"\]\{[^}]*--accent:oklch\(0\.49 0\.15 140\)/);
-    assert.match(out, /:root\[data-theme="dark"\]\{[^}]*--accent:oklch\(0\.7 0\.13 140\)/);
-    assert.match(out, /--ring:oklch\(0\.49 0\.15 140 \/ 0\.55\)/);
+    assert.match(out, /:root\[data-theme="light"\]\{[^}]*--accent:oklch\(0\.45 0\.075 140\)/);
+    assert.match(out, /:root\[data-theme="dark"\]\{[^}]*--accent:oklch\(0\.826 0\.07 140\)/);
+    assert.match(out, /--ring:oklch\(0\.45 0\.075 140 \/ 0\.55\)/);
   });
 
   it("uses the shipped look for the defaults", () => {
     const out = css();
     assert.match(out, /--radius:0\.625rem/);
-    assert.match(out, /--accent:oklch\(0\.49 0\.15 258\)/);
+    assert.match(out, /--accent:oklch\(0\.45 0\.075 220\)/);
     assert.doesNotMatch(out, /data-module/);
   });
 
   it("scopes a module's override to the module and only for what it overrides", () => {
     const out = css({ "appearance.module.alpha.accentHue": 20 });
-    assert.match(out, /\[data-module="alpha"\]\{[^}]*--accent:oklch\(0\.49 0\.15 20\)/);
-    assert.match(out, /\[data-theme="dark"\] \[data-module="alpha"\]\{[^}]*--accent:oklch\(0\.7 0\.13 20\)/);
+    assert.match(out, /\[data-module="alpha"\]\{[^}]*--accent:oklch\(0\.45 0\.075 20\)/);
+    assert.match(out, /\[data-theme="dark"\] \[data-module="alpha"\]\{[^}]*--accent:oklch\(0\.826 0\.07 20\)/);
     assert.doesNotMatch(out, /\[data-module="alpha"\]\{[^}]*--radius/);
     const withRadius = css({ "appearance.module.alpha.radius": "sharp" });
     assert.match(withRadius, /\[data-module="alpha"\]\{[^}]*--radius:0\.25rem/);
@@ -119,7 +119,7 @@ describe("appearanceCss", () => {
       "appearance.theme": "dark",
     });
     assert.match(out, /^[a-zA-Z0-9\s.:;,\-()/[\]="%{}]*$/);
-    assert.match(out, /oklch\(0\.49 0\.15 12\.35\)/);
+    assert.match(out, /oklch\(0\.45 0\.075 12\.35\)/);
   });
 });
 

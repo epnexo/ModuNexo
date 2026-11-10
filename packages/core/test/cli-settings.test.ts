@@ -81,7 +81,7 @@ describe("cli: settings, platform appearance", () => {
       const result = await cli(["settings", "list"], { masterKey: false });
       assert.equal(result.code, 0, result.stderr);
       assert.match(result.stdout, /appearance\.theme\s+select\s+system\s+default/);
-      assert.match(result.stdout, /appearance\.accentHue\s+number\s+258\s+default/);
+      assert.match(result.stdout, /appearance\.accentHue\s+number\s+220\s+default/);
       assert.match(result.stdout, /appearance\.radius\s+select\s+default\s+default/);
     });
   });
@@ -100,7 +100,7 @@ describe("cli: settings, platform appearance", () => {
 
       const unset = await cli(["settings", "unset", "appearance.accentHue"], { masterKey: false });
       assert.equal(unset.code, 0);
-      assert.equal((await cli(["settings", "get", "appearance.accentHue"], { masterKey: false })).stdout.trim(), "258");
+      assert.equal((await cli(["settings", "get", "appearance.accentHue"], { masterKey: false })).stdout.trim(), "220");
       const events = await db.query("select scope, key, action, actor from core.settings_events order by id");
       assert.deepEqual(events.rows, [
         { scope: "platform", key: "appearance.accentHue", action: "set", actor: "cli" },

@@ -7,6 +7,12 @@ checked against, and it changes only when the contract with modules changes. See
 
 ## [Unreleased]
 
+### Fixed
+
+- The petrol accent now reaches the pages. The appearance layer wrote `--accent` and its companions with the previous blue values
+  on every page, over `tokens.css`, so only the neutrals had changed. It now writes the petrol values, the default accent hue is 220
+  (was 258) and a test keeps `tokens.css` and the appearance layer equal. An installation that saved its own hue keeps it.
+
 ### Added
 
 - A petrol palette for both themes (dark neutrals on one teal hue, aqua accent), cards with a one-pixel accent line along the top
