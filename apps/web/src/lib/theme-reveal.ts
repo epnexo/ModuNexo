@@ -14,3 +14,9 @@ export function revealClip(button: { left: number; top: number; width: number; h
   const radius = Math.ceil(Math.hypot(Math.max(x, width - x), Math.max(y, height - y)));
   return { from: `circle(0px at ${x}px ${y}px)`, to: `circle(${radius}px at ${x}px ${y}px)` };
 }
+
+/** Where the circle is not available (a browser without View Transitions) the colors fade instead, so the change is still seen. */
+export const FADE_MS = 400;
+export function shouldFade(hasViewTransitions: boolean, prefersReducedMotion: boolean): boolean {
+  return !hasViewTransitions && !prefersReducedMotion;
+}

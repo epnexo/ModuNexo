@@ -196,3 +196,17 @@
   animation: none;
   mix-blend-mode: normal;
 }
+
+/* The fallback where View Transitions are missing: for a moment every color property eases to the new theme. */
+.theme-fade,
+.theme-fade *,
+.theme-fade *::before,
+.theme-fade *::after {
+  transition:
+    background-color 400ms ease,
+    color 400ms ease,
+    border-color 400ms ease,
+    fill 400ms ease,
+    stroke 400ms ease,
+    box-shadow 400ms ease !important;
+}
