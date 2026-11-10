@@ -6,6 +6,7 @@ import type { AlertRow } from "../../server/dashboard";
 import { type SeverityFilter, filterAlerts, severityCounts } from "../../server/dashboard-live";
 
 const SEVERITY_LABEL: Record<AlertRow["severity"], string> = { error: "Error", warning: "Warning", info: "Info" };
+const SEVERITY_BADGE: Record<AlertRow["severity"], string> = { error: "badge-danger", warning: "badge-warning", info: "badge-info" };
 const FILTERS: { id: SeverityFilter; label: string }[] = [
   { id: "all", label: "All" },
   { id: "error", label: "Errors" },
@@ -45,7 +46,7 @@ export function AlertsList({ alerts }: { alerts: AlertRow[] }) {
       <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface">
         {shown.map((alert) => (
           <li key={alert.key} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm">
-            <span className="w-16 shrink-0 text-xs font-medium uppercase tracking-wide text-muted">{SEVERITY_LABEL[alert.severity]}</span>
+            <span className={`badge ${SEVERITY_BADGE[alert.severity]} shrink-0`}>{SEVERITY_LABEL[alert.severity]}</span>
             <span className="min-w-0 flex-1">
               <span className="font-medium">{alert.label}</span> <span className="text-muted">· {alert.source}</span>
             </span>

@@ -42,8 +42,8 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 }
 
 function StateBadge({ state }: { state: TokenView["state"] }) {
-  const style = state === "active" ? "bg-accent-soft text-accent-soft-foreground" : state === "expired" ? "bg-warning-soft" : "bg-danger-soft text-danger";
-  return <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${style}`}>{state === "active" ? "Active" : state === "expired" ? "Expired" : "Revoked"}</span>;
+  const tone = state === "active" ? "badge-success" : state === "expired" ? "badge-warning" : "badge-danger";
+  return <span className={`badge ${tone}`}>{state === "active" ? "Active" : state === "expired" ? "Expired" : "Revoked"}</span>;
 }
 
 export function ApiAccess({ moduleId, name, view, canWrite }: { moduleId: string; name: string; view: AccessView; canWrite: boolean }) {

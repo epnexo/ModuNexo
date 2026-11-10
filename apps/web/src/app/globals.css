@@ -119,6 +119,47 @@
     background: var(--panel);
     color: var(--accent);
   }
+  /* A state in one word: a dot, the word, a soft background. The text is the tone mixed toward the foreground so it
+     keeps its contrast on the light theme as well as the dark. */
+  .badge {
+    --badge-tone: var(--muted-foreground);
+    --badge-bg: var(--panel);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.125rem 0.5rem;
+    border-radius: calc(var(--radius) - 0.25rem);
+    background: var(--badge-bg);
+    color: color-mix(in oklch, var(--badge-tone) 55%, var(--foreground));
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.25rem;
+    white-space: nowrap;
+  }
+  .badge::before {
+    content: "";
+    flex: none;
+    width: 0.375rem;
+    height: 0.375rem;
+    border-radius: 50%;
+    background: var(--badge-tone);
+  }
+  .badge-info {
+    --badge-tone: var(--accent);
+    --badge-bg: var(--accent-soft);
+  }
+  .badge-success {
+    --badge-tone: var(--success);
+    --badge-bg: var(--success-soft);
+  }
+  .badge-warning {
+    --badge-tone: var(--warning);
+    --badge-bg: var(--warning-soft);
+  }
+  .badge-danger {
+    --badge-tone: var(--danger);
+    --badge-bg: var(--danger-soft);
+  }
   .chart-fill {
     background: linear-gradient(180deg, var(--chart-top), var(--chart-base));
   }

@@ -72,4 +72,11 @@ describe("card, tile and chart styling", () => {
     const neutrals = ["--background", "--surface", "--panel", "--border"].map((name) => Number(dark.match(new RegExp(`${name}:\\s*oklch\\([^)]*\\s(\\d+)\\)`))?.[1]));
     for (const hue of neutrals) assert.ok(hue >= 218 && hue <= 228, `neutral hue ${hue} is petrol`);
   });
+
+  it("draws a badge from tokens with a dot and one class per tone", () => {
+    assert.match(globals, /\.badge::before\s*\{[^}]*background:\s*var\(--badge-tone\)/);
+    for (const tone of ["info", "success", "warning", "danger"]) {
+      assert.match(globals, new RegExp(`\\.badge-${tone}\\s*\\{[^}]*--badge-tone:\\s*var\\(--(accent|success|warning|danger)\\)`), `badge-${tone}`);
+    }
+  });
 });

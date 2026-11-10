@@ -130,7 +130,7 @@ export function ModuleSettings({ moduleId, name, entries: initialEntries, overri
           {name}
         </h2>
         {incomplete.length > 0 ? (
-          <span className="rounded-md bg-warning-soft px-2 py-1 text-xs font-medium">
+          <span className="badge badge-warning">
             {incomplete.length} required {incomplete.length === 1 ? "setting is" : "settings are"} not set
           </span>
         ) : null}
