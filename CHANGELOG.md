@@ -23,6 +23,9 @@ checked against, and it changes only when the contract with modules changes. See
   hidden), with how long ago the figures were read. Each refresh re-renders the page on the server, so it shows only what the person
   may see; no new endpoint. Alerts can be filtered by severity when there is more than one kind, and a module figure highlights as a link.
 
+- Changing the theme reveals the new one with a circle that grows from the theme button (620 ms), using the browser's View Transitions.
+  With reduced motion, or a browser without View Transitions, the theme changes at once. The choice is stored as before.
+
 ### Changed
 
 - The browser no longer downloads a cryptography library it never used: a client component imported `initialsOf` from a module that also imports
