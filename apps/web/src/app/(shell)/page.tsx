@@ -97,7 +97,7 @@ export default async function DashboardPage() {
         <Section id="figures" title="Modules">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {view.modules.map((module) => (
-              <div key={module.id} className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-4">
+              <div key={module.id} className="card flex flex-col gap-3">
                 <h3 className="text-sm font-medium text-muted">{module.name}</h3>
                 <ul className="flex flex-col gap-2">
                   {module.stats.map((stat) => (

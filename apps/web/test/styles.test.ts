@@ -51,3 +51,25 @@ describe("motion", () => {
     assert.ok(ms >= 150 && ms <= 600, `the entrance lasts ${ms} ms`);
   });
 });
+
+describe("card, tile and chart styling", () => {
+  it("gives the card its accent line from tokens, so a module can switch it off", () => {
+    assert.match(tokens, /--card-line-opacity\s*:/);
+    const card = globals.match(/\.card::before\s*\{([^}]*)\}/)?.[1] ?? "";
+    assert.match(card, /var\(--accent\)/);
+    assert.match(card, /opacity:\s*var\(--card-line-opacity\)/);
+  });
+
+  it("declares the chart bar shades in both themes and reads only tokens", () => {
+    for (const name of ["--chart-top", "--chart-base"]) {
+      assert.equal([...tokens.matchAll(new RegExp(`${name}\\s*:`, "g"))].length, 2, `${name} is set for light and dark`);
+    }
+    assert.match(globals, /\.chart-fill\s*\{[^}]*var\(--chart-top\)[^}]*var\(--chart-base\)/);
+  });
+
+  it("keeps the dark neutrals on one petrol hue", () => {
+    const dark = tokens.slice(tokens.indexOf('[data-theme="dark"]'));
+    const neutrals = ["--background", "--surface", "--panel", "--border"].map((name) => Number(dark.match(new RegExp(`${name}:\\s*oklch\\([^)]*\\s(\\d+)\\)`))?.[1]));
+    for (const hue of neutrals) assert.ok(hue >= 218 && hue <= 228, `neutral hue ${hue} is petrol`);
+  });
+});

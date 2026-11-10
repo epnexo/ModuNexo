@@ -9,6 +9,9 @@ checked against, and it changes only when the contract with modules changes. See
 
 ### Added
 
+- A petrol palette for both themes (dark neutrals on one teal hue, aqua accent), cards with a one-pixel accent line along the top
+  edge (`--card-line-opacity`, off with `0`), an `icon-tile` class and gradient bars in the dashboard chart. All of it comes from
+  tokens, so modules that read them follow along.
 - The sidebar can be collapsed to a rail of icons and opened again, with the button in the top bar or the `[` key (not while
   typing in a field). The rail is 64 px wide with 44 px targets. The choice is a cookie, so the server draws the right sidebar on the next page and nothing jumps. The
   names stay as each link's title and accessible name. Groups open and close with an animated height and a turning chevron.
