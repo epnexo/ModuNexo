@@ -19,6 +19,10 @@ checked against, and it changes only when the contract with modules changes. See
   it. The index is built from what the modules declare, so it holds labels and links, never a value. The module list marks the
   modules that still have a required setting to fill in with "Needs setup". The tabs underline slides to the current tab.
 
+- The dashboard has a **Refresh** button and an **Auto-refresh every 30 s** switch (remembered in the browser, paused while the tab is
+  hidden), with how long ago the figures were read. Each refresh re-renders the page on the server, so it shows only what the person
+  may see; no new endpoint. Alerts can be filtered by severity when there is more than one kind, and a module figure highlights as a link.
+
 ### Changed
 
 - The browser no longer downloads a cryptography library it never used: a client component imported `initialsOf` from a module that also imports
