@@ -80,6 +80,51 @@
 }
 
 /*
+ * Cards and icon tiles, for the shell and for modules. Elevation is declared once, as a border; the only extra is a
+ * one-pixel line of the accent along the top edge that fades out. A module that wants a plainer card sets
+ * `--card-line-opacity: 0` on its root element.
+ */
+@layer components {
+  .card {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    padding: var(--card-pad);
+    border: 1px solid var(--border);
+    border-radius: var(--card-radius);
+    background: var(--surface);
+    transition: border-color var(--duration) var(--ease-out);
+  }
+  .card::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    height: 1px;
+    background: linear-gradient(90deg, var(--accent), transparent 73%);
+    opacity: var(--card-line-opacity);
+    pointer-events: none;
+  }
+  .card:hover,
+  .card:focus-within {
+    border-color: var(--border-strong);
+  }
+  .icon-tile {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: var(--tile-size);
+    height: var(--tile-size);
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 0.125rem);
+    background: var(--panel);
+    color: var(--accent);
+  }
+  .chart-fill {
+    background: linear-gradient(180deg, var(--chart-top), var(--chart-base));
+  }
+}
+
+/*
  * Sidebar: open, or a rail of icons. The state is a cookie the server reads, so the first paint is already right, and
  * `data-sidebar` on the shell is all the CSS needs. Motion here shows a state change, takes 150-260 ms, and moves
  * transform, opacity and one width; it is off for anyone who asked for less motion.

@@ -10,25 +10,25 @@
   color-scheme: light;
 
   /* Surfaces: the page, raised content, and the cooler layer used by the sidebar and toolbars. */
-  --background: oklch(0.984 0.004 255);
+  --background: oklch(0.984 0.004 217);
   --surface: oklch(1 0 0);
-  --panel: oklch(0.962 0.007 255);
-  --panel-hover: oklch(0.935 0.01 255);
+  --panel: oklch(0.962 0.007 217);
+  --panel-hover: oklch(0.935 0.01 217);
 
   /* Text. */
-  --foreground: oklch(0.22 0.022 258);
-  --muted-foreground: oklch(0.47 0.022 258);
+  --foreground: oklch(0.22 0.022 224);
+  --muted-foreground: oklch(0.47 0.022 224);
 
   /* Lines. */
-  --border: oklch(0.905 0.009 255);
-  --border-strong: oklch(0.82 0.014 255);
+  --border: oklch(0.905 0.009 217);
+  --border-strong: oklch(0.82 0.014 217);
 
   /* Accent: primary actions, the current selection and state indicators only. */
-  --accent: oklch(0.49 0.15 258);
-  --accent-hover: oklch(0.43 0.15 258);
-  --accent-foreground: oklch(0.99 0.003 258);
-  --accent-soft: oklch(0.94 0.035 258);
-  --accent-soft-foreground: oklch(0.36 0.14 258);
+  --accent: oklch(0.45 0.075 225);
+  --accent-hover: oklch(0.39 0.075 225);
+  --accent-foreground: oklch(0.99 0.003 224);
+  --accent-soft: oklch(0.93 0.02 224);
+  --accent-soft-foreground: oklch(0.34 0.07 225);
 
   /* Status. */
   --danger: oklch(0.53 0.2 27);
@@ -39,8 +39,8 @@
   --warning: oklch(0.62 0.14 75);
   --warning-soft: oklch(0.96 0.04 85);
 
-  --ring: oklch(0.49 0.15 258 / 0.55);
-  --shadow-raised: 0 1px 2px oklch(0.22 0.022 258 / 0.06), 0 8px 24px -12px oklch(0.22 0.022 258 / 0.18);
+  --ring: oklch(0.45 0.075 225 / 0.55);
+  --shadow-raised: 0 1px 2px oklch(0.22 0.022 224 / 0.06), 0 8px 24px -12px oklch(0.22 0.022 224 / 0.18);
 
   /* Shape and type. */
   --radius: 0.625rem;
@@ -60,6 +60,14 @@
   --card-gap: 0.75rem;
   --card-radius: var(--radius);
 
+  /* Card details: a one-pixel line of the accent along the top edge, fading out, and the icon tile. */
+  --card-line-opacity: 0.5;
+  --tile-size: 2.125rem;
+
+  /* Chart bars: a top and a base shade of the accent hue. */
+  --chart-top: oklch(0.64 0.09 215);
+  --chart-base: oklch(0.45 0.075 225);
+
   /* Layout. */
   --sidebar-width: 15.5rem;
   --sidebar-rail: 4rem;
@@ -72,33 +80,38 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --background: oklch(0.175 0.014 258);
-  --surface: oklch(0.212 0.016 258);
-  --panel: oklch(0.152 0.014 258);
-  --panel-hover: oklch(0.245 0.02 258);
+  /* Petrol: every neutral sits at hue 223 so surfaces, lines and text read as one family. */
+  --background: oklch(0.194 0.013 223);
+  --surface: oklch(0.251 0.02 224);
+  --panel: oklch(0.218 0.018 223);
+  --panel-hover: oklch(0.281 0.026 226);
 
-  --foreground: oklch(0.94 0.008 258);
-  --muted-foreground: oklch(0.72 0.02 258);
+  --foreground: oklch(0.964 0.008 197);
+  --muted-foreground: oklch(0.751 0.021 216);
 
-  --border: oklch(0.285 0.018 258);
-  --border-strong: oklch(0.38 0.022 258);
+  --border: oklch(0.329 0.023 223);
+  --border-strong: oklch(0.45 0.026 223);
 
-  --accent: oklch(0.7 0.13 258);
-  --accent-hover: oklch(0.76 0.12 258);
-  --accent-foreground: oklch(0.17 0.03 258);
-  --accent-soft: oklch(0.29 0.06 258);
-  --accent-soft-foreground: oklch(0.86 0.08 258);
+  --accent: oklch(0.826 0.07 216);
+  --accent-hover: oklch(0.88 0.065 216);
+  --accent-foreground: oklch(0.265 0.038 225);
+  --accent-soft: oklch(0.312 0.029 225);
+  --accent-soft-foreground: oklch(0.88 0.06 214);
 
   --danger: oklch(0.7 0.17 27);
-  --danger-soft: oklch(0.27 0.06 27);
+  --danger-soft: oklch(0.3 0.06 27);
   --danger-soft-foreground: oklch(0.85 0.09 27);
-  --success: oklch(0.72 0.14 155);
-  --success-soft: oklch(0.27 0.05 155);
-  --warning: oklch(0.78 0.13 80);
-  --warning-soft: oklch(0.29 0.05 80);
+  --success: oklch(0.78 0.1 169);
+  --success-soft: oklch(0.333 0.034 169);
+  --warning: oklch(0.84 0.09 88);
+  --warning-soft: oklch(0.331 0.03 88);
 
-  --ring: oklch(0.7 0.13 258 / 0.6);
-  --shadow-raised: 0 1px 2px oklch(0 0 0 / 0.3), 0 12px 28px -14px oklch(0 0 0 / 0.6);
+  --ring: oklch(0.826 0.07 216 / 0.6);
+  --shadow-raised: 0 1px 2px oklch(0 0 0 / 0.3), 0 14px 32px -16px oklch(0 0 0 / 0.65);
+
+  --card-line-opacity: 0.55;
+  --chart-top: oklch(0.82 0.09 210);
+  --chart-base: oklch(0.55 0.075 224);
 }
 
 @media (prefers-reduced-motion: reduce) {

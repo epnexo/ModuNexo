@@ -36,7 +36,7 @@ export function BarChart({ chart }: { chart: ChartRow }) {
   }, [signature, play]);
 
   return (
-    <section aria-labelledby={`${chart.key}-title`} className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-4">
+    <section aria-labelledby={`${chart.key}-title`} className="card flex flex-col gap-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 id={`${chart.key}-title`} className="text-base font-semibold tracking-tight">
@@ -85,7 +85,7 @@ export function BarChart({ chart }: { chart: ChartRow }) {
                       {bar.value.toLocaleString("en-US")}
                     </span>
                     <span className="flex w-full flex-1 items-end justify-center">
-                      <span data-fill className="w-full max-w-10 origin-bottom rounded-t-sm bg-accent transition-opacity duration-150 group-hover:opacity-80" style={{ height: `${height}%` }} />
+                      <span data-fill className="w-full max-w-10 origin-bottom chart-fill rounded-t-sm transition-opacity duration-150 group-hover:opacity-80" style={{ height: `${height}%` }} />
                     </span>
                   </Link>
                 </li>
