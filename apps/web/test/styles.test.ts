@@ -86,3 +86,55 @@ describe("card, tile and chart styling", () => {
     assert.match(globals, /\.fold-body\s*\{[^}]*transition:\s*grid-template-rows var\(--duration-slow\)/);
   });
 });
+
+/** The text of the `@layer components { ... }` block of globals.css. */
+function componentsLayer(): string {
+  const start = globals.indexOf("@layer components {");
+  let depth = 0;
+  for (let i = globals.indexOf("{", start); i < globals.length; i++) {
+    if (globals[i] === "{") depth++;
+    else if (globals[i] === "}" && --depth === 0) return globals.slice(start, i + 1);
+  }
+  return "";
+}
+
+describe("components every module can use", () => {
+  const layer = componentsLayer();
+  const rule = (selector: string) => layer.match(new RegExp(`${selector.replace(/[.[\]()|]/g, "\\$&")}\\s*\\{([^}]*)\\}`))?.[1] ?? "";
+
+  it("defines the segmented control, the figures, the notice and the table in the components layer", () => {
+    for (const selector of [".seg", ".stats", ".stat", ".stat-label", ".stat-value", ".stat-sub", ".notice", ".notice-info", ".notice-error", ".table-scroll", ".data-table"]) {
+      assert.notEqual(rule(selector), "", `${selector} is defined`);
+    }
+  });
+
+  it("draws all of them from tokens: no colour value in the whole components layer", () => {
+    assert.doesNotMatch(layer.replace(/\/\*[\s\S]*?\*\//g, ""), /#[0-9a-fA-F]{3,8}\b|oklch\(|rgba?\(/);
+  });
+
+  it("marks the current segment by aria and a tick, not by colour alone", () => {
+    assert.match(layer, /\.seg \[aria-current="page"\]::before/);
+    assert.match(layer, /\.seg \[aria-pressed="true"\]/);
+  });
+
+  it("lets a module tone a figure and thicken its line through variables, with the platform default", () => {
+    assert.match(rule(".stat"), /--stat-tone:\s*var\(--accent\)/);
+    assert.match(rule(".stat"), /border-top:\s*var\(--stat-line,\s*1px\)/);
+    assert.match(rule(".stat-value"), /color:\s*var\(--stat-tone\)/);
+  });
+
+  it("fills the row with figures however many there are, two to a row on a phone", () => {
+    assert.match(rule(".stats"), /repeat\(auto-fit,\s*minmax\(10\.625rem,\s*1fr\)\)/);
+    assert.match(layer, /@media \(max-width: 900px\)\s*\{\s*\.stats\s*\{[^}]*repeat\(2,/);
+  });
+
+  it("gives errors and information their own tones, and warnings the default", () => {
+    assert.match(rule(".notice"), /--warning-soft/);
+    assert.match(rule(".notice-error"), /--danger-soft/);
+    assert.match(rule(".notice-info"), /--accent-soft/);
+  });
+
+  it("keeps a larger target for the segmented control on coarse pointers", () => {
+    assert.match(layer, /@media \(pointer: coarse\)\s*\{[^@]*\.seg a[^}]*min-height:\s*2\.75rem/);
+  });
+});
