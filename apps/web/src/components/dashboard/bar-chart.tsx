@@ -2,20 +2,30 @@
 
 import { RotateCcw } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChartRow } from "../../server/dashboard";
-import { barAnimation, valueAnimation } from "../../server/dashboard-live";
+import { barAnimation, barReadout, stepBar, valueAnimation } from "../../server/dashboard-live";
 
 /**
  * One bar chart of the dashboard. The server sends the rows; this draws them as vertical bars with the value above each,
  * grows them from the base (see `barAnimation`) when the chart first shows, when its figures change and on Replay, and
- * opens the chart's screen when a bar is pressed. With reduced motion the bars are simply there.
+ * opens the chart's screen when a bar is pressed. Hovering or focusing a bar reads it out (value and distance from the
+ * average) and dims the others; the arrow keys, Home and End move between bars. With reduced motion the bars are simply there.
  */
 export function BarChart({ chart }: { chart: ChartRow }) {
   const root = useRef<HTMLDivElement>(null);
   // What was last drawn, so a refresh that brings the same figures does not replay the animation.
   const drawn = useRef<string | null>(null);
   const signature = chart.bars.map((bar) => `${bar.label}:${bar.value}`).join("|");
+  const [active, setActive] = useState<number | null>(null);
+  const reading = active === null || chart.bars[active] === undefined ? null : barReadout(chart.bars[active].label, chart.bars[active].value, chart.average);
+
+  const move = (event: React.KeyboardEvent<HTMLAnchorElement>, index: number) => {
+    const next = stepBar(event.key, index, chart.bars.length);
+    if (next === null) return;
+    event.preventDefault();
+    root.current?.querySelectorAll<HTMLAnchorElement>("[data-bar] a")[next]?.focus();
+  };
 
   const play = useCallback(() => {
     const node = root.current;
@@ -64,6 +74,10 @@ export function BarChart({ chart }: { chart: ChartRow }) {
         </div>
       </div>
 
+      <p aria-live="polite" className="h-5 text-sm text-muted tabular-nums">
+        {reading ?? (chart.available && chart.bars.length > 0 ? "Hover or focus a bar to read it. Arrow keys move between bars." : "")}
+      </p>
+
       {!chart.available ? (
         <p className="text-sm text-muted">This chart is not available right now.</p>
       ) : chart.bars.length === 0 ? (
@@ -71,21 +85,25 @@ export function BarChart({ chart }: { chart: ChartRow }) {
       ) : (
         <div ref={root} className="overflow-x-auto pb-1" tabIndex={-1}>
           <ul className="flex h-56 items-end gap-2 border-b border-border pt-6" style={{ minWidth: `${chart.bars.length * 3}rem` }}>
-            {chart.bars.map((bar) => {
+            {chart.bars.map((bar, index) => {
               const height = chart.max === 0 ? 0 : Math.max(2, Math.round((bar.value / chart.max) * 100));
               return (
                 <li key={bar.label} data-bar className="flex h-full min-w-10 flex-1 flex-col justify-end">
                   <Link
                     href={chart.href}
-                    title={`${bar.label}: ${bar.value.toLocaleString("en-US")}`}
-                    aria-label={`${bar.label}, ${bar.value.toLocaleString("en-US")}. Open ${chart.label}`}
+                    aria-label={`${barReadout(bar.label, bar.value, chart.average)}. Open ${chart.label}`}
+                    onMouseEnter={() => setActive(index)}
+                    onMouseLeave={() => setActive(null)}
+                    onFocus={() => setActive(index)}
+                    onBlur={() => setActive(null)}
+                    onKeyDown={(event) => move(event, index)}
                     className="group flex h-full flex-col items-center justify-end gap-1 rounded-md outline-offset-2 focus-visible:outline-2 focus-visible:outline-accent"
                   >
                     <span data-value className="text-xs font-semibold tabular-nums">
                       {bar.value.toLocaleString("en-US")}
                     </span>
                     <span className="flex w-full flex-1 items-end justify-center">
-                      <span data-fill className="w-full max-w-10 origin-bottom chart-fill rounded-t-sm transition-opacity duration-150 group-hover:opacity-80" style={{ height: `${height}%` }} />
+                      <span data-fill className={`w-full max-w-10 origin-bottom chart-fill rounded-t-sm transition-opacity duration-150 ${active !== null && active !== index ? "opacity-40" : ""}`} style={{ height: `${height}%` }} />
                     </span>
                   </Link>
                 </li>

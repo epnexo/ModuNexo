@@ -160,6 +160,32 @@
     --badge-tone: var(--danger);
     --badge-bg: var(--danger-soft);
   }
+  /* A dashboard section that folds: the body animates by its height; once closed it leaves the tab order. */
+  .fold-chev {
+    flex: none;
+    transition: transform var(--duration-slow) var(--ease-out);
+  }
+  .fold[data-open="true"] .fold-chev {
+    transform: rotate(90deg);
+  }
+  .fold-body {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows var(--duration-slow) var(--ease-out);
+  }
+  .fold-inner {
+    min-height: 0;
+    overflow: hidden;
+    padding: 0.25rem;
+    margin: -0.25rem;
+  }
+  .fold[data-open="false"] .fold-body {
+    grid-template-rows: 0fr;
+  }
+  .fold[data-open="false"] .fold-inner {
+    visibility: hidden;
+    transition: visibility 0s linear var(--duration-slow);
+  }
   .chart-fill {
     background: linear-gradient(180deg, var(--chart-top), var(--chart-base));
   }
