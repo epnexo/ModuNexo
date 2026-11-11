@@ -7,6 +7,8 @@
 #   POSTGRES_PASSWORD     letters and digits only (it is embedded in DATABASE_URL), e.g. `openssl rand -hex 24`.
 #                         It only applies when the data volume is created.
 #   MODUNEXO_MASTER_KEY   keep it identical across deploys: changing it breaks the secrets encrypted with it.
+#   DOCUMENTS_ENGINE_TOKEN  the shared secret between the platform and the PDF engine, e.g. `openssl rand -hex 32`.
+#                         Put the same value in the documents module's `engine.token` setting.
 # Optional:
 #   WEB_PUBLIC_URL        the public https URL of the app.
 #
@@ -65,6 +67,26 @@ services:
     volumes:
       - epnexo-modules:/app/modules
       - epnexo-data:/app/var
+
+  # The PDF engine of the documents module: WeasyPrint with the system libraries it needs, which the platform image
+  # does not carry. It is part of this stack, so it goes up, down and redeploys with web and worker and answers its own
+  # health check, but nothing waits for it: if it is down, only the PDFs of the documents module fail
+  # (`engine-unreachable`), never the platform. It publishes no port; the module reaches it at http://documents-engine:8080.
+  # In the documents module's settings set `engine.url` to that address and `engine.token` to DOCUMENTS_ENGINE_TOKEN.
+  # The image is published by the modules repository on a `documents-engine-vX.Y.Z` tag.
+  documents-engine:
+    image: ghcr.io/epnexo/modunexo-documents-engine:0.1.0
+    restart: unless-stopped
+    environment:
+      ENGINE_TOKEN: ${DOCUMENTS_ENGINE_TOKEN:?set DOCUMENTS_ENGINE_TOKEN}
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 volumes:
   epnexo-db-data:
