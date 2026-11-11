@@ -1279,7 +1279,9 @@ web:dev` need it without the container; stop it with `docker compose stop db`.
 The `web` service is behind the `app` profile, so the development flow (`docker compose up -d db`) is unchanged. The
 image runs as a non-root user, applies the migrations on every start, and has a health check on `/api/health`.
 A `worker` service (same profile, same image) runs the background jobs; restart it after installing or upgrading a
-module (`docker compose restart worker`). Installed modules and received packages live in the `modunexo-modules` and `modunexo-data` volumes (back them up with
+module (`docker compose restart worker`). A `documents-engine` service (profile `engine` in development, always on in
+`deploy/docker-compose.prod.yml`) is the PDF renderer of the documents module; it needs `DOCUMENTS_ENGINE_TOKEN`, shares it
+with the module's `engine.token` setting, and nothing waits for it, so if it is down only the PDFs fail. Installed modules and received packages live in the `modunexo-modules` and `modunexo-data` volumes (back them up with
 `scripts/backup.sh --modules-dir ... --data-dir ...`, or copy the volumes). Set `WEB_PUBLIC_URL` to the public https
 origin when the app sits behind a TLS proxy. The image keeps the dev dependencies on purpose: installing a module
 rebuilds the web app inside the container.

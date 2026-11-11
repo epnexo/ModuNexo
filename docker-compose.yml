@@ -77,6 +77,19 @@ services:
       - epnexo-modules:/app/modules
       - epnexo-data:/app/var
 
+  # The PDF engine of the documents module, for trying that module locally. Its own profile, so no other flow starts it:
+  #   DOCUMENTS_ENGINE_TOKEN=... docker compose --profile engine up -d documents-engine
+  # Then set the module's `engine.url` to http://127.0.0.1:${DOCUMENTS_ENGINE_PORT:-8080} and `engine.token` to the same token.
+  documents-engine:
+    profiles: ["engine"]
+    image: ghcr.io/epnexo/modunexo-documents-engine:0.1.0
+    container_name: modunexo-documents-engine
+    restart: unless-stopped
+    environment:
+      ENGINE_TOKEN: ${DOCUMENTS_ENGINE_TOKEN:-}
+    ports:
+      - "127.0.0.1:${DOCUMENTS_ENGINE_PORT:-8080}:8080"
+
 volumes:
   epnexo-db-data:
   epnexo-modules:
