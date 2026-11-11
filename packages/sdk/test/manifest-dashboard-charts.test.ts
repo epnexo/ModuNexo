@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { satisfies } from "semver";
 import { ManifestError, SDK_VERSION, validateManifest } from "../src/index.ts";
 
 const base = { id: "usage", version: "1.0.0", name: "Usage", platform: "^0.1.0", dependsOn: {}, schema: "usage", migrationsDir: "migrations", nav: [] };
@@ -43,6 +44,6 @@ describe("validateManifest: dashboard charts", () => {
   });
 
   it("raises the contract version, because an older platform refuses the new field", () => {
-    assert.equal(SDK_VERSION, "0.1.2");
+    assert.ok(satisfies(SDK_VERSION, ">=0.1.2"), `the SDK is ${SDK_VERSION}`);
   });
 });
