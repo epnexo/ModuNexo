@@ -6,6 +6,13 @@ root, `packages/core` and `apps/web`); the SDK keeps its own (`SDK_VERSION`), th
 checked against, and it changes only when the contract with modules changes. See "Versioning" in the README.
 
 ## [Unreleased]
+### Added
+
+- The production stack runs the PDF engine of the documents module as a fourth service, `documents-engine`
+  (`ghcr.io/epnexo/modunexo-documents-engine`), next to `db`, `web` and `worker`. It goes up, down and redeploys with
+  them and answers its own health check, but nothing waits for it: if it is down, only the PDFs of the documents module
+  fail. It publishes no port. It needs the new variable `DOCUMENTS_ENGINE_TOKEN`, the same value as the module's
+  `engine.token` setting. In development it sits behind the `engine` profile of `docker-compose.yml`.
 
 ## [0.5.1] - 2026-11-11
 ### Security
