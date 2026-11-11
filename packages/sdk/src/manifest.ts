@@ -101,6 +101,32 @@ export interface SettingDeclaration {
   description?: string;
 }
 
+/**
+ * A connection check: a button on the platform's Settings screen, shown to administrators under the module's settings,
+ * that tests something the settings point to (an address, a token). Pressing it makes the platform POST to `path`, a
+ * route of this module, with the administrator's session; the route answers a `CheckResult`. It runs with the settings
+ * already saved.
+ */
+export interface CheckDeclaration {
+  /** Stable identifier, lowercase letters, digits, hyphen and underscore, starting with a letter. */
+  key: string;
+  /** The button's text. */
+  label: string;
+  /** One sentence under the button; plain text. */
+  description?: string;
+  /**
+   * A path declared in `pages` with kind "route", that answers POST, requires a `permission` and is neither `public` nor
+   * `scope`d. Nothing else can be a check, so the platform never posts outside what the module already declares.
+   */
+  path: string;
+}
+
+/** What a check route answers (JSON). `message` is shown as plain text, so it must not carry secrets or text from the tested system. */
+export interface CheckResult {
+  ok: boolean;
+  message: string;
+}
+
 /** A permission key the module declares. */
 export interface PermissionDeclaration {
   key: string;
@@ -245,6 +271,8 @@ export interface ModuleManifest {
   nav: NavEntry[];
   pages?: PageDeclaration[];
   settings?: SettingDeclaration[];
+  /** Connection checks shown on the Settings screen (see `CheckDeclaration`). Needs SDK 0.1.3 or later. */
+  checks?: CheckDeclaration[];
   permissions?: PermissionDeclaration[];
   /** Scopes a service token can hold for this module; a route names the one it requires with `scope`. */
   scopes?: ScopeDeclaration[];
@@ -284,7 +312,7 @@ const SCHEMA_NAME = /^[a-z][a-z0-9_]{0,62}$/;
 // "core" belongs to the platform itself.
 const RESERVED_SCHEMAS = new Set(["public", "information_schema", "core"]);
 const KNOWN_FIELDS = new Set([
-  "id", "version", "name", "platform", "dependsOn", "schema", "migrationsDir", "nav", "pages", "settings", "permissions", "scopes", "jobs", "events", "subscriptions", "files", "llm", "dashboard", "hooks",
+  "id", "version", "name", "platform", "dependsOn", "schema", "migrationsDir", "nav", "pages", "settings", "checks", "permissions", "scopes", "jobs", "events", "subscriptions", "files", "llm", "dashboard", "hooks",
 ]);
 const KNOWN_DASHBOARD_FIELDS = new Set(["stats", "alerts", "charts"]);
 const KNOWN_STAT_FIELDS = new Set(["key", "label", "href", "permission", "sql"]);
@@ -311,6 +339,11 @@ const MAX_BODY_LIMIT = 10 * 1024 * 1024;
 const KNOWN_SETTING_FIELDS = new Set(["key", "label", "type", "default", "required", "options", "description"]);
 const KNOWN_PERMISSION_FIELDS = new Set(["key", "label"]);
 const KNOWN_SCOPE_FIELDS = new Set(["key", "label"]);
+const KNOWN_CHECK_FIELDS = new Set(["key", "label", "description", "path"]);
+const CHECK_KEY = /^[a-z][a-z0-9_-]{0,39}$/;
+const MAX_CHECKS = 8;
+const MAX_CHECK_LABEL_CHARS = 60;
+const MAX_CHECK_DESCRIPTION_CHARS = 300;
 const KNOWN_JOB_FIELDS = new Set(["name", "entry", "every", "timeoutSeconds", "maxAttempts"]);
 /** The log stores the full type, `<module id>.<name>`, in at most 200 characters. */
 const MAX_EVENT_NAME_CHARS = 100;
@@ -634,6 +667,44 @@ function checkScopes(scopes: unknown, problems: string[]): Set<string> {
   return seen;
 }
 
+/** A check names a route the module already declares, so the platform only ever posts to something the module itself offers and guards. */
+function checkChecks(checks: unknown, pages: unknown, problems: string[]): void {
+  const routes = new Map<string, Record<string, unknown>>();
+  if (Array.isArray(pages)) for (const page of pages) if (isPlainObject(page) && typeof page.path === "string") routes.set(page.path, page);
+  if (Array.isArray(checks) && checks.length > MAX_CHECKS) problems.push(`checks must have at most ${MAX_CHECKS} entries`);
+  const seen = new Set<string>();
+  eachItem(checks, "checks", problems, (check, where) => {
+    checkUnknownFields(check, KNOWN_CHECK_FIELDS, where, problems);
+    if (typeof check.key !== "string" || !CHECK_KEY.test(check.key)) {
+      problems.push(`${where}.key must be lowercase letters, digits, hyphen and underscore, start with a letter and have at most 40 characters`);
+    } else if (seen.has(check.key)) {
+      problems.push(`${where}.key "${check.key}" is duplicated`);
+    } else {
+      seen.add(check.key);
+    }
+    if (!isNonEmptyString(check.label) || check.label.length > MAX_CHECK_LABEL_CHARS) problems.push(`${where}.label must be a non-empty string of at most ${MAX_CHECK_LABEL_CHARS} characters`);
+    if (check.description !== undefined && (typeof check.description !== "string" || check.description.length > MAX_CHECK_DESCRIPTION_CHARS)) {
+      problems.push(`${where}.description must be a string of at most ${MAX_CHECK_DESCRIPTION_CHARS} characters`);
+    }
+    if (typeof check.path !== "string") {
+      problems.push(`${where}.path must be a string`);
+      return;
+    }
+    const route = routes.get(check.path);
+    if (route === undefined) {
+      problems.push(`${where}.path "${check.path}" is not a route this module declares in pages`);
+      return;
+    }
+    const at = `${where}.path "${check.path}"`;
+    if (route.kind !== "route") problems.push(`${at} must be a route (kind "route"), not a page`);
+    const methods = Array.isArray(route.methods) ? route.methods : ["GET"];
+    if (!methods.includes("POST")) problems.push(`${at} must answer POST`);
+    if (typeof route.permission !== "string") problems.push(`${at} must require a permission`);
+    if (route.public !== undefined) problems.push(`${at} must not be public`);
+    if (route.scope !== undefined) problems.push(`${at} must not take a scope`);
+  });
+}
+
 function checkJobs(jobs: unknown, problems: string[]): void {
   const seen = new Set<string>();
   eachItem(jobs, "jobs", problems, (job, where) => {
@@ -865,6 +936,7 @@ export function validateManifest(input: unknown, options: ValidateOptions = {}):
     checkPages(raw.pages, permissionKeys, ctx, problems);
   }
   if (raw.settings !== undefined) checkSettings(raw.settings, problems);
+  if (raw.checks !== undefined) checkChecks(raw.checks, raw.pages, problems);
   if (raw.jobs !== undefined) checkJobs(raw.jobs, problems);
   if (raw.events !== undefined) checkEvents(raw.events, permissionKeys, problems);
   if (raw.files !== undefined) checkFiles(raw.files, permissionKeys, problems);
