@@ -24,8 +24,11 @@ function Check({ check, canWrite }: { check: CheckView; canWrite: boolean }) {
   async function press() {
     setPending(true);
     setOutcome(null);
-    setOutcome(await run(check.path));
-    setPending(false);
+    try {
+      setOutcome(await run(check.path));
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
