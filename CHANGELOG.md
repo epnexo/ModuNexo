@@ -7,6 +7,7 @@ checked against, and it changes only when the contract with modules changes. See
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-11
 ### Security
 
 - Updated `better-auth` from 1.7.7 to 1.7.18. It includes the fixes of the Better Auth security release of 2026-11-03

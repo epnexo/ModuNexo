@@ -31,7 +31,7 @@ services:
       retries: 20
 
   web:
-    image: ghcr.io/epnexo/modunexo:0.5.0
+    image: ghcr.io/epnexo/modunexo:0.5.1
     restart: unless-stopped
     depends_on:
       db:
@@ -49,7 +49,7 @@ services:
   # The background-job worker: the same image and volumes as the web app. It loads each job's code once, so restart it
   # after installing or upgrading a module.
   worker:
-    image: ghcr.io/epnexo/modunexo:0.5.0
+    image: ghcr.io/epnexo/modunexo:0.5.1
     restart: unless-stopped
     command: ["node", "--import", "tsx", "packages/core/src/cli/index.ts", "worker"]
     stop_grace_period: 40s
