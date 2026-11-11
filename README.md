@@ -542,6 +542,29 @@ without `..` segments; `secret` any non-empty text up to 4,096 characters. A req
 nor a default shows as incomplete on the screen and in `settings list`; it does not stop the module from running,
 so the module decides what to do without it.
 
+### Connection checks
+
+A module whose settings point at something outside (an address, a token, a service) can offer an administrator a button
+that tests them. It declares `checks`, each naming a route of the module:
+
+```ts
+permissions: [{ key: "docs.write", label: "Change documents" }],
+pages: [{ path: "/docs/settings/test-engine", entry: "./web/test-engine.ts", kind: "route", methods: ["POST"], permission: "docs.write" }],
+checks: [{ key: "engine", label: "Test connection", description: "Renders a test page through the PDF engine.", path: "/docs/settings/test-engine" }],
+```
+
+The **Settings** screen, in the Modules tab, shows a **Connection checks** card under the module's settings with one button
+per check, for an administrator who can change settings. Pressing it makes the platform `POST` to `path` from this site, with
+the administrator's session and no body, and show the answer. The route answers JSON `{ "ok": boolean, "message": string }`
+(the SDK type `CheckResult`): `message` is shown as plain text, one short line, so it must not carry a secret or text from the
+system that was tested. The check runs with the settings already saved, and the card says so.
+
+The path must be a route the module declares in `pages` that answers `POST`, requires a `permission`, and is neither `public`
+nor `scope`d; the validator refuses anything else, so the platform only ever posts to something the module itself offers and
+guards. The route checks the origin of the request itself, as any form route does (see `sameOrigin` in the documents module).
+At most 8 checks per module. The field exists since SDK `0.1.3`; an older platform refuses it as `unknown field "checks"`, so
+a module that declares it sets `platform` to `^0.1.3`.
+
 ### Public routes
 
 A module can accept calls from outside, such as a messaging provider's webhook, by marking a `kind: "route"` page

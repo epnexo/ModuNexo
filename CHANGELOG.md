@@ -7,6 +7,14 @@ checked against, and it changes only when the contract with modules changes. See
 
 ## [Unreleased]
 
+### Added
+
+- Modules can declare **connection checks**: `checks` in the manifest (SDK `0.1.3`, optional). The Settings screen, in the Modules tab,
+  shows a "Connection checks" card under the module's settings with a button per check, for an administrator who can change settings.
+  The button makes the platform `POST` to a route of the module (one it declares in `pages`, that answers `POST` and requires a
+  permission; the validator refuses any other path) and shows the answer `{ ok, message }` as plain text. It runs with the saved
+  settings. An older platform refuses the field as `unknown field "checks"`.
+
 ## [0.5.2] - 2026-11-11
 ### Added
 
