@@ -13,11 +13,13 @@ import { McpPanel } from "../../../components/settings/mcp-panel";
 import { ApiAccess } from "../../../components/settings/api-access";
 import { ModulePicker } from "../../../components/settings/module-picker";
 import { SettingsSearch } from "../../../components/settings/settings-search";
+import { ConnectionChecks } from "../../../components/settings/connection-checks";
 import { ModuleSettings } from "../../../components/settings/module-settings";
 import { SecurityForm } from "../../../components/settings/security-form";
 import { modules } from "../../../generated/modules";
 import { resolvePublicUrl } from "../../../server/launch";
 import { buildAccessView } from "../../../server/api-access-view";
+import { buildChecksView } from "../../../server/connection-checks";
 import { mcpConnection } from "../../../server/mcp-connection";
 import { pickModule } from "../../../server/module-picker";
 import { buildSettingsIndex } from "../../../server/settings-index";
@@ -95,6 +97,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           id: selectedManifest.id,
           name: selectedManifest.name,
           entries: await settings.describe(selectedManifest.id),
+          checks: buildChecksView(selectedManifest),
           access: buildAccessView({
             manifest: selectedManifest,
             tokens: (selectedManifest.scopes ?? []).length > 0 ? await tokens.list(selectedManifest.id) : [],
@@ -169,6 +172,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             platform={{ accentHue: appearance.platform.accentHue, radius: appearance.platform.radius }}
             canWrite={viewer.canWrite}
           />
+          {selected.checks.length === 0 ? null : <ConnectionChecks key={`${selected.id}-checks`} moduleId={selected.id} name={selected.name} checks={selected.checks} canWrite={viewer.canWrite} />}
           {selected.access === null ? null : <ApiAccess key={`${selected.id}-access`} moduleId={selected.id} name={selected.name} view={selected.access} canWrite={viewer.canWrite} />}
         </ModulePicker>
       )}

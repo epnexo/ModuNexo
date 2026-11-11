@@ -92,6 +92,12 @@ Do these three checks first; they are what keeps a new module on the platform's 
   body in your route (the platform has no multipart parser). The type is decided from the bytes, not the name. Only a file
   of a module with `files.permission` can be downloaded by a browser, at `GET /api/files/<module>/<id>`, always as an
   attachment. See the README section "Stored files".
+- To let an administrator test what a module's settings point at (an address, a token), declare
+  `checks: [{ key, label, description?, path }]`, each `path` a `kind: "route"` page that answers `POST` and has a `permission`
+  (never `public` or `scope`). The Settings screen shows a button per check; the platform POSTs with no body and shows the JSON
+  answer `{ ok: boolean, message: string }` (SDK type `CheckResult`) as plain text, so the message carries no secret and no text
+  from the tested system. The route checks the request origin itself. It runs with the saved settings. Needs SDK 0.1.3: set
+  `platform: "^0.1.3"`. See the README section "Connection checks".
 - To call a chat model, declare the three settings (`string` endpoint, `secret` key, `string` model) and
   `llm: { baseUrlSetting, apiKeySetting?, modelSetting? }`, then use `chat(moduleId, { messages, ... })` and `probeLlm`; never
   use `fetch` or a provider SDK, and never read the key yourself. Catch `LlmError` and branch on `error.code`. The wire format
