@@ -6,6 +6,8 @@ root, `packages/core` and `apps/web`); the SDK keeps its own (`SDK_VERSION`), th
 checked against, and it changes only when the contract with modules changes. See "Versioning" in the README.
 
 ## [Unreleased]
+
+## [0.5.2] - 2026-11-11
 ### Added
 
 - The production stack runs the PDF engine of the documents module as a fourth service, `documents-engine`
