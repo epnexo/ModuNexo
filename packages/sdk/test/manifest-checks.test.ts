@@ -57,6 +57,11 @@ describe("validateManifest: connection checks", () => {
     assert.match(problems(withChecks([check], { pages: undefined })), /is not a route this module declares in pages/);
   });
 
+  it("refuses a dynamic route, which has no fixed address to post to", () => {
+    const dynamic = { path: "/docs/[id]/test", entry: "./web/t.ts", kind: "route", methods: ["POST"], permission: "docs.write" };
+    assert.match(problems(withChecks([{ ...check, path: dynamic.path }], { pages: [dynamic] })), /must not be a dynamic route/);
+  });
+
   it("refuses a route that is a page, does not answer POST, has no permission, is public or takes a scope", () => {
     const route = base.pages[0]!;
     assert.match(problems(withChecks([check], { pages: [{ ...route, kind: "page", methods: undefined }] })), /must be a route/);
