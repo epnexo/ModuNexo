@@ -7,6 +7,7 @@ checked against, and it changes only when the contract with modules changes. See
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-11
 ### Added
 
 - Modules can declare **connection checks**: `checks` in the manifest (SDK `0.1.3`, optional). The Settings screen, in the Modules tab,
