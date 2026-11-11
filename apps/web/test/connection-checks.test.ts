@@ -33,6 +33,15 @@ describe("readCheckAnswer", () => {
     }
   });
 
+  it("drops direction overrides and zero-width characters, and replaces an empty message with a fixed sentence", () => {
+    assert.equal(readCheckAnswer(200, { ok: true, message: "safe\u202Etxt\u200B\u2066x" }).message, "safetxtx");
+    for (const message of ["", "   ", "\u202E\u200B"]) {
+      const outcome = readCheckAnswer(200, { ok: true, message });
+      assert.equal(outcome.ok, true);
+      assert.equal(outcome.message, "The check ran but sent no message.");
+    }
+  });
+
   it("keeps the message to one short plain line", () => {
     const outcome = readCheckAnswer(200, { ok: true, message: `Line one\n\u0007line two ${"x".repeat(400)}` });
     assert.ok(outcome.message.length <= 300);

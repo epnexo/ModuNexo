@@ -697,6 +697,7 @@ function checkChecks(checks: unknown, pages: unknown, problems: string[]): void 
     }
     const at = `${where}.path "${check.path}"`;
     if (route.kind !== "route") problems.push(`${at} must be a route (kind "route"), not a page`);
+    if (check.path.split("/").some(isDynamicRouteSegment)) problems.push(`${at} must not be a dynamic route: a check posts to one fixed address`);
     const methods = Array.isArray(route.methods) ? route.methods : ["GET"];
     if (!methods.includes("POST")) problems.push(`${at} must answer POST`);
     if (typeof route.permission !== "string") problems.push(`${at} must require a permission`);
