@@ -32,7 +32,7 @@ export function createCliRun(options: CliRunOptions): McpRun {
       let verdict: string | undefined;
       let child: ReturnType<typeof spawn>;
       try {
-        child = spawn(process.execPath, [...options.entry, ...argv], { cwd: options.cwd, env: options.env as NodeJS.ProcessEnv, stdio: ["ignore", "pipe", "pipe"] });
+        child = spawn(process.execPath, [...options.entry, ...argv], { cwd: options.cwd, env: options.env as NodeJS.ProcessEnv, stdio: ["ignore", "pipe", "pipe"], detached: true });
       } catch (error) {
         io.err(`could not start the command: ${error instanceof Error ? error.message : String(error)}`);
         resolve(1);
@@ -40,7 +40,12 @@ export function createCliRun(options: CliRunOptions): McpRun {
       }
       const stop = (reason: string) => {
         if (verdict === undefined) verdict = reason;
-        child.kill("SIGKILL");
+        // The child leads its own process group, so whatever it started goes with it.
+        try {
+          if (child.pid !== undefined) process.kill(-child.pid, "SIGKILL");
+        } catch {
+          child.kill("SIGKILL");
+        }
       };
       const timer = setTimeout(() => stop(`the command timed out after ${Math.round(timeoutMs / 1000)} seconds`), timeoutMs);
       const keep = (into: Buffer[]) => (chunk: Buffer) => {

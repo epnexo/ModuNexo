@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it } from "node:test";
 import { createCliRun } from "../src/server/mcp-cli.ts";
 
@@ -42,5 +45,18 @@ describe("running the CLI as a child process", () => {
   it("does not hand the child the parent's environment beyond what it was given", async () => {
     const got = await capture(run("console.log(Object.keys(process.env).includes('MNX_SECRET_PROBE'))"), ["x"]);
     assert.equal(got.out.join("\n"), "false");
+  });
+  it("stops the processes the command started too, not only the command", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "mcp-cli-"));
+    const marker = join(dir, "grandchild-ran");
+    try {
+      const script = `require("node:child_process").spawn(process.execPath, ["-e", "setTimeout(() => require('node:fs').writeFileSync(process.argv[1], 'x'), 700)", ${JSON.stringify(marker)}], { stdio: "ignore" }); setTimeout(() => {}, 60000)`;
+      const got = await capture(run(script, { timeoutMs: 150 }), ["x"]);
+      assert.equal(got.code, 1);
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      assert.equal(existsSync(marker), false, "a process started by the command outlived the timeout");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
