@@ -1,9 +1,10 @@
 import { runCli } from "../cli/run.ts";
 import { CORE_VERSION } from "../version.ts";
-import { createMcpServer } from "./server.ts";
+import { type McpRun, createMcpServer } from "./server.ts";
 import { serveStdio } from "./stdio.ts";
 
 export { createMcpServer, serveStdio };
+export type { McpRun };
 
 /**
  * `modunexo mcp`: serve the platform to an MCP client over stdin and stdout. Standard output belongs to the protocol,
