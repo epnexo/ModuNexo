@@ -35,13 +35,13 @@ function templates(id: string, schema: string, name: string): Record<string, str
   const path = `/${id}`;
   return {
     "package.json": `${JSON.stringify({ name: `@local/${id}`, version: "0.1.0", private: true, type: "module" }, null, 2)}\n`,
-    "manifest.ts": `import { SDK_VERSION, defineModule } from "@modunexo/sdk";
+    "manifest.ts": `import { defineModule } from "@modunexo/sdk";
 
 export default defineModule({
   id: ${JSON.stringify(id)},
   version: "0.1.0", // raise it whenever a migration is added: an upgrade to the same version does nothing
   name: ${JSON.stringify(name)},
-  platform: \`^\${SDK_VERSION}\`,
+  platform: ${JSON.stringify(`^${SDK_VERSION}`)}, // the SDK range this module needs, as plain text: raise it only when the module needs a newer SDK
   // Modules whose data this one reads, with \`getDb(${JSON.stringify(id)}).reader("<id>")\`. Each must be installed first.
   dependsOn: {},
   schema: ${JSON.stringify(schema)}, // the Postgres schema this module owns

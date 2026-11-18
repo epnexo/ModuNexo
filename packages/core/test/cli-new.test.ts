@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, it } from "node:test";
+import { SDK_VERSION } from "@modunexo/sdk";
 import { runCli } from "../src/cli/run.ts";
 
 const repoNodeModules = join(dirname(fileURLToPath(import.meta.url)), "../../../node_modules");
@@ -43,6 +44,13 @@ describe("modules new", () => {
     assert.match(readFileSync(join(folder, "web/page.tsx"), "utf8"), /getDb\("field-notes"\)/);
     assert.match(result.out, /field-notes/);
     assert.match(result.out, /modules pack/, "says what to do next");
+  });
+
+  it("writes the SDK range as plain text, so the packed manifest.json and the manifest.ts that runs later cannot differ", async () => {
+    await cli("modules", "new", "field-notes", "--dir", work);
+    const manifest = readFileSync(join(work, "field-notes", "manifest.ts"), "utf8");
+    assert.match(manifest, new RegExp(`platform: "\\^${SDK_VERSION.replaceAll(".", "\\.")}"`));
+    assert.doesNotMatch(manifest, /SDK_VERSION/, "a range computed from the SDK differs as soon as the platform runs another SDK, and apply refuses the package");
   });
 
   it("produces a module the platform accepts: it packs, and the archive is reviewed by intake rules", async () => {
