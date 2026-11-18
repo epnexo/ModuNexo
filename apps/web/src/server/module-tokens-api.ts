@@ -24,10 +24,10 @@ export interface ApiAccessDeps {
   service: ApiAccessPort;
 }
 
-type Viewer = { actor: string };
+export type Viewer = { actor: string };
 
 /** Same origin (for a write), a viewer, and the right to administer: the checks every call of this API shares. */
-async function authorize(request: Request, deps: ApiAccessDeps, options: { write: boolean }): Promise<Viewer | Response> {
+export async function authorize(request: Request, deps: Pick<ApiAccessDeps, "viewer">, options: { write: boolean }): Promise<Viewer | Response> {
   if (options.write && !sameOriginRequest(request.headers)) return json({ error: "cross-origin request refused" }, 403);
   const viewer = await deps.viewer(request.headers);
   if (viewer === null) return json({ error: "sign-in required" }, 401);
@@ -35,7 +35,7 @@ async function authorize(request: Request, deps: ApiAccessDeps, options: { write
   return { actor: viewer.actor };
 }
 
-async function readObject(request: Request): Promise<Record<string, unknown> | Response> {
+export async function readObject(request: Request): Promise<Record<string, unknown> | Response> {
   const text = await readBodyText(request);
   if (!text.ok) return json({ error: text.message }, 413);
   const parsed = parseJsonBody(text.text);
@@ -52,7 +52,7 @@ export function parseTokenId(raw: string): number {
 const STATUS = { invalid: 400, "not-found": 404, revoked: 409 } as const;
 
 /** A refusal of the platform becomes its status and its message; anything else is not ours to explain. */
-async function answer(work: () => Promise<Response>): Promise<Response> {
+export async function answer(work: () => Promise<Response>): Promise<Response> {
   try {
     return await work();
   } catch (error) {

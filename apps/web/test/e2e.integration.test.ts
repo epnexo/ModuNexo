@@ -1000,6 +1000,53 @@ describe("web app: with a module installed", () => {
     assert.equal((await call("GET", "/svc/e2e-fixture/items", bearer)).status, 401, "a revoked token stops working at once, with no restart");
   });
 
+  test("remote MCP: a key issued from the settings API lists and runs the read tools, never the write ones, and stops at once when revoked", async () => {
+    const same = { cookie, origin: origin() };
+    assert.equal((await call("POST", "/api/settings/mcp-keys", { cookie }, { name: "no origin" })).status, 403, "a write from another origin is refused");
+    assert.equal((await call("POST", "/api/settings/mcp-keys", same, { name: "x", scopes: ["mcp.write"] })).status, 400, "the screen never issues a write key");
+    const created = await call("POST", "/api/settings/mcp-keys", same, { name: "e2e laptop" });
+    assert.equal(created.status, 201, created.body);
+    const issued = JSON.parse(created.body) as { token: string; record: { id: number; scopes: string[]; expiresAt: string } };
+    assert.deepEqual(issued.record.scopes, ["mcp.read"]);
+    assert.ok(Date.parse(issued.record.expiresAt) > Date.now() + 29 * 86_400_000, "a key expires in 30 days by default");
+
+    const rpc = (token: string | null, body: unknown) =>
+      call("POST", "/svc/core/mcp", { ...(token === null ? {} : { authorization: `Bearer ${token}` }), "content-type": "application/json" }, body);
+    assert.equal((await rpc(null, { jsonrpc: "2.0", id: 1, method: "ping" })).status, 401);
+    assert.equal((await rpc(issued.token, { jsonrpc: "2.0", id: 1, method: "ping" })).status, 200);
+    assert.equal((await call("POST", "/svc/core/mcp", { cookie, "content-type": "application/json" }, { jsonrpc: "2.0", id: 1, method: "ping" })).status, 401, "a session is not a key");
+
+    const names = async (token: string) =>
+      ((JSON.parse((await rpc(token, { jsonrpc: "2.0", id: 2, method: "tools/list" })).body) as { result: { tools: { name: string }[] } }).result.tools).map((tool) => tool.name);
+    const readTools = await names(issued.token);
+    assert.ok(readTools.includes("modules_list") && !readTools.includes("modules_disable"));
+    const refused = JSON.parse((await rpc(issued.token, { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "modules_disable", arguments: { id: FIXTURE_ID } } })).body) as { result: { isError: boolean } };
+    assert.equal(refused.result.isError, true, "a read key cannot run a write tool");
+    const ran = JSON.parse((await rpc(issued.token, { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "modules_list", arguments: {} } })).body) as { result: { isError: boolean; content: { text: string }[] } };
+    assert.equal(ran.result.isError, false, ran.result.content[0]?.text);
+    assert.ok(ran.result.content[0]?.text.includes(FIXTURE_ID), "the CLI ran as a child process and answered with the real module list");
+
+    const cli = (...args: string[]) => run(["--import", "tsx", CLI, "tokens", ...args], appEnv);
+    const writeKey = /mdnx_[0-9a-f]{8}_[A-Za-z0-9_-]{43}/.exec((await cli("create", "core", "--name", "e2e ci", "--scope", "mcp.read", "--scope", "mcp.write")).output)?.[0];
+    assert.ok(writeKey !== undefined);
+    assert.ok((await names(writeKey)).includes("modules_disable"), "a key made with the CLI can also change the platform");
+
+    const screen = await call("GET", "/settings", { cookie });
+    assert.equal(screen.status, 200);
+    assert.ok(screen.body.includes("Remote access") && screen.body.includes("e2e laptop") && screen.body.includes("Create key"), "the MCP tab shows the remote access section with the keys");
+    assert.ok(!screen.body.includes(issued.token) && !screen.body.includes(writeKey), "the page never carries a key value");
+
+    const listed = await call("GET", "/api/settings/mcp-keys", { cookie });
+    assert.equal(listed.status, 200);
+    assert.ok(!listed.body.includes(issued.token) && !listed.body.includes(writeKey), "the list never shows a key");
+    assert.ok(listed.body.includes("e2e laptop") && listed.body.includes("e2e ci"));
+    assert.equal((await call("GET", "/api/settings/mcp-keys", {})).status, 401);
+
+    assert.equal((await call("DELETE", `/api/settings/mcp-keys/${issued.record.id}`, same)).status, 200);
+    assert.equal((await rpc(issued.token, { jsonrpc: "2.0", id: 5, method: "ping" })).status, 401, "a revoked key stops working at once, with no restart");
+    assert.equal((await call("DELETE", "/api/settings/mcp-keys/999999", same)).status, 404);
+  });
+
   test("a route enqueues a job, and the worker process runs it with the module's database access", async () => {
     const queued = await call("POST", "/e2e-fixture/enqueue", { cookie, origin: origin() }, { id: 41 });
     assert.equal(queued.status, 200, queued.body);

@@ -10,6 +10,7 @@ import { BrandForm } from "../../../components/settings/brand-form";
 import { AppearanceForm } from "../../../components/settings/appearance-form";
 import { ResetIdentity } from "../../../components/settings/reset-identity";
 import { McpPanel } from "../../../components/settings/mcp-panel";
+import { McpRemote } from "../../../components/settings/mcp-remote";
 import { ApiAccess } from "../../../components/settings/api-access";
 import { ModulePicker } from "../../../components/settings/module-picker";
 import { SettingsSearch } from "../../../components/settings/settings-search";
@@ -18,7 +19,7 @@ import { ModuleSettings } from "../../../components/settings/module-settings";
 import { SecurityForm } from "../../../components/settings/security-form";
 import { modules } from "../../../generated/modules";
 import { resolvePublicUrl } from "../../../server/launch";
-import { buildAccessView } from "../../../server/api-access-view";
+import { buildAccessView, buildTokenViews } from "../../../server/api-access-view";
 import { buildChecksView } from "../../../server/connection-checks";
 import { mcpConnection } from "../../../server/mcp-connection";
 import { pickModule } from "../../../server/module-picker";
@@ -82,6 +83,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const tokens = new TokenService(pool, registry);
   const address = resolveApiAddress({ saved: await new ApiAddressService(pool).get(), publicUrl: publicUrlOrigin(), requestOrigin: requestOrigin(await headers()) });
   const now = new Date();
+  const mcpKeys = buildTokenViews(await tokens.list("core"), now);
   // Only the module that is open is described and rendered: its settings, its token list and its HTML are the cost of one
   // module, however many are installed. The id comes from the address, so it is checked against the enabled modules.
   const enabledModules = modules.filter((manifest) => enabled.has(manifest.id)).map((manifest) => ({ id: manifest.id, name: manifest.name }));
@@ -157,7 +159,10 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       </section>
 
           </>) },
-          { id: "mcp", label: "MCP", content: <McpPanel view={mcpConnection()} /> },
+          { id: "mcp", label: "MCP", content: (<>
+          <McpPanel view={mcpConnection()} />
+          <McpRemote keys={mcpKeys} address={address.address} canWrite={viewer.canWrite} />
+        </>) },
           { id: "modules", label: "Modules", content: (<>
       {selected === null ? (
         <p className="text-sm text-muted">No modules are enabled, so there are no module settings yet.</p>

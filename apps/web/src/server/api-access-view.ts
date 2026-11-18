@@ -24,6 +24,23 @@ export interface AccessView {
 
 const ORDER = { active: 0, expired: 1, revoked: 2 } as const;
 
+/** The tokens as the screen shows them: active first, the newest first, so the one in use is where the eye lands. */
+export function buildTokenViews(records: TokenRecord[], now: Date): TokenView[] {
+  return records
+    .map((record): TokenView => ({
+      id: record.id,
+      name: record.name,
+      prefix: record.prefix,
+      scopes: record.scopes,
+      createdBy: record.createdBy,
+      createdAt: record.createdAt.toISOString(),
+      expiresAt: record.expiresAt?.toISOString() ?? null,
+      lastUsedAt: record.lastUsedAt?.toISOString() ?? null,
+      state: tokenState(record, now),
+    }))
+    .sort((a, b) => ORDER[a.state] - ORDER[b.state] || b.createdAt.localeCompare(a.createdAt) || b.id - a.id);
+}
+
 /**
  * What the "API access" block of a module needs, or null for a module that declares no scopes and so has no API.
  * Active tokens come first, the newest first, so the one in use is where the eye lands.
@@ -37,19 +54,7 @@ export function buildAccessView(input: {
   const scopes = input.manifest.scopes ?? [];
   if (scopes.length === 0) return null;
   const base = input.address.address ?? "";
-  const tokens = input.tokens
-    .map((record): TokenView => ({
-      id: record.id,
-      name: record.name,
-      prefix: record.prefix,
-      scopes: record.scopes,
-      createdBy: record.createdBy,
-      createdAt: record.createdAt.toISOString(),
-      expiresAt: record.expiresAt?.toISOString() ?? null,
-      lastUsedAt: record.lastUsedAt?.toISOString() ?? null,
-      state: tokenState(record, input.now),
-    }))
-    .sort((a, b) => ORDER[a.state] - ORDER[b.state] || b.createdAt.localeCompare(a.createdAt) || b.id - a.id);
+  const tokens = buildTokenViews(input.tokens, input.now);
   return {
     address: { value: input.address.address, source: input.address.source },
     scopes: scopes.map((scope) => ({ key: scope.key, label: scope.label })),
