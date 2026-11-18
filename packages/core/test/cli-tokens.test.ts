@@ -95,6 +95,21 @@ describe("cli: tokens create", () => {
     });
   });
 
+  it("issues a key for the core module's MCP scopes, and still refuses a scope the core does not declare", async (t) => {
+    await inScratchDatabase(t, async (db, cli) => {
+      const made = await cli(["tokens", "create", "core", "--name", "laptop", "--scope", "mcp.read"]);
+      assert.equal(made.code, 0, made.stderr);
+      assert.match(made.stdout.trim(), new RegExp(`^${TOKEN.source}$`));
+      const both = await cli(["tokens", "create", "core", "--name", "ci", "--scope", "mcp.read", "--scope", "mcp.write"]);
+      assert.equal(both.code, 0, both.stderr);
+      assert.deepEqual((await db.query("select scopes from core.service_tokens where name = 'ci'")).rows[0].scopes, ["mcp.read", "mcp.write"]);
+      const refused = await cli(["tokens", "create", "core", "--name", "x", "--scope", "mcp:read"]);
+      assert.equal(refused.code, 3);
+      assert.match(refused.stderr, /does not declare the scope "mcp:read"/);
+      assert.equal((await db.query("select 1 from core.service_tokens where module_id = 'core'")).rowCount, 2);
+    });
+  });
+
   it("refuses an unknown module, an undeclared scope and a module with no scopes with exit code 3", async (t) => {
     await inScratchDatabase(t, async (db, cli) => {
       const unknown = await cli(["tokens", "create", "ghost", "--name", "x", "--scope", "messages.read"]);

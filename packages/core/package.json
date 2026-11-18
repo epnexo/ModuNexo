@@ -12,6 +12,7 @@
     "./cli": "./src/cli/run.ts",
     "./mcp": "./src/mcp/index.ts",
     "./mcp-tools": "./src/mcp/tools.ts",
+    "./mcp-server": "./src/mcp/server.ts",
     "./settings": "./src/settings/index.ts",
     "./tokens": "./src/tokens/index.ts",
     "./api-access": "./src/api-access/index.ts",

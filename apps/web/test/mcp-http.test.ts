@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { McpRun } from "@modunexo/core/mcp";
+import type { McpRun } from "@modunexo/core/mcp-server";
 import { createMcpHttpHandler } from "../src/server/mcp-http.ts";
 
 const KEY = `mdnx_${"0123abcd"}_${"A".repeat(43)}`;

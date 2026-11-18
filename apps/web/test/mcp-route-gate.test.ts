@@ -5,7 +5,7 @@ import type { VerifyResult } from "@modunexo/core/tokens";
 import { isPublicRoute, platformPublicRoutes } from "../src/server/route-permissions.ts";
 import { type ScopedRouteRule, createScopedRoute } from "../src/server/scoped-route.ts";
 
-const MCP_RULE: ScopedRouteRule = { moduleId: "core", path: "/svc/core/mcp", scope: "mcp:read" };
+const MCP_RULE: ScopedRouteRule = { moduleId: "core", path: "/svc/core/mcp", scope: "mcp.read" };
 const KEY = `mdnx_${"0123abcd"}_${"A".repeat(43)}`;
 
 describe("the gate and the platform's own MCP route", () => {
@@ -66,7 +66,7 @@ describe("a hand-written scoped route for the core module", () => {
     const h = harness(() => ({ ok: false, reason: "forbidden_scope" }));
     assert.equal((await h.call({ authorization: `Bearer ${KEY}` })).status, 403);
     assert.equal(h.reached(), 0);
-    assert.deepEqual(h.verified[0]?.need, { moduleId: "core", scope: "mcp:read" });
+    assert.deepEqual(h.verified[0]?.need, { moduleId: "core", scope: "mcp.read" });
   });
 
   it("refuses a malformed Authorization header without asking the token service", async () => {

@@ -22,4 +22,9 @@ export const coreManifest: ModuleManifest = {
   schema: "core",
   migrationsDir: "migrations",
   nav: [],
+  // Keys for the platform's own MCP endpoint (`/svc/core/mcp`). A key that can write holds both.
+  scopes: [
+    { key: "mcp.read", label: "Read the platform over MCP" },
+    { key: "mcp.write", label: "Change the platform over MCP (enable or disable modules, queue jobs, publish events)" },
+  ],
 };

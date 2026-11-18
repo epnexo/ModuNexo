@@ -1,4 +1,4 @@
-import { type McpRun, createMcpServer } from "@modunexo/core/mcp";
+import { type McpRun, createMcpServer } from "@modunexo/core/mcp-server";
 
 /** A JSON-RPC message is a few hundred bytes; a megabyte is far beyond any real tool call. */
 export const MCP_MAX_BODY_BYTES = 1_048_576;

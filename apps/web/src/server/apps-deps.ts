@@ -10,7 +10,7 @@ import { resolveViewer } from "./viewer.ts";
  * Where the repository is: the launcher and `next dev` both run with `apps/web` as the working directory. Resolved
  * from there, and checked, rather than from this file's location, which a bundler is free to move.
  */
-function repoRoot(): string {
+export function repoRoot(): string {
   const root = resolve(process.cwd(), "../..");
   if (!existsSync(join(root, "packages", "core", "src", "cli", "index.ts"))) {
     throw new Error(`cannot find the repository root from ${process.cwd()}: the Apps screen needs the CLI it starts`);
