@@ -115,6 +115,17 @@ export function publicRouteRules(modules: readonly ModuleSource[]): string[][] {
 }
 
 /**
+ * The routes the platform itself serves under `/svc`, next to those of the installed modules. The core is not an
+ * installed module (no generated route file, no entry in the registry's pages), so its keyed routes are declared here.
+ */
+const PLATFORM_PAGES: NonNullable<ModuleSource["pages"]> = [{ path: "/svc/core/mcp", scope: "mcp:read" }];
+
+/** `publicRouteRules` for the installed modules plus the platform's own keyed routes. */
+export function platformPublicRoutes(modules: readonly ModuleSource[]): string[][] {
+  return publicRouteRules([...modules, { pages: PLATFORM_PAGES }]);
+}
+
+/**
  * Is this path a declared public route? Every reading of the path (see `pathReadings`) has to land on one, so an
  * encoding that the router would read as another path, a dot segment included, never counts as public. When in
  * doubt the answer is no, and the request meets the ordinary gate.

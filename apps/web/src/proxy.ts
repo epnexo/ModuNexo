@@ -14,7 +14,7 @@ import { HEALTH_PATH, decideAccess } from "./server/access.ts";
 import { requestAddresses } from "./server/client-address.ts";
 import { DEGRADED_BODY } from "./server/health.ts";
 import { type Subject, subjectCan } from "./server/nav.ts";
-import { isPublicRoute, permissionRules, publicRouteRules, requiredPermissions } from "./server/route-permissions.ts";
+import { isPublicRoute, permissionRules, platformPublicRoutes, requiredPermissions } from "./server/route-permissions.ts";
 import { resolvePublicUrl } from "./server/launch.ts";
 import { servedOverHttpsWithoutPublicUrl } from "./server/public-url-warning.ts";
 import { platform } from "./server/platform.ts";
@@ -25,7 +25,7 @@ const refusalLog = createRefusalLog((line) => log.warn("access.refused", { detai
 
 /** What the manifests of this build say about who may reach which path. Fixed at build time, like the registry. */
 const PERMISSION_RULES = permissionRules(modules);
-const PUBLIC_ROUTES = publicRouteRules(modules);
+const PUBLIC_ROUTES = platformPublicRoutes(modules);
 
 const text = (message: string, status: number) =>
   new NextResponse(message, { status, headers: { "cache-control": "no-store", "content-type": "text/plain; charset=utf-8" } });
