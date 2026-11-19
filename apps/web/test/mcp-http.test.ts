@@ -230,6 +230,31 @@ describe("MCP over HTTP: audit, scrubbing and a bounded queue", () => {
     assert.match(scrubCliText("module crm is not enabled"), /module crm is not enabled/);
   });
 
+  it("scrubCliText removes IPv6 addresses, relative and Windows paths and the names Postgres quotes, and keeps timestamps and ids", () => {
+    const gone = (text: string, secret: string) => assert.ok(!scrubCliText(text).includes(secret), `${secret} survived: ${scrubCliText(text)}`);
+    gone("connect ECONNREFUSED ::1:5432", "::1");
+    gone("connect ECONNREFUSED [::1]:5432", "::1");
+    gone("host fe80::1ff:fe23:4567:890a refused", "fe80");
+    gone("host 2001:db8:85a3:0:0:8a2e:370:7334 refused", "2001:db8");
+    gone("host 2001:db8::8a2e:370:7334 refused", "8a2e");
+    gone("cannot read ../../.env", ".env");
+    gone("cannot read ./src/secret.ts", "secret.ts");
+    gone("cannot read C:\\Users\\owner\\.env", "owner");
+    gone('password authentication failed for user "modunexo_admin"', "modunexo_admin");
+    gone('database "modunexo_prod" does not exist', "modunexo_prod");
+    gone('role "mnx_m_crm" does not exist', "mnx_m_crm");
+    assert.match(scrubCliText("failed at 10:20:30 on job job-42"), /10:20:30 on job job-42/);
+    assert.match(scrubCliText("module crm 1.2.3 is not enabled"), /module crm 1\.2\.3 is not enabled/);
+  });
+
+  it("scrubCliText stays fast on a megabyte of hostile text", () => {
+    for (const unit of ["a:", "1:", "::", "[:", "../", "user ", "\\"]) {
+      const started = performance.now();
+      scrubCliText(unit.repeat(Math.ceil(1_048_576 / unit.length)));
+      assert.ok(performance.now() - started < 500, `${JSON.stringify(unit)} took ${Math.round(performance.now() - started)} ms`);
+    }
+  });
+
   it("answers busy (exit 75) instead of queueing without limit", async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => (release = resolve));

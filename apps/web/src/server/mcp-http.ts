@@ -9,6 +9,7 @@ const BEARER = /^Bearer\s+(\S+)$/i;
 export const MCP_MAX_QUEUE = 8;
 const BUSY_EXIT = 75;
 const MAX_ERROR_CHARS = 200;
+const MAX_SCRUB_INPUT = 10_000;
 
 export interface McpAuditEvent {
   /**
@@ -32,12 +33,17 @@ export interface McpHttpDeps {
   maxQueue?: number;
 }
 
+// IPv6 in its full and compressed forms, bare or in brackets with a port. It needs at least two colons and hex groups,
+// so a time like 10:20:30 or a `module:version` pair is left alone.
+const IPV6 = /\[[0-9a-f:.]*:[0-9a-f:.]*\](?::\d+)?|(?<![0-9a-z:])(?:(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}:){1,7}:(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4}){0,5})?|:(?::[0-9a-f]{1,4}){1,7}|::)(?::\d+)?(?![0-9a-z:])/gi;
+
 /**
  * What a remote caller may read of a CLI failure: its first line, with credentials, addresses and file paths taken
  * out. The CLI's full text (stack frames, connection strings) stays on the server.
  */
 export function scrubCliText(text: string): string {
-  const first = text.split("\n").find((line) => line.trim() !== "")?.trim() ?? "";
+  // The CLI's output is capped at 1 MiB, not at one line: bound the work before the patterns run over it.
+  const first = text.slice(0, MAX_SCRUB_INPUT).split("\n").find((line) => line.trim() !== "")?.trim() ?? "";
   const clean = first
     .replace(/\bBearer\s+\S+/gi, "Bearer [redacted]")
     .replace(/mdnx_\S+/g, "[key]")
@@ -45,7 +51,11 @@ export function scrubCliText(text: string): string {
     .replace(/\b[a-z][a-z0-9+.-]*:\/\/\S+/gi, "[url]")
     .replace(/\b([A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASS)[A-Z0-9_]*)=\S+/g, "$1=[redacted]")
     .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b/g, "[address]")
+    .replace(IPV6, "[address]")
+    .replace(/\b(user|role|database)\s+"[^"]*"/gi, '$1 "[redacted]"')
     .replace(/(^|[\s("'=])\/[^\s"')]+/g, "$1[path]")
+    .replace(/(^|[\s("'=])\.{1,2}[\\/][^\s"')]+/g, "$1[path]")
+    .replace(/(^|[\s("'=])[A-Za-z]:\\[^\s"')]+/g, "$1[path]")
     .replace(/\b[A-Za-z0-9_-]{32,}\b/g, "[redacted]");
   return clean.length > MAX_ERROR_CHARS ? `${clean.slice(0, MAX_ERROR_CHARS)}…` : clean;
 }
