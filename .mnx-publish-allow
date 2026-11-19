@@ -1,0 +1,4 @@
+# Fake data on purpose, for the privacy scan (mnx-publish): one extended regex per line, fixtures only, no real data.
+# The MCP error-scrubbing tests feed made-up hosts and paths to prove they are removed from what a remote caller reads.
+/home/owner\b
+192\.168\.1\.20
