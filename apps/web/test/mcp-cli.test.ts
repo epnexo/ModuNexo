@@ -64,10 +64,10 @@ describe("running the CLI as a child process", () => {
 describe("the child process environment", () => {
   it("keeps what the CLI needs and drops everything else", () => {
     const env = allowedChildEnv({
-      PATH: "/usr/bin", HOME: "/home/x", NODE_ENV: "production", DATABASE_URL: "postgres://db", MODUNEXO_MASTER_KEY: "k", MODUNEXO_DATA_DIR: "/data", MODUNEXO_DIST_DIR: "/dist", LOG_FORMAT: "json",
+      PATH: "/usr/bin", HOME: "/home/x", NODE_ENV: "production", DATABASE_URL: "postgres://db", MODUNEXO_MASTER_KEY: "k", EPNEXO_MASTER_KEY: "legacy", MODUNEXO_DATA_DIR: "/data", MODUNEXO_DIST_DIR: "/dist", LOG_FORMAT: "json",
       MODUNEXO_MCP_WRITE: "1", AWS_SECRET_ACCESS_KEY: "s", GITHUB_TOKEN: "t", BETTER_AUTH_SECRET: "a", SMTP_PASSWORD: "p",
     });
-    assert.deepEqual(Object.keys(env).sort(), ["DATABASE_URL", "HOME", "LOG_FORMAT", "MODUNEXO_DATA_DIR", "MODUNEXO_DIST_DIR", "MODUNEXO_MASTER_KEY", "NODE_ENV", "PATH"]);
+    assert.deepEqual(Object.keys(env).sort(), ["DATABASE_URL", "EPNEXO_MASTER_KEY", "HOME", "LOG_FORMAT", "MODUNEXO_DATA_DIR", "MODUNEXO_DIST_DIR", "MODUNEXO_MASTER_KEY", "NODE_ENV", "PATH"]);
   });
 
   it("omits a variable that is not set instead of passing undefined", () => {

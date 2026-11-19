@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { McpRun } from "@modunexo/core/mcp-server";
+import { createLogger } from "@modunexo/core/log";
 import { createMcpHttpHandler, scrubCliText } from "../src/server/mcp-http.ts";
 
 const KEY = `mdnx_${"0123abcd"}_${"A".repeat(43)}`;
@@ -164,17 +165,29 @@ describe("MCP over HTTP: audit, scrubbing and a bounded queue", () => {
     await h.post(callTool("modules_list"));
     await h.post(callTool("jobs_cancel", { id: "job-secret-777" }));
     assert.deepEqual(h.audited, [
-      { key: 42, tool: "modules_list", exit: 3 },
-      { key: 42, tool: "jobs_cancel", exit: 3 },
+      { caller: 42, tool: "modules_list", exit: 3 },
+      { caller: 42, tool: "jobs_cancel", exit: 3 },
     ]);
     assert.ok(!JSON.stringify(h.audited).includes(KEY));
     assert.ok(!JSON.stringify(h.audited).includes("job-secret-777"));
   });
 
+  it("keeps the caller id readable once the real logger has formatted the event", async () => {
+    const lines: string[] = [];
+    const logger = createLogger({ format: "json", sink: (line) => lines.push(line) });
+    const h = harness();
+    await h.post(callTool("modules_list"));
+    logger.info("mcp.call", { ...(h.audited[0] as object) });
+    const logged = JSON.parse(lines[0]!) as Record<string, unknown>;
+    assert.equal(logged.caller, 42);
+    assert.equal(logged.tool, "modules_list");
+    assert.equal(logged.exit, 0);
+  });
+
   it("audits a write attempt by a read key as refused (null exit)", async () => {
     const h = harness({ write: false });
     await h.post(callTool("modules_disable", { id: "crm" }));
-    assert.deepEqual(h.audited, [{ key: 42, tool: "modules_disable", exit: null }]);
+    assert.deepEqual(h.audited, [{ caller: 42, tool: "modules_disable", exit: null }]);
   });
 
   it("does not audit initialize, ping or tools/list", async () => {
@@ -211,6 +224,9 @@ describe("MCP over HTTP: audit, scrubbing and a bounded queue", () => {
     assert.ok(!scrubCliText("cannot read /var/lib/modunexo/.env").includes("/var/lib"));
     assert.ok(!scrubCliText("MODUNEXO_MASTER_KEY=abc123def is bad").includes("abc123def"));
     assert.ok(!scrubCliText("host 192.168.1.20 refused").includes("192.168"));
+    assert.ok(!scrubCliText("Authorization: Bearer abc.def-123 rejected").includes("abc.def"));
+    assert.ok(!scrubCliText("FATAL password=hunter2 host=x").includes("hunter2"));
+    assert.ok(!scrubCliText('bad {"token": "abcdef0123"}').includes("abcdef0123"));
     assert.match(scrubCliText("module crm is not enabled"), /module crm is not enabled/);
   });
 

@@ -15,7 +15,7 @@ export interface CliRunOptions {
  * The only variables the CLI child inherits from the web server. The web process holds more (auth secrets, mail and
  * cloud credentials, the stdio write switch); a tool run on a remote caller's behalf gets what the CLI reads and no more.
  */
-const CHILD_ENV_ALLOWLIST = ["PATH", "HOME", "NODE_ENV", "LOG_FORMAT", "DATABASE_URL", "MODUNEXO_MASTER_KEY", "MODUNEXO_DATA_DIR", "EPNEXO_DATA_DIR", "MODUNEXO_DIST_DIR"];
+const CHILD_ENV_ALLOWLIST = ["PATH", "HOME", "NODE_ENV", "LOG_FORMAT", "DATABASE_URL", "MODUNEXO_MASTER_KEY", "EPNEXO_MASTER_KEY", "MODUNEXO_DATA_DIR", "EPNEXO_DATA_DIR", "MODUNEXO_DIST_DIR"];
 
 export function allowedChildEnv(source: Record<string, string | undefined>): Record<string, string> {
   const env: Record<string, string> = {};

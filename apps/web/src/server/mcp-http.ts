@@ -11,8 +11,11 @@ const BUSY_EXIT = 75;
 const MAX_ERROR_CHARS = 200;
 
 export interface McpAuditEvent {
-  /** The service token's id (never the token itself). */
-  key: number;
+  /**
+   * The service token's id (never the token itself). Not named `key`: the core logger redacts any field whose name
+   * looks like a secret (`key`, `token`, ...), and this one is an identifier the operator needs to read.
+   */
+  caller: number;
   tool: string;
   /** The CLI's exit code, or null when the call was refused before it ran. */
   exit: number | null;
@@ -36,7 +39,9 @@ export interface McpHttpDeps {
 export function scrubCliText(text: string): string {
   const first = text.split("\n").find((line) => line.trim() !== "")?.trim() ?? "";
   const clean = first
+    .replace(/\bBearer\s+\S+/gi, "Bearer [redacted]")
     .replace(/mdnx_\S+/g, "[key]")
+    .replace(/\b(password|passwd|pwd|secret|token|apikey|api_key)["']?\s*[=:]\s*["']?[^\s"',}]+/gi, "$1=[redacted]")
     .replace(/\b[a-z][a-z0-9+.-]*:\/\/\S+/gi, "[url]")
     .replace(/\b([A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASS)[A-Z0-9_]*)=\S+/g, "$1=[redacted]")
     .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b/g, "[address]")
@@ -131,7 +136,7 @@ export function createMcpHttpHandler(deps: McpHttpDeps): (request: Request) => P
       allowWrite: caller.write,
       version: deps.version,
       redact: scrubCliText,
-      audit: (event) => deps.audit?.({ key: caller.keyId, ...event }),
+      audit: (event) => deps.audit?.({ caller: caller.keyId, ...event }),
     });
     const reply = await server.handle(message);
     return reply === undefined ? empty(202) : json(200, reply);
