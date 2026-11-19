@@ -2,6 +2,7 @@ import type pg from "pg";
 import type { ModuleManifest } from "@modunexo/sdk";
 import { CORE_MODULE_ID } from "../core-module.ts";
 import { MODULES_DIR } from "../discovery.ts";
+import { log } from "../log.ts";
 import { purgeModuleInTransaction } from "../purge.ts";
 import { type Registry, compareIds } from "../registry.ts";
 import { type MigrateOptions, migrateModuleLocked, withMigrationLock } from "../runner.ts";
@@ -211,6 +212,22 @@ export class LifecycleService {
     } catch (error) {
       await client.query("rollback").catch(() => undefined);
       throw error;
+    }
+    if (plan.mode === "purge") await this.#dropLogin(manifest);
+  }
+
+  /**
+   * After a purge has committed: ends the module's pool and drops its database login. The data is already gone, so a
+   * login that cannot be dropped is reported, not raised: installing the module again reuses it.
+   */
+  async #dropLogin(manifest: ModuleManifest): Promise<void> {
+    const given = this.#options.moduleRoles;
+    const roles = typeof given === "function" ? given() : given;
+    if (roles === undefined) return;
+    try {
+      await roles.drop(manifest.schema);
+    } catch (error) {
+      log.warn("lifecycle.login_not_dropped", { moduleId: manifest.id, error });
     }
   }
 }

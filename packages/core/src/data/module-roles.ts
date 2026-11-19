@@ -16,6 +16,12 @@ const MODULE_FUNCTIONS = [
   "core.record_file(uuid, text, text, bigint, text, text, timestamptz)",
 ];
 
+/** The read-only role the platform used to make for a schema (`data/module-db.ts` still does without module roles). */
+function legacyReadRole(schema: string): string {
+  const name = `mnx_ro_${schema}`;
+  return name.length <= 63 ? name : `mnx_ro_${createHash("sha256").update(schema).digest("hex").slice(0, 40)}`;
+}
+
 /** Whether the connection behind `db` is logged in as a module's role, so its writes to `core` must go through the functions above. */
 export async function isModuleLogin(db: Executor): Promise<boolean> {
   const { rows } = await db.query("select session_user::text as login");
@@ -157,7 +163,58 @@ export class ModuleRoles {
     await client.query(`grant usage on schema core to ${quotedRole}`);
     for (const signature of MODULE_FUNCTIONS) await client.query(`grant execute on function ${signature} to ${quotedRole}`);
     await client.query(`create schema if not exists ${quotedSchema} authorization ${quotedRole}`);
+    await this.#adopt(client, schema, role);
     return role;
+  }
+
+  /**
+   * A module installed before it had a login of its own owns nothing of what it created: the platform's user does.
+   * Hands the schema and everything in it (tables with their indexes and serial sequences, views, sequences, functions,
+   * procedures, enum and domain types) to the module's role, in one transaction, and removes the old read-only role
+   * (`mnx_ro_<schema>`) the platform used to make for it. Data is not touched, and what already belongs to the role is
+   * skipped, so running it again changes nothing.
+   */
+  async #adopt(client: pg.PoolClient, schema: string, role: string): Promise<void> {
+    const statements = (
+      await client.query(
+        `select stmt from (
+           select 1 as step, format('alter schema %I owner to %I', $1::text, $2::text) as stmt
+             from pg_namespace n where n.nspname = $1 and pg_get_userbyid(n.nspowner) <> $2
+           union all
+           select case c.relkind when 'r' then 2 when 'p' then 2 when 'v' then 3 when 'm' then 3 else 4 end,
+                  format(case c.relkind when 'v' then 'alter view %I.%I owner to %I' when 'm' then 'alter materialized view %I.%I owner to %I'
+                                        when 'S' then 'alter sequence %I.%I owner to %I' else 'alter table %I.%I owner to %I' end, n.nspname, c.relname, $2::text)
+             from pg_class c join pg_namespace n on n.oid = c.relnamespace
+            where n.nspname = $1 and c.relkind in ('r', 'p', 'v', 'm', 'S') and pg_get_userbyid(c.relowner) <> $2
+              and not (c.relkind = 'S' and exists (select 1 from pg_depend d where d.classid = 'pg_class'::regclass and d.objid = c.oid and d.deptype in ('a', 'i')))
+           union all
+           select 5, format(case p.prokind when 'p' then 'alter procedure %s owner to %I' else 'alter function %s owner to %I' end, p.oid::regprocedure::text, $2::text)
+             from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+            where n.nspname = $1 and p.prokind in ('f', 'p') and pg_get_userbyid(p.proowner) <> $2
+              and not exists (select 1 from pg_depend d where d.classid = 'pg_proc'::regclass and d.objid = p.oid and d.deptype = 'e')
+           union all
+           select 6, format(case t.typtype when 'd' then 'alter domain %I.%I owner to %I' else 'alter type %I.%I owner to %I' end, n.nspname, t.typname, $2::text)
+             from pg_type t join pg_namespace n on n.oid = t.typnamespace
+            where n.nspname = $1 and t.typtype in ('e', 'd') and pg_get_userbyid(t.typowner) <> $2
+         ) all_statements order by step, stmt`,
+        [schema, role],
+      )
+    ).rows.map((row) => row.stmt as string);
+    const legacy = legacyReadRole(schema);
+    const hasLegacy = (await client.query("select 1 from pg_roles where rolname = $1", [legacy])).rowCount === 1;
+    if (statements.length === 0 && !hasLegacy) return;
+    try {
+      await client.query("begin");
+      for (const statement of statements) await client.query(statement);
+      if (hasLegacy) {
+        await client.query(`drop owned by ${quoteIdentifier(legacy)}`);
+        await client.query(`drop role ${quoteIdentifier(legacy)}`);
+      }
+      await client.query("commit");
+    } catch (error) {
+      await client.query("rollback").catch(() => undefined);
+      throw error;
+    }
   }
 
   /**
