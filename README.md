@@ -325,13 +325,13 @@ with a **key**: a service token of the module `core` with the scope `mcp.read` (
 - **Reachable on the local network only**: the route is as open as the platform's address. Exposing it outside is a
   decision for your reverse proxy and TLS, not something the platform does. A leaked `mcp.write` key can disable modules and
   queue jobs, hence the short default expiry and the one-click revoke.
-- **Limits**: 120 requests a minute per client address, a 1 MiB body, one command at a time. At most 8 commands run or
-  wait; the next one answers `exit 75: the server is busy`. The CLI runs as a child process with a 60 second limit and
+- **Limits**: 120 requests a minute per client address, a 1 MiB body, one command at a time. At most 4 commands run or
+  wait; the next one answers `exit 75: the server is busy`. The CLI runs as a child process with a 30 second limit and
   1 MiB of output, and it inherits only the variables it needs (`PATH`, `HOME`, `NODE_ENV`, `LOG_FORMAT`, `DATABASE_URL`,
   the master key and the data and dist directories), not the web server's whole environment.
 - **Audit**: each tool call writes one `mcp.call` line to the server log with `caller` (the key's id), `tool` and `exit`
   (the CLI's exit code, or `null` when the call was refused and never ran). Never the key or an argument value.
-- **Errors**: a remote caller gets the first line of a CLI failure with credentials, addresses and file paths taken out
+- **Errors**: a remote caller gets up to three lines of a CLI failure (no stack frames) with credentials, addresses and file paths taken out
   (`exit 1: ...`). The full text stays on the server, where stdio keeps showing it as before.
 
 ### Administrators

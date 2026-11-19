@@ -1038,7 +1038,7 @@ describe("web app: with a module installed", () => {
     assert.equal(failed.result.isError, true);
     const failure = failed.result.content[0]?.text ?? "";
     assert.match(failure, /^exit [1-9]\d*: /, "a CLI failure reaches the caller as an exit code and one line");
-    assert.ok(!failure.includes("\n") && failure.length < 260, `a remote caller gets one short line: ${failure}`);
+    assert.ok(failure.split("\n").length <= 4 && failure.length < 700, `a remote caller gets a few short lines: ${failure}`);
     assert.ok(!failure.includes(process.cwd()) && !failure.includes("node_modules") && !/\bat .+\(/.test(failure), `no path or stack frame reaches a remote caller: ${failure}`);
 
     const screen = await call("GET", "/settings", { cookie });

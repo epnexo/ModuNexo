@@ -26,6 +26,9 @@ export function allowedChildEnv(source: Record<string, string | undefined>): Rec
   return env;
 }
 
+/** A remote caller's command is cut off sooner than the Apps screen's: a queued request waits for at most a few of these. */
+export const MCP_REMOTE_TIMEOUT_MS = 30_000;
+
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_MAX_BYTES = 1_048_576;
 

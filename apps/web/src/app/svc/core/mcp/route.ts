@@ -3,7 +3,7 @@ import { log } from "@modunexo/core/log";
 import { TokenService } from "@modunexo/core/tokens";
 import { CORE_VERSION } from "@modunexo/core/version";
 import { repoRoot } from "@/server/apps-deps";
-import { allowedChildEnv, createCliRun } from "@/server/mcp-cli";
+import { MCP_REMOTE_TIMEOUT_MS, allowedChildEnv, createCliRun } from "@/server/mcp-cli";
 import { createMcpHttpHandler } from "@/server/mcp-http";
 import { platform } from "@/server/platform";
 import { webRegistry } from "@/server/registry";
@@ -17,7 +17,7 @@ const handler = createMcpHttpHandler({
   // A child process, like the Apps screen starts one: the CLI is never imported into the web bundle.
   run: (argv, io) => {
     const root = repoRoot();
-    return createCliRun({ entry: ["--import", "tsx", join(root, "packages", "core", "src", "cli", "index.ts")], cwd: root, env: allowedChildEnv(process.env) })(argv, io);
+    return createCliRun({ entry: ["--import", "tsx", join(root, "packages", "core", "src", "cli", "index.ts")], cwd: root, env: allowedChildEnv(process.env), timeoutMs: MCP_REMOTE_TIMEOUT_MS })(argv, io);
   },
   version: CORE_VERSION,
   identify: async (token) => {

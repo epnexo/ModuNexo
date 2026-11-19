@@ -17,10 +17,10 @@ checked against, and it changes only when the contract with modules changes. See
 
 ### Security
 
-- Over HTTP, a CLI failure reaches the caller as its first line only, with credentials, addresses and file paths removed.
+- Over HTTP, a CLI failure reaches the caller as up to three lines, without stack frames, with credentials, addresses (IPv4 and IPv6) and file paths removed.
   stdio is unchanged.
 - The CLI child process of the HTTP route inherits an allowlist of environment variables instead of the web server's.
-- At most 8 MCP commands run or wait; the next is answered `exit 75` (busy).
+- At most 4 MCP commands run or wait; the next is answered `exit 75` (busy).
 
 ## [0.6.0] - 2026-11-11
 ### Added

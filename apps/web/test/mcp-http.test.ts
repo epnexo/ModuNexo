@@ -216,8 +216,8 @@ describe("MCP over HTTP: audit, scrubbing and a bounded queue", () => {
     assert.match(text, /^exit 1: /);
   });
 
-  it("scrubCliText keeps one short line and removes secrets, addresses and paths", () => {
-    assert.equal(scrubCliText("first\nsecond"), "first");
+  it("scrubCliText keeps up to three short lines and removes secrets, addresses and paths", () => {
+    assert.equal(scrubCliText("first\nsecond"), "first\nsecond");
     assert.equal(scrubCliText(""), "");
     assert.ok(scrubCliText("x".repeat(1000)).length <= 201);
     assert.ok(!scrubCliText(`token ${KEY} rejected`).includes(KEY));
@@ -253,6 +253,24 @@ describe("MCP over HTTP: audit, scrubbing and a bounded queue", () => {
       scrubCliText(unit.repeat(Math.ceil(1_048_576 / unit.length)));
       assert.ok(performance.now() - started < 500, `${JSON.stringify(unit)} took ${Math.round(performance.now() - started)} ms`);
     }
+  });
+
+  it("scrubCliText keeps at most three non-empty lines and drops stack frames", () => {
+    assert.equal(scrubCliText("one\n\ntwo\n   at Pool.connect (/app/pool.js:1:1)\nthree\nfour"), "one\ntwo\nthree");
+    assert.equal(scrubCliText("   at only.frames (x.js:1:1)\n   at more (y.js:2:2)"), "");
+    assert.ok(scrubCliText(`${"a".repeat(500)}\nsecond`).split("\n").every((line) => line.length <= 201));
+  });
+
+  it("answers busy once four commands are running or waiting by default", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const h = harness({ run: async () => { await gate; return 0; } });
+    const held = [1, 2, 3, 4].map(() => h.post(callTool("modules_list")));
+    await new Promise((r) => setTimeout(r, 20));
+    const fifth = (await (await h.post(callTool("modules_list"))).json()) as { result: { content: { text: string }[] } };
+    assert.match(fifth.result.content[0]!.text, /^exit 75: .*busy/);
+    release();
+    await Promise.all(held);
   });
 
   it("answers busy (exit 75) instead of queueing without limit", async () => {

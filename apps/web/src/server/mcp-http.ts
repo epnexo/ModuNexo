@@ -6,9 +6,10 @@ export const MCP_MAX_BODY_BYTES = 1_048_576;
 const BEARER = /^Bearer\s+(\S+)$/i;
 
 /** The most commands that may wait for the one running; past it the caller is told the server is busy. */
-export const MCP_MAX_QUEUE = 8;
+export const MCP_MAX_QUEUE = 4;
 const BUSY_EXIT = 75;
 const MAX_ERROR_CHARS = 200;
+const MAX_ERROR_LINES = 3;
 const MAX_SCRUB_INPUT = 10_000;
 
 export interface McpAuditEvent {
@@ -37,14 +38,10 @@ export interface McpHttpDeps {
 // so a time like 10:20:30 or a `module:version` pair is left alone.
 const IPV6 = /\[[0-9a-f:.]*:[0-9a-f:.]*\](?::\d+)?|(?<![0-9a-z:])(?:(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}:){1,7}:(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4}){0,5})?|:(?::[0-9a-f]{1,4}){1,7}|::)(?::\d+)?(?![0-9a-z:])/gi;
 
-/**
- * What a remote caller may read of a CLI failure: its first line, with credentials, addresses and file paths taken
- * out. The CLI's full text (stack frames, connection strings) stays on the server.
- */
-export function scrubCliText(text: string): string {
-  // The CLI's output is capped at 1 MiB, not at one line: bound the work before the patterns run over it.
-  const first = text.slice(0, MAX_SCRUB_INPUT).split("\n").find((line) => line.trim() !== "")?.trim() ?? "";
-  const clean = first
+const STACK_FRAME = /^at\s.*(?:\(|:\d+:\d+)/;
+
+function scrubLine(line: string): string {
+  const clean = line
     .replace(/\bBearer\s+\S+/gi, "Bearer [redacted]")
     .replace(/mdnx_\S+/g, "[key]")
     .replace(/\b(password|passwd|pwd|secret|token|apikey|api_key)["']?\s*[=:]\s*["']?[^\s"',}]+/gi, "$1=[redacted]")
@@ -58,6 +55,22 @@ export function scrubCliText(text: string): string {
     .replace(/(^|[\s("'=])[A-Za-z]:\\[^\s"')]+/g, "$1[path]")
     .replace(/\b[A-Za-z0-9_-]{32,}\b/g, "[redacted]");
   return clean.length > MAX_ERROR_CHARS ? `${clean.slice(0, MAX_ERROR_CHARS)}…` : clean;
+}
+
+/**
+ * What a remote caller may read of a CLI failure: its first three non-empty lines, stack frames left out, with
+ * credentials, addresses and file paths taken out of each. The CLI's full text stays on the server.
+ */
+export function scrubCliText(text: string): string {
+  // The CLI's output is capped at 1 MiB, not at a few lines: bound the work before the patterns run over it.
+  return text
+    .slice(0, MAX_SCRUB_INPUT)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "" && !STACK_FRAME.test(line))
+    .slice(0, MAX_ERROR_LINES)
+    .map(scrubLine)
+    .join("\n");
 }
 
 const json = (status: number, body: unknown) =>
