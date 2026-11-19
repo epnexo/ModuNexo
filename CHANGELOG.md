@@ -6,6 +6,8 @@ root, `packages/core` and `apps/web`); the SDK keeps its own (`SDK_VERSION`), th
 checked against, and it changes only when the contract with modules changes. See "Versioning" in the README.
 
 ## [Unreleased]
+
+## [0.7.0] - 2026-11-19
 ### Added
 
 - **MCP over HTTP.** `POST /svc/core/mcp` serves the MCP tools to a remote client, authenticated with a revocable key (a
