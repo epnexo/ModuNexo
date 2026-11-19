@@ -122,6 +122,26 @@ export class ModuleRoles {
     }
   }
 
+  /**
+   * Makes the module's login ready to run its own migrations: the role exists, the platform knows which module it
+   * belongs to, the role can call `core.record_migration` and nothing else in `core`, and it owns its schema. Run it
+   * on the platform's connection, under the migration lock. A schema that already exists with another owner is the
+   * adoption of an installed module, which this does not do.
+   */
+  async provision(client: pg.PoolClient, moduleId: string, schema: string): Promise<string> {
+    const role = await this.ensure(schema);
+    const quotedRole = quoteIdentifier(role);
+    const quotedSchema = quoteIdentifier(schema);
+    await client.query(
+      "insert into core.module_roles (role_name, module_id, schema_name) values ($1, $2, $3) on conflict (role_name) do update set module_id = excluded.module_id, schema_name = excluded.schema_name",
+      [role, moduleId, schema],
+    );
+    await client.query(`grant usage on schema core to ${quotedRole}`);
+    await client.query(`grant execute on function core.record_migration(text, text) to ${quotedRole}`);
+    await client.query(`create schema if not exists ${quotedSchema} authorization ${quotedRole}`);
+    return role;
+  }
+
   /** The module's pool: small, logged in as the module's role, and the same one every time. */
   pool(schema: string): Promise<pg.Pool> {
     if (this.#closed) return Promise.reject(new ModuleRoleError("closed", "the module roles were closed"));

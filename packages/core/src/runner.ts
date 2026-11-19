@@ -5,6 +5,7 @@ import type { ModuleManifest } from "@modunexo/sdk";
 import { CORE_MODULE_DIR, CORE_MODULE_ID } from "./core-module.ts";
 import { type MigrationFile, planMigrations, readMigrationFiles } from "./migrations.ts";
 import type { Registry } from "./registry.ts";
+import type { ModuleRoles } from "./data/module-roles.ts";
 import { quoteIdentifier } from "./sql.ts";
 
 export interface AppliedMigration {
@@ -26,6 +27,12 @@ export interface MigrateOptions {
   lockTimeoutMs?: number;
   /** Pause between attempts to take the lock. Default 100 ms. */
   lockPollMs?: number;
+  /**
+   * When set, a module's migrations run on a connection logged in as that module's own database role, so a migration
+   * cannot touch `core` or another module's schema. The core's own migrations stay on the platform's connection. Without
+   * it, every migration runs on the platform's connection.
+   */
+  moduleRoles?: ModuleRoles;
 }
 
 /**
@@ -155,9 +162,12 @@ async function applyModules(client: pg.PoolClient, modules: ModuleManifest[], op
       } catch (error) {
         throw new Error(`module "${manifest.id}": ${error instanceof Error ? error.message : String(error)}`, { cause: error });
       }
-      await client.query(`create schema if not exists ${quoteIdentifier(manifest.schema)}`);
+      const roles = manifest.id === CORE_MODULE_ID ? undefined : options.moduleRoles;
+      if (roles === undefined) await client.query(`create schema if not exists ${quoteIdentifier(manifest.schema)}`);
+      else await roles.provision(client, manifest.id, manifest.schema);
       for (const file of pending) {
-        await applyFile(client, manifest, file);
+        if (roles === undefined) await applyFile(client, manifest, file);
+        else await applyFileAsModule(await roles.pool(manifest.schema), manifest, file);
         applied.push({ moduleId: manifest.id, filename: file.filename });
       }
     }
@@ -197,5 +207,29 @@ async function applyFile(client: pg.PoolClient, manifest: ModuleManifest, file: 
     await client.query("rollback").catch(() => undefined);
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`migration ${manifest.id}/${file.filename} failed: ${message}`, { cause: error });
+  }
+}
+
+/**
+ * Runs one migration on a connection that is logged in as the module's own role. The SQL and the record of it share
+ * one transaction: the record goes through `core.record_migration`, which takes the module from the login itself.
+ */
+async function applyFileAsModule(pool: pg.Pool, manifest: ModuleManifest, file: MigrationFile): Promise<void> {
+  const client = await pool.connect();
+  let broken = false;
+  try {
+    await client.query("begin");
+    await client.query(`set local search_path to ${quoteIdentifier(manifest.schema)}`);
+    await client.query(file.sql);
+    await client.query("select core.record_migration($1, $2)", [file.filename, file.checksum]);
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback").catch(() => {
+      broken = true;
+    });
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`migration ${manifest.id}/${file.filename} failed: ${message}`, { cause: error });
+  } finally {
+    client.release(broken ? true : undefined);
   }
 }
