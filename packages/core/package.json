@@ -39,10 +39,13 @@
   },
   "dependencies": {
     "@modunexo/sdk": "^0.1.0",
+    "@tailwindcss/postcss": "^4.3.5",
     "better-auth": "^1.7.18",
+    "geist": "^1.9.2",
     "kysely": "^0.29.6",
+    "lucide-react": "^1.73.0",
     "pg": "^8.23.1",
-    "semver": "^7.6.0",
+    "semver": "^7.8.6",
     "tar": "^7.5.22"
   },
   "devDependencies": {
