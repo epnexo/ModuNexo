@@ -1,6 +1,7 @@
 import type pg from "pg";
 import type { EnqueueOptions, EnqueueResult } from "@modunexo/sdk";
 import type { Registry } from "../registry.ts";
+import { isModuleLogin } from "../data/module-roles.ts";
 import type { Executor } from "../executor.ts";
 import { JobError } from "./errors.ts";
 
@@ -125,8 +126,12 @@ export class JobService {
       const declared = (manifest.jobs ?? []).map((candidate) => candidate.name);
       throw new JobError(`module "${moduleId}" does not declare the job "${name}"${declared.length === 0 ? " (it declares none)" : ` (declared: ${declared.sort().join(", ")})`}`);
     }
-    const enabled = await db.query("select 1 from core.modules where id = $1 and state = 'enabled'", [moduleId]);
-    if (enabled.rowCount === 0) throw new JobError(`module "${moduleId}" is not enabled`);
+    // A module's own login cannot read `core`: the database function checks it is enabled.
+    const asModule = executor !== undefined && (await isModuleLogin(executor));
+    if (!asModule) {
+      const enabled = await db.query("select 1 from core.modules where id = $1 and state = 'enabled'", [moduleId]);
+      if (enabled.rowCount === 0) throw new JobError(`module "${moduleId}" is not enabled`);
+    }
 
     let json: string;
     try {
@@ -151,6 +156,17 @@ export class JobService {
     const key = options.dedupeKey;
     if (key !== undefined && !DEDUPE_KEY.test(key)) {
       throw new JobError("dedupeKey must be 1 to 100 characters: letters, digits and : . _ -, starting with a letter or digit");
+    }
+
+    if (asModule) {
+      try {
+        const { rows } = await db.query("select job_id, deduplicated from core.enqueue_job($1, $2::jsonb, $3, $4)", [name, json, runAt, key ?? null]);
+        return { id: Number(rows[0]!.job_id), deduplicated: rows[0]!.deduplicated === true };
+      } catch (error) {
+        if ((error as { code?: string }).code === UNTRANSLATABLE_CHARACTER) throw new JobError("the payload cannot be stored: a string in it holds the character \\u0000");
+        if ((error as { code?: string }).code === "P0001") throw new JobError((error as Error).message);
+        throw error;
+      }
     }
 
     for (let attempt = 0; attempt < ENQUEUE_ATTEMPTS; attempt++) {
