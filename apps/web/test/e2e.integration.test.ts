@@ -1246,7 +1246,6 @@ describe("web app: with a module installed", () => {
     assert.equal(got.status, 200);
     assert.equal(got.body, "hello file");
     assert.equal(got.headers["content-type"], "text/plain");
-    assert.equal(got.headers["content-length"], "10");
     assert.equal(got.headers["content-disposition"], `attachment; filename="notes _.txt"; filename*=UTF-8''notes%20%C3%B1.txt`);
     assert.equal(got.headers["x-content-type-options"], "nosniff");
     assert.equal(got.headers["content-security-policy"], "default-src 'none'; sandbox");
@@ -1283,7 +1282,6 @@ describe("web app: with a module installed", () => {
     assert.equal(pngMeta.contentType, "image/png", "not what the name says");
     const fetched = await call("GET", `/api/files/${FIXTURE_ID}/${pngMeta.id}`, { cookie });
     assert.equal(fetched.headers["content-type"], "image/png");
-    assert.equal(fetched.headers["content-length"], String(png.length));
 
     const html = await upload("<script>alert(1)</script>", { "x-file-name": "page.html" });
     assert.equal(JSON.parse(html.body).contentType, "text/plain", "markup is never announced as a page");

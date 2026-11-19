@@ -40,10 +40,10 @@ describe("contentDisposition", () => {
 });
 
 describe("downloadHeaders", () => {
-  it("sends the stored type, the size and the protections that keep a download from running", () => {
+  it("sends the stored type and the protections that keep a download from running, and no length (Next drops it)", () => {
     const headers = downloadHeaders(meta());
     assert.equal(headers["content-type"], "application/pdf");
-    assert.equal(headers["content-length"], "1234");
+    assert.equal(headers["content-length"], undefined);
     assert.match(headers["content-disposition"]!, /^attachment; /);
     assert.equal(headers["x-content-type-options"], "nosniff");
     assert.equal(headers["content-security-policy"], "default-src 'none'; sandbox");

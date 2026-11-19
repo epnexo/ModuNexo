@@ -29,11 +29,12 @@ export function contentDisposition(name: string): string {
 /**
  * The headers of a download: always an attachment, with a type from the platform's own list (anything else is a stream of
  * bytes), forbidden from being sniffed into something else, and unable to run anything if opened directly.
+ * No `content-length`: since Next 16.4.5 a route response never carries it (nor `content-encoding` or
+ * `transfer-encoding`; `FORBIDDEN_HEADERS` in `send-response.js`), the body goes out chunked, so setting it would be dead code.
  */
 export function downloadHeaders(meta: FileMeta): Record<string, string> {
   return {
     "content-type": SNIFFED_TYPES.includes(meta.contentType) ? meta.contentType : "application/octet-stream",
-    "content-length": String(meta.size),
     "content-disposition": contentDisposition(meta.name),
     "x-content-type-options": "nosniff",
     "content-security-policy": "default-src 'none'; sandbox",
