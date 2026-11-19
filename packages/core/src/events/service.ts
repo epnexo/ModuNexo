@@ -1,5 +1,6 @@
 import type pg from "pg";
 import { eventType, type PublishOptions, type PublishResult } from "@modunexo/sdk";
+import { isModuleLogin } from "../data/module-roles.ts";
 import type { Executor } from "../executor.ts";
 import { JobError } from "../jobs/errors.ts";
 import { JobService } from "../jobs/service.ts";
@@ -45,6 +46,9 @@ export interface EventServiceOptions {
   now?: () => Date;
 }
 
+/** A refusal the database function raised on purpose (`raise exception`), shown as the platform's own error. */
+const asEventError = (error: unknown): unknown => ((error as { code?: string }).code === "P0001" ? new EventError((error as Error).message) : error);
+
 const toRecord = (row: Record<string, unknown>): EventRecord => ({
   id: Number(row.id),
   moduleId: row.module_id as string,
@@ -84,7 +88,12 @@ export class EventService {
     // Checked here because Postgres would refuse it inside the caller's transaction and leave that transaction aborted.
     if (type.length > MAX_EVENT_TYPE_CHARS) throw new EventError(`the event type "${type.slice(0, 40)}…" is over ${MAX_EVENT_TYPE_CHARS} characters`);
 
-    if (options.tx !== undefined) return this.write(options.tx as Executor, moduleId, type, json);
+    if (options.tx !== undefined) {
+      const tx = options.tx as Executor;
+      // A module's own login has no right on `core`: the database function writes the event and queues the subscribers.
+      if (await isModuleLogin(tx)) return this.writeAsModule(tx, name, json);
+      return this.write(tx, moduleId, type, json);
+    }
     const client = await this.pool.connect();
     let broken = false;
     try {
@@ -114,6 +123,16 @@ export class EventService {
     if (NUL_ESCAPE.test(json)) throw new EventError("the payload cannot be stored: a string in it holds the character \\u0000");
     if (LONE_SURROGATE.test(json)) throw new EventError("the payload cannot be stored: a string in it holds an unpaired surrogate");
     return json;
+  }
+
+  /** `core.publish_event` takes the module from the login, checks it is enabled and queues the subscribers in the same transaction. */
+  private async writeAsModule(db: Executor, name: string, json: string): Promise<PublishResult> {
+    try {
+      const result = await db.query("select core.publish_event($1, $2::jsonb) as id", [name, json]);
+      return { id: Number(result.rows[0]!.id) };
+    } catch (error) {
+      throw asEventError(error);
+    }
   }
 
   private async write(db: Executor, moduleId: string, type: string, json: string): Promise<PublishResult> {

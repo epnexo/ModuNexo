@@ -5,6 +5,7 @@ import type { ModuleManifest } from "@modunexo/sdk";
 import { CORE_MODULE_DIR, CORE_MODULE_ID } from "./core-module.ts";
 import { type MigrationFile, planMigrations, readMigrationFiles } from "./migrations.ts";
 import type { Registry } from "./registry.ts";
+import { syncDeclarations } from "./data/module-declarations.ts";
 import type { ModuleRoles } from "./data/module-roles.ts";
 import { quoteIdentifier } from "./sql.ts";
 
@@ -164,7 +165,10 @@ async function applyModules(client: pg.PoolClient, modules: ModuleManifest[], op
       }
       const roles = manifest.id === CORE_MODULE_ID ? undefined : options.moduleRoles;
       if (roles === undefined) await client.query(`create schema if not exists ${quoteIdentifier(manifest.schema)}`);
-      else await roles.provision(client, manifest.id, manifest.schema);
+      else {
+        await roles.provision(client, manifest.id, manifest.schema);
+        await syncDeclarations(client, manifest);
+      }
       for (const file of pending) {
         if (roles === undefined) await applyFile(client, manifest, file);
         else await applyFileAsModule(await roles.pool(manifest.schema), manifest, file);

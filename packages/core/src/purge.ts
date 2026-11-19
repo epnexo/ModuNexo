@@ -1,5 +1,6 @@
 import type pg from "pg";
 import { CORE_MODULE_ID } from "./core-module.ts";
+import { clearDeclarations } from "./data/module-declarations.ts";
 import type { Registry } from "./registry.ts";
 import { type MigrateOptions, withMigrationLock } from "./runner.ts";
 import { quoteIdentifier } from "./sql.ts";
@@ -58,6 +59,12 @@ async function dropStatements(client: pg.PoolClient, target: PurgeTarget): Promi
   const tracked = await client.query("select to_regclass('core.schema_migrations') is not null as present");
   if (tracked.rows[0].present) {
     await client.query("delete from core.schema_migrations where module_id = $1", [target.id]);
+  }
+  // What the platform kept for the module's own database login: its declared jobs, subscriptions and the login's record.
+  const declared = await client.query("select to_regclass('core.module_jobs') is not null as present");
+  if (declared.rows[0].present) {
+    await clearDeclarations(client, target.id);
+    await client.query("delete from core.module_roles where module_id = $1", [target.id]);
   }
   // The module's settings go with its data. The audit trail in core.settings_events stays, and holds no values.
   const settings = await client.query("select to_regclass('core.module_settings') is not null as present");

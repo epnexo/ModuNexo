@@ -2,7 +2,22 @@ import { createHash, createHmac, pbkdf2Sync } from "node:crypto";
 import type pg from "pg";
 import { deriveSecret } from "../auth/master-key.ts";
 import { createPool } from "../pool.ts";
+import type { Executor } from "../executor.ts";
 import { quoteIdentifier } from "../sql.ts";
+
+/** What a module's login may call in `core`, and nothing else there. Each takes the module from the login, never from an argument. */
+const MODULE_FUNCTIONS = [
+  "core.record_migration(text, text)",
+  "core.publish_event(text, jsonb)",
+  "core.enqueue_job(text, jsonb, timestamptz, text)",
+  "core.record_file(uuid, text, text, bigint, text, text, timestamptz)",
+];
+
+/** Whether the connection behind `db` is logged in as a module's role, so its writes to `core` must go through the functions above. */
+export async function isModuleLogin(db: Executor): Promise<boolean> {
+  const { rows } = await db.query("select session_user::text as login");
+  return String(rows[0]?.login ?? "").startsWith("mnx_m_");
+}
 
 /** Held while a role is set up, so two processes starting together do not both create it. */
 const ROLE_LOCK = 7_302_202;
@@ -137,7 +152,7 @@ export class ModuleRoles {
       [role, moduleId, schema],
     );
     await client.query(`grant usage on schema core to ${quotedRole}`);
-    await client.query(`grant execute on function core.record_migration(text, text) to ${quotedRole}`);
+    for (const signature of MODULE_FUNCTIONS) await client.query(`grant execute on function ${signature} to ${quotedRole}`);
     await client.query(`create schema if not exists ${quotedSchema} authorization ${quotedRole}`);
     return role;
   }

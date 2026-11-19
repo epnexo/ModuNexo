@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 import type pg from "pg";
 import { DEFAULT_FILE_MAX_BYTES, type FileData, type FileMeta, type FilesService, type ListFilesOptions, type PutFileInput, type PutFileOptions, type StoredFile } from "@modunexo/sdk";
+import { isModuleLogin } from "../data/module-roles.ts";
 import type { Executor } from "../executor.ts";
 import type { Registry } from "../registry.ts";
 import { FileError } from "./errors.ts";
@@ -95,8 +96,12 @@ export class FileService implements FilesService {
     const declaration = manifest.files;
     if (declaration === undefined) throw new FileError(`module "${moduleId}" does not declare files`);
     const db: Executor = (options.tx as Executor | undefined) ?? this.pool;
-    const enabled = await db.query("select 1 from core.modules where id = $1 and state = 'enabled'", [moduleId]);
-    if (enabled.rowCount === 0) throw new FileError(`module "${moduleId}" is not enabled`);
+    // A module's own login cannot read or write `core`: the database function checks it is enabled and records the file.
+    const asModule = options.tx !== undefined && (await isModuleLogin(db));
+    if (!asModule) {
+      const enabled = await db.query("select 1 from core.modules where id = $1 and state = 'enabled'", [moduleId]);
+      if (enabled.rowCount === 0) throw new FileError(`module "${moduleId}" is not enabled`);
+    }
 
     if (typeof input.name !== "string") throw new FileError("the file name must be a string");
     if (input.ref !== undefined && (typeof input.ref !== "string" || input.ref.length < 1 || input.ref.length > MAX_FILE_REF_CHARS)) {
@@ -137,9 +142,18 @@ export class FileService implements FilesService {
       const createdAt = this.now();
       const sha256 = hash.digest("hex");
       const ref = input.ref ?? null;
-      await db.query("insert into core.files (id, module_id, name, content_type, size, sha256, ref, created_at) values ($1, $2, $3, $4, $5, $6, $7, $8)", [
-        id, moduleId, name, contentType, size, sha256, ref, createdAt,
-      ]);
+      if (asModule) {
+        try {
+          await db.query("select core.record_file($1, $2, $3, $4, $5, $6, $7)", [id, name, contentType, size, sha256, ref, createdAt]);
+        } catch (error) {
+          if ((error as { code?: string }).code === "P0001") throw new FileError((error as Error).message);
+          throw error;
+        }
+      } else {
+        await db.query("insert into core.files (id, module_id, name, content_type, size, sha256, ref, created_at) values ($1, $2, $3, $4, $5, $6, $7, $8)", [
+          id, moduleId, name, contentType, size, sha256, ref, createdAt,
+        ]);
+      }
       return { id, name, contentType, size, sha256, ref, createdAt: createdAt.toISOString() };
     } catch (error) {
       await this.storage.remove(temporary).catch(() => undefined);
