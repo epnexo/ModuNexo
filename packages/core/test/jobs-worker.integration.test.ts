@@ -379,6 +379,51 @@ describe("Worker: dead workers, schedules and tick failures", () => {
     assert.ok(warned, "the failure is logged");
     assert.match(String((warned.fields?.error as Error).message), /disk gone/);
   });
+
+  test("a handler import that never settles is cut by the job's timeout", async () => {
+    const { worker } = makeWorker({}, { loadHandler: () => new Promise(() => {}) });
+    const { id } = await enqueue("slow");
+    const started = Date.now();
+    await worker.runOnce();
+    const took = Date.now() - started;
+    assert.ok(took >= 900 && took < 3000, `took ${took} ms`);
+    const r = await row(id);
+    assert.deepEqual([r.status, r.last_error], ["dead", "the job did not finish within 1 s"]);
+  });
+
+  test("a manifest reload that fails is logged, keeps the last good manifests and is retried on the next tick", async () => {
+    let fail = false;
+    const { worker, logged } = makeWorker({ sync: async () => {} }, {
+      loadManifests: async () => {
+        if (fail) throw new Error("manifest of broken-module is unreadable");
+        return box.modules.map((m) => m.manifest);
+      },
+    });
+    await worker.runOnce();
+    fail = true;
+    await pool!.query("update core.modules set installed_version = '1.1.0' where id = $1", [moduleId]);
+    const { id } = await enqueue("sync");
+    await worker.runOnce();
+    assert.equal((await row(id)).status, "succeeded");
+    const warned = logged.find((l) => l.event === "worker.manifests_failed");
+    assert.ok(warned, "the failure is logged");
+    assert.match(String((warned.fields?.error as Error).message), /unreadable/);
+    fail = false;
+    const again = await enqueue("sync");
+    await worker.runOnce();
+    assert.equal((await row(again.id)).status, "succeeded");
+    assert.equal(logged.filter((l) => l.event === "worker.manifests_failed").length, 1);
+  });
+
+  test("an error text that holds a NUL character is still recorded as the job's failure", async () => {
+    const { worker, logged } = makeWorker({ slow: async () => Promise.reject(new Error("bad\u0000text")) });
+    const { id } = await enqueue("slow");
+    await worker.runOnce();
+    const r = await row(id);
+    assert.equal(r.status, "dead");
+    assert.equal(r.last_error, "bad\uFFFDtext");
+    assert.ok(!logged.some((l) => l.event === "worker.job_write_failed"));
+  });
 });
 
 describe("Worker.run", () => {

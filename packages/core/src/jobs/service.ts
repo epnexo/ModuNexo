@@ -91,7 +91,8 @@ function toRecord(row: Record<string, unknown>): JobRecord {
 
 /** The message of an error, cut so one failure cannot fill the table. */
 export const errorText = (error: unknown): string => {
-  const text = error instanceof Error ? error.message || error.name : String(error);
+  // A text column cannot hold a NUL character, and a failure that cannot be written would be lost.
+  const text = (error instanceof Error ? error.message || error.name : String(error)).replaceAll("\u0000", "\uFFFD");
   return text.length > MAX_ERROR_CHARS ? `${text.slice(0, MAX_ERROR_CHARS - 1)}…` : text;
 };
 

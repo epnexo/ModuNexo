@@ -189,7 +189,14 @@ export class Worker {
   private async refreshManifests(enabled: Map<string, string>): Promise<void> {
     const signature = [...enabled].map(([id, version]) => `${id}@${version}`).sort().join(",");
     if (signature === this.signature) return;
-    const manifests = await this.deps.loadManifests();
+    let manifests: ModuleManifest[];
+    try {
+      manifests = await this.deps.loadManifests();
+    } catch (error) {
+      // An unreadable manifest must not stop every job: keep the last good set and try again on the next tick.
+      this.deps.log.warn("worker.manifests_failed", { error });
+      return;
+    }
     this.manifests = new Map(manifests.map((m) => [m.id, m]));
     this.signature = signature;
   }
@@ -234,7 +241,6 @@ export class Worker {
   private async invoke(job: ClaimedJob): Promise<void> {
     const declared = this.manifests.get(job.moduleId)?.jobs?.find((candidate) => candidate.name === job.name);
     if (declared === undefined) throw new Error(`module "${job.moduleId}" no longer declares the job "${job.name}"`);
-    const handler = await this.deps.loadHandler(job.moduleId, declared.entry);
 
     const controller = new AbortController();
     let timer: NodeJS.Timeout | undefined;
@@ -246,7 +252,8 @@ export class Worker {
       }, job.timeoutSeconds * 1000);
     });
     const context: JobContext = { moduleId: job.moduleId, jobName: job.name, jobId: job.id, attempt: job.attempt, payload: job.payload, signal: controller.signal };
-    const running = (async () => handler(context))();
+    // The import is part of the run, so a handler file that never settles is cut by the timeout too.
+    const running = (async () => (await this.deps.loadHandler(job.moduleId, declared.entry))(context))();
     // If the timeout wins, the handler may still reject later; that is not an unhandled rejection.
     running.catch(() => undefined);
     try {
