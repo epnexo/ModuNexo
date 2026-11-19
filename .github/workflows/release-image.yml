@@ -3,11 +3,16 @@ name: Release image
 # Builds the platform image once per version tag and publishes it to GitHub Container Registry.
 # Production deploys that tag; it never builds from source. Create a release with:
 #   git tag v0.3.1 && git push origin v0.3.1
+#
+# It can also be started by hand (Actions > Release image > Run workflow, or `gh workflow run release-image.yml --ref <branch>`).
+# A manual run builds both architectures exactly like a release but never pushes the image: use it to prove a change to
+# this workflow or to the Dockerfile before it meets a real tag. Only a tag push publishes.
 
 on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -46,7 +51,8 @@ jobs:
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: true
+          # Only a tag push publishes; a manual run is a dry run.
+          push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
