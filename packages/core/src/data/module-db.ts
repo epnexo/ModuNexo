@@ -3,16 +3,24 @@ import { createHash } from "node:crypto";
 import type pg from "pg";
 import { CORE_MODULE_ID } from "../core-module.ts";
 import type { Registry } from "../registry.ts";
+import type { ModuleRoles } from "./module-roles.ts";
 import { quoteIdentifier } from "../sql.ts";
 
 export interface ModuleDbOptions {
   /** Longest a single statement may run before the database cancels it. Default 30 s. */
   statementTimeoutMs?: number;
+  /**
+   * When set, every statement runs on a connection logged in as the calling module's own database role, so the
+   * database itself refuses what that role may not touch. Without it, statements run on the platform's pool, as before.
+   */
+  moduleRoles?: ModuleRoles;
 }
 
 interface Scope {
   /** The schema `search_path` is fixed to for every statement. */
   schema: string;
+  /** The schema of the module that makes the call: whose database role runs it. */
+  caller: string;
   /** Modules that must be enabled for the call to run: the one whose data is touched, and the caller. */
   requires: string[];
   readOnly: boolean;
@@ -41,6 +49,7 @@ export function readRoleName(schema: string): string {
  */
 export class ModuleDbService implements DbReader {
   readonly #timeoutMs: number;
+  readonly #moduleRoles: ModuleRoles | undefined;
   readonly #roles = new Map<string, Promise<string>>();
 
   constructor(
@@ -49,6 +58,7 @@ export class ModuleDbService implements DbReader {
     options: ModuleDbOptions = {},
   ) {
     this.#timeoutMs = options.statementTimeoutMs ?? 30_000;
+    this.#moduleRoles = options.moduleRoles;
   }
 
   forModule(moduleId: string): ModuleDb {
@@ -56,7 +66,7 @@ export class ModuleDbService implements DbReader {
     if (manifest === undefined || moduleId === CORE_MODULE_ID) {
       throw new DbAccessError("unknown-module", `module "${moduleId}" is not part of this build, so it has no data to reach`);
     }
-    const own: Scope = { schema: manifest.schema, requires: [moduleId], readOnly: false };
+    const own: Scope = { schema: manifest.schema, caller: manifest.schema, requires: [moduleId], readOnly: false };
     return {
       query: (sql, params) => this.#transaction(own, (tx) => tx.query(sql, params)),
       transaction: (run) => this.#transaction(own, run),
@@ -66,7 +76,7 @@ export class ModuleDbService implements DbReader {
         }
         const other = this.registry.get(otherId);
         if (other === undefined) throw new DbAccessError("unknown-module", `module "${otherId}" is not part of this build, so it has no data to reach`);
-        const scope: Scope = { schema: other.schema, requires: [otherId, moduleId], readOnly: true };
+        const scope: Scope = { schema: other.schema, caller: manifest.schema, requires: [otherId, moduleId], readOnly: true };
         return { query: (sql, params) => this.#transaction(scope, (tx) => tx.query(sql, params)) };
       },
     };
@@ -84,7 +94,7 @@ export class ModuleDbService implements DbReader {
     if (manifest === undefined || moduleId === CORE_MODULE_ID) {
       throw new DbAccessError("unknown-module", `module "${moduleId}" is not part of this build, so it has no data to reach`);
     }
-    const scope: Scope = { schema: manifest.schema, requires: [moduleId], readOnly: true, restricted: true };
+    const scope: Scope = { schema: manifest.schema, caller: manifest.schema, requires: [moduleId], readOnly: true, restricted: true };
     return { query: (sql, params) => this.#transaction(scope, (tx) => tx.query(sql, params)) };
   }
 
@@ -130,9 +140,26 @@ export class ModuleDbService implements DbReader {
     }
   }
 
+  async #assertEnabled(scope: Scope): Promise<void> {
+    await this.#assertEnabledOn(this.pool, scope);
+  }
+
+  async #assertEnabledOn(db: Pick<pg.Pool, "query">, scope: Scope): Promise<void> {
+    const wanted = [...new Set(scope.requires)];
+    const enabled = await db.query("select id from core.modules where id = any($1) and state = 'enabled'", [wanted]);
+    const have = new Set((enabled.rows as { id: string }[]).map((row) => row.id));
+    for (const id of wanted) {
+      if (!have.has(id)) throw new DbAccessError("not-enabled", `module "${id}" is not installed and enabled`);
+    }
+  }
+
   async #transaction<T>(scope: Scope, run: (tx: DbQueryable) => Promise<T>): Promise<T> {
-    const role = scope.restricted === true ? await this.#readRole(scope.schema) : undefined;
-    const client = await this.pool.connect();
+    // With a role of its own, the module's login cannot read `core`, so the platform checks the modules are enabled
+    // first, on its own connection; the module's statements then run on the module's login.
+    const roles = this.#moduleRoles;
+    if (roles !== undefined) await this.#assertEnabled(scope);
+    const role = roles === undefined && scope.restricted === true ? await this.#readRole(scope.schema) : undefined;
+    const client = roles === undefined ? await this.pool.connect() : await (await roles.pool(scope.caller)).connect();
     let broken = false;
     let open = true;
     try {
@@ -141,12 +168,7 @@ export class ModuleDbService implements DbReader {
         quoteIdentifier(scope.schema),
         String(this.#timeoutMs),
       ]);
-      const wanted = [...new Set(scope.requires)];
-      const enabled = await client.query("select id from core.modules where id = any($1) and state = 'enabled'", [wanted]);
-      const have = new Set((enabled.rows as { id: string }[]).map((row) => row.id));
-      for (const id of wanted) {
-        if (!have.has(id)) throw new DbAccessError("not-enabled", `module "${id}" is not installed and enabled`);
-      }
+      if (roles === undefined) await this.#assertEnabledOn(client, scope);
       // After the check above, which reads `core`; from here on the transaction holds the module's rights only.
       if (role !== undefined) await client.query(`set local role ${quoteIdentifier(role)}`);
       const tx: DbQueryable = {
