@@ -20,7 +20,7 @@ interface Outcome {
 /** Spawn the real script with only the environment it is given; never rejects, so exit codes can be asserted. */
 const spawn = (args: string[], env: Record<string, string>): Promise<Outcome> =>
   new Promise((resolve) => {
-    execFile(process.execPath, ["--import", "tsx", script, ...args], { env: { PATH: process.env.PATH, ...env } }, (error, stdout, stderr) => {
+    execFile(process.execPath, ["--import", "tsx", script, ...args], { env: { PATH: process.env.PATH, MODUNEXO_MASTER_KEY: process.env.MODUNEXO_MASTER_KEY, ...env } }, (error, stdout, stderr) => {
       resolve({ code: error === null ? 0 : ((error as { code?: number }).code ?? 1), stdout, stderr });
     });
   });

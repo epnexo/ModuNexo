@@ -1,5 +1,6 @@
 import { resolveMasterKey } from "@modunexo/core/auth";
 import { DashboardService } from "@modunexo/core/dashboard";
+import { moduleRolesFor } from "@modunexo/core/data";
 import { JobService } from "@modunexo/core/jobs";
 import { SettingsService } from "@modunexo/core/settings";
 import { type DashboardView, buildDashboard } from "./dashboard.ts";
@@ -18,7 +19,7 @@ export async function loadDashboard(viewer: Viewer): Promise<DashboardView> {
   const { pool } = platform();
   const registry = webRegistry();
   const settings = new SettingsService(pool, registry, { masterKey: resolveMasterKey() });
-  const service = new DashboardService(pool, registry, { incompleteSettings: (moduleId) => settings.incomplete(moduleId) });
+  const service = new DashboardService(pool, registry, { incompleteSettings: (moduleId) => settings.incomplete(moduleId), moduleRoles: moduleRolesFor(pool) });
   const [cards, overview, due] = await Promise.all([
     service.cards((_moduleId, permission) => subjectCan(viewer.subject, permission)),
     viewer.canWrite ? service.overview() : null,

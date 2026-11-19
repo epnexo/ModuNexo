@@ -1,8 +1,8 @@
 import { createHash, createHmac, pbkdf2Sync } from "node:crypto";
 import type pg from "pg";
 import type { ModuleManifest } from "@modunexo/sdk";
-import { deriveSecret } from "../auth/master-key.ts";
-import { createPool } from "../pool.ts";
+import { deriveSecret, resolveMasterKey } from "../auth/master-key.ts";
+import { createPool, resolveDatabaseUrl } from "../pool.ts";
 import { CORE_MODULE_ID } from "../core-module.ts";
 import type { Executor } from "../executor.ts";
 import type { Registry } from "../registry.ts";
@@ -170,7 +170,9 @@ export class ModuleRoles {
     for (const other of registry.all()) {
       if (other.id === manifest.id || other.id === CORE_MODULE_ID) continue;
       const roleName = moduleRoleName(other.schema);
-      if ((await client.query("select 1 from pg_roles where rolname = $1", [roleName])).rowCount === 0) continue;
+      // A module that is not installed here has no schema in this database; its role may still exist, roles belong to the cluster.
+      const there = await client.query("select exists (select 1 from pg_roles where rolname = $1) and exists (select 1 from pg_namespace where nspname = $2) as present", [roleName, other.schema]);
+      if (there.rows[0].present !== true) continue;
       const schema = quoteIdentifier(other.schema);
       const owner = quoteIdentifier(roleName);
       if (Object.hasOwn(manifest.dependsOn, other.id)) {
@@ -226,4 +228,31 @@ export class ModuleRoles {
     this.#pools.clear();
     await Promise.all(pools.map(async (pool) => endPool(await pool.catch(() => undefined))));
   }
+}
+
+const SHARED = new WeakMap<pg.Pool, ModuleRoles>();
+
+/**
+ * The module roles of a platform pool: one per pool and process, built from the environment the platform already
+ * needs (the database URL and the master key), so every part of the platform that has a pool gets the same one. Ending
+ * the pool first ends the module pools, so no process is held open by a login that is no longer used. A missing master
+ * key refuses here, with no fallback to the platform's own credentials.
+ */
+export function moduleRolesFor(pool: pg.Pool): ModuleRoles {
+  let roles = SHARED.get(pool);
+  if (roles === undefined) {
+    // The pool's own connection string, so the module logins reach the same server and database as the platform does.
+    const own = (pool as unknown as { options?: { connectionString?: string } }).options?.connectionString;
+    roles = new ModuleRoles({ pool, connectionString: own ?? resolveDatabaseUrl(), masterKey: resolveMasterKey() });
+    SHARED.set(pool, roles);
+    const shared = roles;
+    const end = pool.end.bind(pool);
+    pool.end = ((callback?: () => void) => {
+      const done = shared.close().then(() => end());
+      if (callback === undefined) return done;
+      done.then(() => callback(), () => callback());
+      return undefined;
+    }) as typeof pool.end;
+  }
+  return roles;
 }

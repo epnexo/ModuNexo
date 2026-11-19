@@ -4,6 +4,8 @@ import type pg from "pg";
 import { CORE_MODULE_ID } from "../core-module.ts";
 import type { Registry } from "../registry.ts";
 import type { ModuleRoles } from "./module-roles.ts";
+
+export { moduleRolesFor } from "./module-roles.ts";
 import { quoteIdentifier } from "../sql.ts";
 
 export interface ModuleDbOptions {

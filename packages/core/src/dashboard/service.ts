@@ -2,6 +2,7 @@ import type { DashboardSeverity } from "@modunexo/sdk";
 import type pg from "pg";
 import { CORE_MODULE_ID } from "../core-module.ts";
 import { ModuleDbService } from "../data/module-db.ts";
+import type { ModuleRoles } from "../data/module-roles.ts";
 import { type Logger, log as platformLog } from "../log.ts";
 import type { Registry } from "../registry.ts";
 
@@ -21,6 +22,8 @@ export interface DashboardOptions {
   statementTimeoutMs?: number;
   /** Keys of the required settings a module still lacks; the web passes the settings service's `incomplete`. */
   incompleteSettings?: (moduleId: string) => Promise<string[]>;
+  /** The module roles of the platform: the figures of a module are read on its own database login. */
+  moduleRoles?: ModuleRoles;
   /** Where a failed statement is reported, for whoever reads the server's output. Default: the platform's log. */
   log?: Logger;
 }
@@ -137,7 +140,7 @@ export class DashboardService {
     private readonly registry: Registry,
     private readonly options: DashboardOptions = {},
   ) {
-    this.#db = new ModuleDbService(pool, registry, { statementTimeoutMs: options.statementTimeoutMs ?? DEFAULT_TIMEOUT_MS });
+    this.#db = new ModuleDbService(pool, registry, { statementTimeoutMs: options.statementTimeoutMs ?? DEFAULT_TIMEOUT_MS, ...(options.moduleRoles === undefined ? {} : { moduleRoles: options.moduleRoles }) });
   }
 
   async #enabledIds(): Promise<string[]> {

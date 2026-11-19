@@ -74,6 +74,34 @@ const test = (name: string, run: () => Promise<void>) =>
 
 const service = () => new ModuleDbService(pool!, box.registry(), { moduleRoles: roles });
 
+describe("moduleRolesFor", () => {
+  test("is one per pool, built from the environment, and ending the pool ends the module pools", async () => {
+    const { moduleRolesFor } = await import("../src/data/module-roles.ts");
+    const { createScratchDatabase: scratchOf } = await import("../src/testing.ts");
+    const scratch = await scratchOf();
+    if (!scratch.url) return;
+    const previous = { url: process.env.DATABASE_URL, key: process.env.MODUNEXO_MASTER_KEY };
+    process.env.DATABASE_URL = scratch.url;
+    process.env.MODUNEXO_MASTER_KEY = "k".repeat(40);
+    const own = createPool(scratch.url);
+    try {
+      const first = moduleRolesFor(own);
+      assert.equal(moduleRolesFor(own), first);
+      assert.notEqual(moduleRolesFor(pool!), first);
+      await own.end();
+      assert.ok(own.ended);
+      await assert.rejects(first.pool("t_x"), /were closed/);
+    } finally {
+      if (!own.ended) await own.end();
+      if (previous.url === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = previous.url;
+      if (previous.key === undefined) delete process.env.MODUNEXO_MASTER_KEY;
+      else process.env.MODUNEXO_MASTER_KEY = previous.key;
+      await scratch.drop();
+    }
+  });
+});
+
 describe("getDb on the module's own login", () => {
   test("a module reads and writes its own schema through its handle", async () => {
     const db = service().forModule(a);
@@ -125,7 +153,7 @@ describe("getDb on the module's own login", () => {
 
   test("readOwn runs read-only as the module and cannot see core", async () => {
     const own = service().readOwn(a);
-    assert.equal((await own.query("select count(*)::int as n from items")).rows[0]!.n >= 1, true);
+    assert.ok(Number((await own.query("select count(*)::int as n from items")).rows[0]!.n) >= 1);
     await assert.rejects(own.query("insert into items (name) values ('x')"), /read-only transaction/);
     await assert.rejects(own.query("select * from core.modules"), /permission denied/);
     await assert.rejects(own.query("select query_to_xml('select * from core.modules', true, false, '')"), /permission denied/);

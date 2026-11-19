@@ -33,7 +33,7 @@ export interface MigrateOptions {
    * cannot touch `core` or another module's schema. The core's own migrations stay on the platform's connection. Without
    * it, every migration runs on the platform's connection.
    */
-  moduleRoles?: ModuleRoles;
+  moduleRoles?: ModuleRoles | (() => ModuleRoles);
 }
 
 /**
@@ -163,7 +163,9 @@ async function applyModules(client: pg.PoolClient, modules: ModuleManifest[], op
       } catch (error) {
         throw new Error(`module "${manifest.id}": ${error instanceof Error ? error.message : String(error)}`, { cause: error });
       }
-      const roles = manifest.id === CORE_MODULE_ID ? undefined : options.moduleRoles;
+      // Given as a function, the roles (and the master key they need) are only looked up when a module is applied.
+      const given = options.moduleRoles;
+      const roles = manifest.id === CORE_MODULE_ID ? undefined : typeof given === "function" ? given() : given;
       if (roles === undefined) await client.query(`create schema if not exists ${quoteIdentifier(manifest.schema)}`);
       else {
         await roles.provision(client, manifest.id, manifest.schema);

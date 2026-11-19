@@ -2,6 +2,7 @@ import { DB_READER, type DbReader, EVENTS_PUBLISHER, type EventsPublisher, FILES
 import type pg from "pg";
 import { resolveMasterKey } from "../auth/master-key.ts";
 import { ModuleDbService } from "../data/module-db.ts";
+import { moduleRolesFor } from "../data/module-roles.ts";
 import { EventService } from "../events/service.ts";
 import { FileService } from "../files/service.ts";
 import { LlmService } from "../llm/service.ts";
@@ -29,7 +30,7 @@ export function registerModuleRuntime(pool: pg.Pool, holder: RegistryHolder): vo
     [FILES_SERVICE]?: FilesService;
     [LLM_CLIENT]?: LlmClient;
   };
-  slot[DB_READER] = { forModule: (moduleId) => new ModuleDbService(pool, holder.current).forModule(moduleId) };
+  slot[DB_READER] = { forModule: (moduleId) => new ModuleDbService(pool, holder.current, { moduleRoles: moduleRolesFor(pool) }).forModule(moduleId) };
   slot[SETTINGS_READER] = { get: (moduleId, key) => new SettingsService(pool, holder.current, { masterKey: resolveMasterKey() }).get(moduleId, key) };
   slot[JOBS_ENQUEUER] = { enqueue: (moduleId, name, payload, options) => new JobService(pool, holder.current).enqueue(moduleId, name, payload, options) };
   slot[EVENTS_PUBLISHER] = { publish: (moduleId, name, payload, options) => new EventService(pool, holder.current).publish(moduleId, name, payload, options) };

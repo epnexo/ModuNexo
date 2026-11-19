@@ -13,7 +13,7 @@ const script = fileURLToPath(new URL("../src/cli/index.ts", import.meta.url));
 
 /** Run the script as `npm run db:migrate` does, with only the environment it is given. */
 const run = (args: string[], env: Record<string, string>) =>
-  execute(process.execPath, ["--import", "tsx", script, "db:migrate", ...args], { env: { PATH: process.env.PATH, ...env } });
+  execute(process.execPath, ["--import", "tsx", script, "db:migrate", ...args], { env: { PATH: process.env.PATH, MODUNEXO_MASTER_KEY: process.env.MODUNEXO_MASTER_KEY, ...env } });
 
 let modulesDir: string;
 beforeEach(() => {
