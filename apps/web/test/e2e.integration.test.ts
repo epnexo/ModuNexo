@@ -1246,6 +1246,8 @@ describe("web app: with a module installed", () => {
     assert.equal(got.status, 200);
     assert.equal(got.body, "hello file");
     assert.equal(got.headers["content-type"], "text/plain");
+    assert.equal(got.headers["content-length"], undefined, "Next >= 16.4.5 drops content-length from route responses");
+    assert.equal(got.headers["transfer-encoding"], "chunked", "so a download goes out chunked");
     assert.equal(got.headers["content-disposition"], `attachment; filename="notes _.txt"; filename*=UTF-8''notes%20%C3%B1.txt`);
     assert.equal(got.headers["x-content-type-options"], "nosniff");
     assert.equal(got.headers["content-security-policy"], "default-src 'none'; sandbox");
