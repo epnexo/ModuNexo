@@ -309,6 +309,31 @@ A value that is not a plain name (letters, digits and `. _ : -`, not starting wi
 runs. One call runs at a time and a long output is cut at 100,000 characters. What an MCP client can do is what the
 database in your `.env` allows: point it only at a platform you would let that agent operate.
 
+#### Remote access over HTTP
+
+The same tools are also served at `POST /svc/core/mcp` (MCP Streamable HTTP in its stateless form: one JSON-RPC message in,
+one JSON reply out), so a client on another machine can use the platform without shell or Docker access. It authenticates
+with a **key**: a service token of the module `core` with the scope `mcp.read` (or `mcp.read` plus `mcp.write`).
+
+- **Issue a key** in Settings > MCP > Remote access: a name, an expiry (30 days by default, 1 to 365) and, once, the key
+  with the command to paste. The screen issues read keys only. A key that also changes the platform is made on purpose
+  from the CLI: `tokens create core --name <name> --scope mcp.read --scope mcp.write`. The list shows each key's prefix,
+  scope, last use and expiry, and a button revokes it.
+- **Connect**: `claude mcp add --transport http modunexo <address>/svc/core/mcp --header "Authorization: Bearer <key>"`.
+- **Scopes**: a read key lists and runs the read tools; a key holding `mcp.write` also gets the write tools. The
+  `MODUNEXO_MCP_WRITE` switch belongs to stdio and is never read here. The never-offered list is the same.
+- **Reachable on the local network only**: the route is as open as the platform's address. Exposing it outside is a
+  decision for your reverse proxy and TLS, not something the platform does. A leaked `mcp.write` key can disable modules and
+  queue jobs, hence the short default expiry and the one-click revoke.
+- **Limits**: 120 requests a minute per client address, a 1 MiB body, one command at a time. At most 8 commands run or
+  wait; the next one answers `exit 75: the server is busy`. The CLI runs as a child process with a 60 second limit and
+  1 MiB of output, and it inherits only the variables it needs (`PATH`, `HOME`, `NODE_ENV`, `LOG_FORMAT`, `DATABASE_URL`,
+  the master key and the data and dist directories), not the web server's whole environment.
+- **Audit**: each tool call writes one `mcp.call` line to the server log with `caller` (the key's id), `tool` and `exit`
+  (the CLI's exit code, or `null` when the call was refused and never ran). Never the key or an argument value.
+- **Errors**: a remote caller gets the first line of a CLI failure with credentials, addresses and file paths taken out
+  (`exit 1: ...`). The full text stays on the server, where stdio keeps showing it as before.
+
 ### Administrators
 
 Sign-in is email and password through [Better Auth](https://www.better-auth.com). Nobody can sign up: the public

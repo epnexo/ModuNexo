@@ -1031,6 +1031,16 @@ describe("web app: with a module installed", () => {
     assert.ok(writeKey !== undefined);
     assert.ok((await names(writeKey)).includes("modules_disable"), "a key made with the CLI can also change the platform");
 
+    const init = JSON.parse((await rpc(issued.token, { jsonrpc: "2.0", id: 5, method: "initialize", params: { protocolVersion: "2025-06-18" } })).body) as { result: { serverInfo: { name: string }; capabilities: { tools: object } } };
+    assert.equal(init.result.serverInfo.name, "modunexo", "a client can complete the MCP handshake over HTTP");
+    assert.ok(init.result.capabilities.tools !== undefined);
+    const failed = JSON.parse((await rpc(writeKey, { jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "modules_disable", arguments: { id: "no-such-module" } } })).body) as { result: { isError: boolean; content: { text: string }[] } };
+    assert.equal(failed.result.isError, true);
+    const failure = failed.result.content[0]?.text ?? "";
+    assert.match(failure, /^exit [1-9]\d*: /, "a CLI failure reaches the caller as an exit code and one line");
+    assert.ok(!failure.includes("\n") && failure.length < 260, `a remote caller gets one short line: ${failure}`);
+    assert.ok(!failure.includes(process.cwd()) && !failure.includes("node_modules") && !/\bat .+\(/.test(failure), `no path or stack frame reaches a remote caller: ${failure}`);
+
     const screen = await call("GET", "/settings", { cookie });
     assert.equal(screen.status, 200);
     assert.ok(screen.body.includes("Remote access") && screen.body.includes("e2e laptop") && screen.body.includes("Create key"), "the MCP tab shows the remote access section with the keys");

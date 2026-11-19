@@ -6,6 +6,21 @@ root, `packages/core` and `apps/web`); the SDK keeps its own (`SDK_VERSION`), th
 checked against, and it changes only when the contract with modules changes. See "Versioning" in the README.
 
 ## [Unreleased]
+### Added
+
+- **MCP over HTTP.** `POST /svc/core/mcp` serves the MCP tools to a remote client, authenticated with a revocable key (a
+  service token of the module `core` with the scope `mcp.read`, or `mcp.read` plus `mcp.write`). Settings > MCP has a
+  "Remote access" section to issue read keys (30 days by default), see their last use and revoke them; write keys are
+  issued from the CLI. The core manifest declares the scopes `mcp.read` and `mcp.write`.
+- Each remote tool call writes an `mcp.call` line to the server log: the key's id, the tool and the exit code, never the
+  key or an argument value.
+
+### Security
+
+- Over HTTP, a CLI failure reaches the caller as its first line only, with credentials, addresses and file paths removed.
+  stdio is unchanged.
+- The CLI child process of the HTTP route inherits an allowlist of environment variables instead of the web server's.
+- At most 8 MCP commands run or wait; the next is answered `exit 75` (busy).
 
 ## [0.6.0] - 2026-11-11
 ### Added
