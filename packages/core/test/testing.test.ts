@@ -94,7 +94,7 @@ describe("openTestPool", () => {
       if (!base.pool) return t.skip(base.skipReason);
       const url = new URL(resolveTestDatabaseUrl()!);
       url.username = "no_such_role";
-      await assert.rejects(openTestPool({ TEST_DATABASE_URL: url.toString() }), /test database "[a-z_]+" could not be prepared/);
+      await assert.rejects(openTestPool({ TEST_DATABASE_URL: url.toString() }), /test database "[a-z0-9_]+" could not be prepared/);
     });
 
     it("keeps the connection usable for tests", async (t) => {
