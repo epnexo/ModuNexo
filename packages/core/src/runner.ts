@@ -68,7 +68,7 @@ export const MIGRATION_LOCK_NAME = "epnexo.platform.migrate";
 export async function migrate(pool: pg.Pool, registry: Registry, options: MigrateOptions = {}): Promise<MigrateResult> {
   const order = registry.resolveOrder();
   requireCore(registry);
-  return withMigrationLock(pool, options, (client) => applyModules(client, order, options));
+  return withMigrationLock(pool, options, (client) => applyModules(client, order, options, registry));
 }
 
 /**
@@ -78,7 +78,7 @@ export async function migrate(pool: pg.Pool, registry: Registry, options: Migrat
  */
 export async function migrateModule(pool: pg.Pool, registry: Registry, moduleId: string, options: MigrateOptions = {}): Promise<MigrateResult> {
   const modules = modulesFor(registry, moduleId);
-  return withMigrationLock(pool, options, (client) => applyModules(client, modules, options));
+  return withMigrationLock(pool, options, (client) => applyModules(client, modules, options, registry));
 }
 
 /**
@@ -96,7 +96,7 @@ export async function pendingMigrations(db: Pick<pg.Pool, "query">, manifest: Mo
  * itself, so this variant never locks; calling it without holding the lock is a bug.
  */
 export async function migrateModuleLocked(client: pg.PoolClient, registry: Registry, moduleId: string, options: MigrateOptions = {}): Promise<MigrateResult> {
-  return applyModules(client, modulesFor(registry, moduleId), options);
+  return applyModules(client, modulesFor(registry, moduleId), options, registry);
 }
 
 function modulesFor(registry: Registry, moduleId: string): ModuleManifest[] {
@@ -151,7 +151,7 @@ export async function withMigrationLock<T>(pool: pg.Pool, options: MigrateOption
   }
 }
 
-async function applyModules(client: pg.PoolClient, modules: ModuleManifest[], options: MigrateOptions): Promise<MigrateResult> {
+async function applyModules(client: pg.PoolClient, modules: ModuleManifest[], options: MigrateOptions, registry: Registry): Promise<MigrateResult> {
   const applied: AppliedMigration[] = [];
   try {
     for (const manifest of modules) {
@@ -168,6 +168,7 @@ async function applyModules(client: pg.PoolClient, modules: ModuleManifest[], op
       else {
         await roles.provision(client, manifest.id, manifest.schema);
         await syncDeclarations(client, manifest);
+        await roles.syncReads(client, manifest, registry);
       }
       for (const file of pending) {
         if (roles === undefined) await applyFile(client, manifest, file);

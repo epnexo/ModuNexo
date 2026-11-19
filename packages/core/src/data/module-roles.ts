@@ -1,8 +1,11 @@
 import { createHash, createHmac, pbkdf2Sync } from "node:crypto";
 import type pg from "pg";
+import type { ModuleManifest } from "@modunexo/sdk";
 import { deriveSecret } from "../auth/master-key.ts";
 import { createPool } from "../pool.ts";
+import { CORE_MODULE_ID } from "../core-module.ts";
 import type { Executor } from "../executor.ts";
+import type { Registry } from "../registry.ts";
 import { quoteIdentifier } from "../sql.ts";
 
 /** What a module's login may call in `core`, and nothing else there. Each takes the module from the login, never from an argument. */
@@ -155,6 +158,31 @@ export class ModuleRoles {
     for (const signature of MODULE_FUNCTIONS) await client.query(`grant execute on function ${signature} to ${quotedRole}`);
     await client.query(`create schema if not exists ${quotedSchema} authorization ${quotedRole}`);
     return role;
+  }
+
+  /**
+   * Makes what a module may read in other modules' schemas match its `dependsOn`: `SELECT` on every table of a
+   * dependency, now and for tables that dependency creates later, and nothing on any other module. Run on the platform's
+   * connection after `provision`, so the dependencies already have their roles.
+   */
+  async syncReads(client: pg.PoolClient, manifest: ModuleManifest, registry: Registry): Promise<void> {
+    const own = quoteIdentifier(moduleRoleName(manifest.schema));
+    for (const other of registry.all()) {
+      if (other.id === manifest.id || other.id === CORE_MODULE_ID) continue;
+      const roleName = moduleRoleName(other.schema);
+      if ((await client.query("select 1 from pg_roles where rolname = $1", [roleName])).rowCount === 0) continue;
+      const schema = quoteIdentifier(other.schema);
+      const owner = quoteIdentifier(roleName);
+      if (Object.hasOwn(manifest.dependsOn, other.id)) {
+        await client.query(`grant usage on schema ${schema} to ${own}`);
+        await client.query(`grant select on all tables in schema ${schema} to ${own}`);
+        await client.query(`alter default privileges for role ${owner} in schema ${schema} grant select on tables to ${own}`);
+      } else {
+        await client.query(`alter default privileges for role ${owner} in schema ${schema} revoke select on tables from ${own}`);
+        await client.query(`revoke select on all tables in schema ${schema} from ${own}`);
+        await client.query(`revoke usage on schema ${schema} from ${own}`);
+      }
+    }
   }
 
   /** The module's pool: small, logged in as the module's role, and the same one every time. */
