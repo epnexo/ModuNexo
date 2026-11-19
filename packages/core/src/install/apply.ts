@@ -9,6 +9,7 @@ import { DEFAULT_WEB_ROOT } from "../codegen/generate.ts";
 import { readPackageName, registrationModulesFor } from "../codegen/enabled.ts";
 import { GroupError, GroupService } from "../groups/service.ts";
 import { LifecycleService, fileHookLoader } from "../lifecycle/index.ts";
+import { moduleRolesFor } from "../data/module-roles.ts";
 import { OperationBusyError, finishOperation, setStep, startOperation } from "../operations/index.ts";
 import { DATA_DIR, buildPackageContext, listIntakes, stagingPath, validatePackageTree } from "../packages/index.ts";
 import { REPO_ROOT } from "../packages/context.ts";
@@ -190,7 +191,7 @@ export async function applyPackage(options: ApplyOptions): Promise<ApplyResult> 
     }
 
     await progress("build", "next build (this takes a while)");
-    const lifecycle = new LifecycleService(pool, after, { loadHooks: fileHookLoader(modulesDir) });
+    const lifecycle = new LifecycleService(pool, after, { loadHooks: fileHookLoader(modulesDir), moduleRoles: () => moduleRolesFor(pool) });
     const registration = registrationModulesFor(await lifecycle.list(), after, modulesDir);
     warnings.push(...registration.warnings);
     const modules: RegistrationModule[] = registration.modules.filter((module) => module.manifest.id !== review.id);

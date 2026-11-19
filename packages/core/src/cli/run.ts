@@ -10,6 +10,7 @@ import { DEFAULT_WEB_ROOT, RegistrationError, generateRegistration, registration
 import { discoverModules, resolveModulesDir } from "../discovery.ts";
 import { LifecycleRefusedError, LifecycleService, type ModuleStatus, fileHookLoader } from "../lifecycle/index.ts";
 import { createPool, resolveDatabaseUrl } from "../pool.ts";
+import { moduleRolesFor } from "../data/module-roles.ts";
 import { Registry } from "../registry.ts";
 import { MigrationRunError, migrate, pendingMigrations } from "../runner.ts";
 import { SettingValueError, SettingsError } from "../settings/service.ts";
@@ -881,7 +882,8 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
     const url = resolveDatabaseUrl();
     const context = await loadContext(modulesDir, io);
     pool = createPool(url, { connectionTimeoutMillis: 5000 });
-    const service = new LifecycleService(pool, context.registry, { loadHooks: fileHookLoader(modulesDir) });
+    const platformPool = pool;
+    const service = new LifecycleService(platformPool, context.registry, { loadHooks: fileHookLoader(modulesDir), moduleRoles: () => moduleRolesFor(platformPool) });
 
     if (parsed.command === "db:migrate") await migrateCommand(context, service, pool, io);
     else if (parsed.command === "registry:generate") await generateCommand(parsed, context, service, io);

@@ -19,7 +19,7 @@ interface Outcome {
 
 const run = (args: string[], env: Record<string, string>): Promise<Outcome> =>
   new Promise((resolve) => {
-    const child = execFile(process.execPath, ["--import", "tsx", script, ...args], { env: { PATH: process.env.PATH, ...env } }, (error, stdout, stderr) => {
+    const child = execFile(process.execPath, ["--import", "tsx", script, ...args], { env: { PATH: process.env.PATH, MODUNEXO_MASTER_KEY: process.env.MODUNEXO_MASTER_KEY, ...env } }, (error, stdout, stderr) => {
       resolve({ code: error === null ? 0 : ((error as { code?: number }).code ?? 1), stdout, stderr });
     });
     child.stdin?.end("");
@@ -186,7 +186,7 @@ describe("cli: jobs enqueue, list, cancel and retry", () => {
 describe("cli: worker", () => {
   const startWorker = (url: string, extra: string[] = []): { child: ChildProcess; output: () => string } => {
     const child = spawnProcess(process.execPath, ["--import", "tsx", script, "worker", "--modules-dir", modulesDir, "--poll-ms", "100", ...extra], {
-      env: { PATH: process.env.PATH, DATABASE_URL: url },
+      env: { PATH: process.env.PATH, MODUNEXO_MASTER_KEY: process.env.MODUNEXO_MASTER_KEY, DATABASE_URL: url },
     });
     let text = "";
     child.stdout?.on("data", (chunk) => (text += chunk));

@@ -5,6 +5,7 @@ import { DEFAULT_WEB_ROOT } from "../codegen/generate.ts";
 import type { RegistrationModule } from "../codegen/render.ts";
 import { DiskStorage, FileService } from "../files/index.ts";
 import { LifecycleService, type UninstallMode, fileHookLoader, planTransition, readStates } from "../lifecycle/index.ts";
+import { moduleRolesFor } from "../data/module-roles.ts";
 import { OperationBusyError, finishOperation, setStep, startOperation } from "../operations/index.ts";
 import { DATA_DIR, filesDir } from "../packages/paths.ts";
 import { REPO_ROOT } from "../packages/context.ts";
@@ -135,7 +136,7 @@ export async function changeModule(options: ChangeOptions): Promise<ChangeResult
 
     await progress("lifecycle", `${action} ${moduleId}`);
     journal("lifecycle");
-    const lifecycle = new LifecycleService(pool, before, { loadHooks: fileHookLoader(modulesDir) });
+    const lifecycle = new LifecycleService(pool, before, { loadHooks: fileHookLoader(modulesDir), moduleRoles: () => moduleRolesFor(pool) });
     if (action === "enable") await lifecycle.enable(moduleId);
     else if (action === "disable") await lifecycle.disable(moduleId);
     else await lifecycle.uninstall(moduleId, options.mode);

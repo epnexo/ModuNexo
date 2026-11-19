@@ -7,6 +7,7 @@ import type { JobHandler, ModuleManifest } from "@modunexo/sdk";
 import { discoverModules } from "../discovery.ts";
 import { EventService } from "../events/index.ts";
 import { FileService, defaultFileStorage } from "../files/index.ts";
+import { checkDeclarations } from "../data/module-declarations.ts";
 import { JobService, type JobRecord, type JobStatus, Worker, registerModuleRuntime } from "../jobs/index.ts";
 import { log } from "../log.ts";
 import { Registry } from "../registry.ts";
@@ -101,6 +102,11 @@ export async function runWorkerCommand(command: WorkerCommand, deps: { pool: pg.
   if (!present.rows[0].present) throw new Error('the jobs table does not exist yet: run "npm run db:migrate" first');
 
   const first = await readRegistry(command.modulesDir);
+  // What the database knows of the manifests must match them: otherwise events would reach nobody, without any error.
+  const differences = await checkDeclarations(pool, first.registry);
+  if (differences.length > 0) {
+    throw new Error(`the jobs and subscriptions the database holds differ from the manifests (${differences.slice(0, 3).join("; ")}${differences.length > 3 ? "; ..." : ""}): apply each module again with "modules upgrade" or "db:migrate", then start the worker`);
+  }
   const holder = { current: first.registry };
   registerModuleRuntime(pool, holder);
 

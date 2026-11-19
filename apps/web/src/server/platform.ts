@@ -1,7 +1,7 @@
 import { type Auth, createAuth, resolveMasterKey } from "@modunexo/core/auth";
 import { createPool, resolveDatabaseUrl } from "@modunexo/core/pool";
 import { SettingsService } from "@modunexo/core/settings";
-import { ModuleDbService } from "@modunexo/core/data";
+import { ModuleDbService, moduleRolesFor } from "@modunexo/core/data";
 import { EventService } from "@modunexo/core/events";
 import { FileService, defaultFileStorage } from "@modunexo/core/files";
 import { JobService } from "@modunexo/core/jobs";
@@ -57,7 +57,7 @@ const settingsReader: SettingsReader = {
  * a module gets is built per call from the build's registry; the pool is only touched when a statement runs.
  */
 const dbReader: DbReader = {
-  forModule: (moduleId) => new ModuleDbService(platform().pool, webRegistry()).forModule(moduleId),
+  forModule: (moduleId) => new ModuleDbService(platform().pool, webRegistry(), { moduleRoles: moduleRolesFor(platform().pool) }).forModule(moduleId),
 };
 (globalThis as typeof globalThis & { [DB_READER]?: DbReader })[DB_READER] = dbReader;
 

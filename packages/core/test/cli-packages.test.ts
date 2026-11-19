@@ -22,7 +22,7 @@ interface Outcome {
 
 const spawn = (args: string[], env: Record<string, string>, cwd?: string): Promise<Outcome> =>
   new Promise((resolve) => {
-    execFile(process.execPath, ["--import", tsx, script, ...args], { env: { PATH: process.env.PATH, ...env }, ...(cwd === undefined ? {} : { cwd }) }, (error, stdout, stderr) => {
+    execFile(process.execPath, ["--import", tsx, script, ...args], { env: { PATH: process.env.PATH, MODUNEXO_MASTER_KEY: process.env.MODUNEXO_MASTER_KEY, ...env }, ...(cwd === undefined ? {} : { cwd }) }, (error, stdout, stderr) => {
       resolve({ code: error === null ? 0 : ((error as { code?: number }).code ?? 1), stdout, stderr });
     });
   });

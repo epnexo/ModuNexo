@@ -19,7 +19,7 @@ interface Outcome {
 
 const run = (args: string[], env: Record<string, string>): Promise<Outcome> =>
   new Promise((resolve) => {
-    const child = execFile(process.execPath, ["--import", "tsx", script, ...args], { env: { PATH: process.env.PATH, ...env } }, (error, stdout, stderr) => {
+    const child = execFile(process.execPath, ["--import", "tsx", script, ...args], { env: { PATH: process.env.PATH, MODUNEXO_MASTER_KEY: process.env.MODUNEXO_MASTER_KEY, ...env } }, (error, stdout, stderr) => {
       resolve({ code: error === null ? 0 : ((error as { code?: number }).code ?? 1), stdout, stderr });
     });
     child.stdin?.end("");
@@ -66,8 +66,10 @@ async function inScratchDatabase(t: TestContext, work: (db: pg.Pool, cli: Cli) =
   const db = createPool(url);
   const cli: Cli = (args) => run([...args, "--modules-dir", modulesDir], { DATABASE_URL: url });
   try {
-    assert.equal((await cli(["db:migrate"])).code, 0);
-    assert.equal((await cli(["modules", "install", "alpha"])).code, 0);
+    for (const args of [["db:migrate"], ["modules", "install", "alpha"]]) {
+      const done = await cli(args);
+      assert.equal(done.code, 0, done.stderr.replace(/\s+/g, " "));
+    }
     await work(db, cli);
   } finally {
     await db.end();
