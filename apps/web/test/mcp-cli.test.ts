@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import { createCliRun } from "../src/server/mcp-cli.ts";
+import { allowedChildEnv, createCliRun } from "../src/server/mcp-cli.ts";
 
 // `node -e <script> -- <argv>`: the script plays the CLI, so these tests need no database.
 const run = (script: string, options: { timeoutMs?: number; maxBytes?: number } = {}) => createCliRun({ entry: ["-e", script, "--"], cwd: process.cwd(), env: { PATH: process.env.PATH ?? "" }, ...options });
@@ -58,5 +58,19 @@ describe("running the CLI as a child process", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("the child process environment", () => {
+  it("keeps what the CLI needs and drops everything else", () => {
+    const env = allowedChildEnv({
+      PATH: "/usr/bin", HOME: "/home/x", NODE_ENV: "production", DATABASE_URL: "postgres://db", MODUNEXO_MASTER_KEY: "k", MODUNEXO_DATA_DIR: "/data", MODUNEXO_DIST_DIR: "/dist", LOG_FORMAT: "json",
+      MODUNEXO_MCP_WRITE: "1", AWS_SECRET_ACCESS_KEY: "s", GITHUB_TOKEN: "t", BETTER_AUTH_SECRET: "a", SMTP_PASSWORD: "p",
+    });
+    assert.deepEqual(Object.keys(env).sort(), ["DATABASE_URL", "HOME", "LOG_FORMAT", "MODUNEXO_DATA_DIR", "MODUNEXO_DIST_DIR", "MODUNEXO_MASTER_KEY", "NODE_ENV", "PATH"]);
+  });
+
+  it("omits a variable that is not set instead of passing undefined", () => {
+    assert.deepEqual(allowedChildEnv({ PATH: "/usr/bin" }), { PATH: "/usr/bin" });
   });
 });

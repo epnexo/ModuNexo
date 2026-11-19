@@ -5,12 +5,44 @@ export const MCP_MAX_BODY_BYTES = 1_048_576;
 
 const BEARER = /^Bearer\s+(\S+)$/i;
 
+/** The most commands that may wait for the one running; past it the caller is told the server is busy. */
+export const MCP_MAX_QUEUE = 8;
+const BUSY_EXIT = 75;
+const MAX_ERROR_CHARS = 200;
+
+export interface McpAuditEvent {
+  /** The service token's id (never the token itself). */
+  key: number;
+  tool: string;
+  /** The CLI's exit code, or null when the call was refused before it ran. */
+  exit: number | null;
+}
+
 export interface McpHttpDeps {
   run: McpRun;
   version: string;
-  /** Does the key behind this bearer token hold the write scope? May throw when the platform cannot tell. */
-  canWrite: (token: string) => Promise<boolean>;
+  /** Who is calling and may they write? Reads the key behind this bearer token. May throw when the platform cannot tell. */
+  identify: (token: string) => Promise<{ keyId: number; write: boolean }>;
+  /** One event per tool call. It carries no argument value and no key. */
+  audit?: (event: McpAuditEvent) => void;
   maxBytes?: number;
+  maxQueue?: number;
+}
+
+/**
+ * What a remote caller may read of a CLI failure: its first line, with credentials, addresses and file paths taken
+ * out. The CLI's full text (stack frames, connection strings) stays on the server.
+ */
+export function scrubCliText(text: string): string {
+  const first = text.split("\n").find((line) => line.trim() !== "")?.trim() ?? "";
+  const clean = first
+    .replace(/mdnx_\S+/g, "[key]")
+    .replace(/\b[a-z][a-z0-9+.-]*:\/\/\S+/gi, "[url]")
+    .replace(/\b([A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASS)[A-Z0-9_]*)=\S+/g, "$1=[redacted]")
+    .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b/g, "[address]")
+    .replace(/(^|[\s("'=])\/[^\s"')]+/g, "$1[path]")
+    .replace(/\b[A-Za-z0-9_-]{32,}\b/g, "[redacted]");
+  return clean.length > MAX_ERROR_CHARS ? `${clean.slice(0, MAX_ERROR_CHARS)}…` : clean;
 }
 
 const json = (status: number, body: unknown) =>
@@ -48,12 +80,24 @@ async function readCapped(request: Request, limit: number): Promise<string> {
  */
 export function createMcpHttpHandler(deps: McpHttpDeps): (request: Request) => Promise<Response> {
   const maxBytes = deps.maxBytes ?? MCP_MAX_BODY_BYTES;
+  const maxQueue = deps.maxQueue ?? MCP_MAX_QUEUE;
   // The CLI keeps a pool and process-wide state per run: one command at a time across every request, as in stdio.
+  // At most `maxQueue` commands are running or waiting; one more is refused at once, so a caller cannot pile up work.
   let queue: Promise<unknown> = Promise.resolve();
-  const run: McpRun = (argv, io) => {
+  let pending = 0;
+  const run: McpRun = async (argv, io) => {
+    if (pending >= maxQueue) {
+      io.err("the server is busy, try again in a moment");
+      return BUSY_EXIT;
+    }
+    pending += 1;
     const next = queue.then(() => deps.run(argv, io), () => deps.run(argv, io));
     queue = next.catch(() => undefined);
-    return next;
+    try {
+      return await next;
+    } finally {
+      pending -= 1;
+    }
   };
 
   return async (request) => {
@@ -74,15 +118,22 @@ export function createMcpHttpHandler(deps: McpHttpDeps): (request: Request) => P
 
     const token = BEARER.exec(request.headers.get("authorization") ?? "")?.[1];
     if (token === undefined) return rpcError(401, -32600, "a key is required");
-    let allowWrite: boolean;
+    let caller: { keyId: number; write: boolean };
     try {
-      allowWrite = await deps.canWrite(token);
+      caller = await deps.identify(token);
     } catch {
       // Not a verdict on the caller: the platform could not check. Fail closed, and say so honestly.
       return rpcError(503, -32603, "service unavailable");
     }
 
-    const reply = await createMcpServer({ run, allowWrite, version: deps.version }).handle(message);
+    const server = createMcpServer({
+      run,
+      allowWrite: caller.write,
+      version: deps.version,
+      redact: scrubCliText,
+      audit: (event) => deps.audit?.({ key: caller.keyId, ...event }),
+    });
+    const reply = await server.handle(message);
     return reply === undefined ? empty(202) : json(200, reply);
   };
 }

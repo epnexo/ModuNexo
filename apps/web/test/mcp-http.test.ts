@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { McpRun } from "@modunexo/core/mcp-server";
-import { createMcpHttpHandler } from "../src/server/mcp-http.ts";
+import { createMcpHttpHandler, scrubCliText } from "../src/server/mcp-http.ts";
 
 const KEY = `mdnx_${"0123abcd"}_${"A".repeat(43)}`;
 
-function harness(options: { write?: boolean | Error; maxBytes?: number; run?: (argv: string[]) => Promise<number> } = {}) {
+function harness(options: { write?: boolean | Error; maxBytes?: number; maxQueue?: number; run?: (argv: string[]) => Promise<number> } = {}) {
   const ran: string[][] = [];
   const checked: string[] = [];
+  const audited: unknown[] = [];
   const handler = createMcpHttpHandler({
     run: (async (argv, io) => {
       ran.push(argv);
@@ -15,16 +16,18 @@ function harness(options: { write?: boolean | Error; maxBytes?: number; run?: (a
       return options.run ? options.run(argv) : 0;
     }) as McpRun,
     version: "9.9.9",
-    canWrite: async (token) => {
+    identify: async (token) => {
       checked.push(token);
       if (options.write instanceof Error) throw options.write;
-      return options.write === true;
+      return { keyId: 42, write: options.write === true };
     },
+    audit: (event) => audited.push(event),
+    ...(options.maxQueue === undefined ? {} : { maxQueue: options.maxQueue }),
     ...(options.maxBytes === undefined ? {} : { maxBytes: options.maxBytes }),
   });
   const post = (body: string | object, headers: Record<string, string> = {}) =>
     handler(new Request("http://localhost/svc/core/mcp", { method: "POST", headers: { authorization: `Bearer ${KEY}`, "content-type": "application/json", ...headers }, body: typeof body === "string" ? body : JSON.stringify(body) }));
-  return { post, ran, checked };
+  return { post, ran, checked, audited };
 }
 
 const rpc = (method: string, params?: unknown, id: number | string = 1) => ({ jsonrpc: "2.0", id, method, ...(params === undefined ? {} : { params }) });
@@ -128,7 +131,7 @@ describe("MCP over HTTP: limits", () => {
       },
     });
     const request = new Request("http://localhost/svc/core/mcp", { method: "POST", headers: { authorization: `Bearer ${KEY}` }, body: stream, duplex: "half" } as RequestInit);
-    const response = await createMcpHttpHandler({ run: async () => 0, version: "1", canWrite: async () => false, maxBytes: 64 })(request);
+    const response = await createMcpHttpHandler({ run: async () => 0, version: "1", identify: async () => ({ keyId: 1, write: false }), maxBytes: 64 })(request);
     assert.equal(response.status, 413);
     assert.deepEqual(h.ran, []);
   });
@@ -150,5 +153,80 @@ describe("MCP over HTTP: limits", () => {
     await Promise.all([call(), call(), call()]);
     assert.equal(h.ran.length, 3);
     assert.equal(peak, 1);
+  });
+});
+
+describe("MCP over HTTP: audit, scrubbing and a bounded queue", () => {
+  const callTool = (name: string, args: Record<string, unknown> = {}) => rpc("tools/call", { name, arguments: args });
+
+  it("writes one audit event per tool call: key id, tool and exit code, never the key or an argument value", async () => {
+    const h = harness({ write: true, run: async () => 3 });
+    await h.post(callTool("modules_list"));
+    await h.post(callTool("jobs_cancel", { id: "job-secret-777" }));
+    assert.deepEqual(h.audited, [
+      { key: 42, tool: "modules_list", exit: 3 },
+      { key: 42, tool: "jobs_cancel", exit: 3 },
+    ]);
+    assert.ok(!JSON.stringify(h.audited).includes(KEY));
+    assert.ok(!JSON.stringify(h.audited).includes("job-secret-777"));
+  });
+
+  it("audits a write attempt by a read key as refused (null exit)", async () => {
+    const h = harness({ write: false });
+    await h.post(callTool("modules_disable", { id: "crm" }));
+    assert.deepEqual(h.audited, [{ key: 42, tool: "modules_disable", exit: null }]);
+  });
+
+  it("does not audit initialize, ping or tools/list", async () => {
+    const h = harness();
+    await h.post(rpc("initialize", { protocolVersion: "2025-06-18" }));
+    await h.post(rpc("ping"));
+    await h.post(rpc("tools/list"));
+    assert.deepEqual(h.audited, []);
+  });
+
+  it("shows the remote caller a scrubbed first line of a CLI failure, not paths, stack frames or credentials", async () => {
+    const h = harness({ run: async () => 1 });
+    const failing = createMcpHttpHandler({
+      run: (async (_argv, io) => {
+        io.err("Error: connect ECONNREFUSED postgres://admin:hunter2@10.0.0.5:5432/modunexo");
+        io.err("    at Pool.connect (/home/owner/app/node_modules/pg/lib/pool.js:10:5)");
+        return 1;
+      }) as McpRun,
+      version: "1",
+      identify: async () => ({ keyId: 1, write: false }),
+    });
+    const response = await failing(new Request("http://localhost/svc/core/mcp", { method: "POST", headers: { authorization: `Bearer ${KEY}` }, body: JSON.stringify(callTool("modules_list")) }));
+    const text = ((await response.json()) as { result: { content: { text: string }[] } }).result.content[0]!.text;
+    assert.ok(h);
+    for (const leak of ["hunter2", "10.0.0.5", "/home/owner", "pool.js", "at Pool"]) assert.ok(!text.includes(leak), `leaked ${leak}: ${text}`);
+    assert.match(text, /^exit 1: /);
+  });
+
+  it("scrubCliText keeps one short line and removes secrets, addresses and paths", () => {
+    assert.equal(scrubCliText("first\nsecond"), "first");
+    assert.equal(scrubCliText(""), "");
+    assert.ok(scrubCliText("x".repeat(1000)).length <= 201);
+    assert.ok(!scrubCliText(`token ${KEY} rejected`).includes(KEY));
+    assert.ok(!scrubCliText("cannot read /var/lib/modunexo/.env").includes("/var/lib"));
+    assert.ok(!scrubCliText("MODUNEXO_MASTER_KEY=abc123def is bad").includes("abc123def"));
+    assert.ok(!scrubCliText("host 192.168.1.20 refused").includes("192.168"));
+    assert.match(scrubCliText("module crm is not enabled"), /module crm is not enabled/);
+  });
+
+  it("answers busy (exit 75) instead of queueing without limit", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const h = harness({ maxQueue: 2, run: async () => { await gate; return 0; } });
+    const first = h.post(callTool("modules_list"));
+    const second = h.post(callTool("modules_list"));
+    await new Promise((r) => setTimeout(r, 20));
+    const third = (await (await h.post(callTool("modules_list"))).json()) as { result: { isError: boolean; content: { text: string }[] } };
+    assert.equal(third.result.isError, true);
+    assert.match(third.result.content[0]!.text, /^exit 75: .*busy/);
+    release();
+    await Promise.all([first, second]);
+    const after = (await (await h.post(callTool("modules_list"))).json()) as { result: { isError: boolean } };
+    assert.equal(after.result.isError, false);
   });
 });

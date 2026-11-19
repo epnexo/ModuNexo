@@ -275,3 +275,65 @@ describe("mcp stdio", () => {
     assert.equal(replies[2].result.content[0].text, "sign-in: required");
   });
 });
+
+describe("mcp audit", () => {
+  const KNOWN_READ = "modules_list";
+  const readTool = () => {
+    const name = KNOWN_READ;
+    return { name, argv: ["modules", "list", "--json"] };
+  };
+
+  it("reports each tool call with its name and the CLI's exit code, and nothing else", async () => {
+    const events: unknown[] = [];
+    const { run } = fakeRun({ [readTool().argv.join(" ")]: { code: 4, err: "boom" } });
+    const server = createMcpServer({ run, allowWrite: false, version: "1", audit: (event) => events.push(event) });
+    await ask(server, call(readTool().name));
+    assert.deepEqual(events, [{ tool: readTool().name, exit: 4 }]);
+  });
+
+  it("reports a refused call (writes off, bad arguments) with a null exit, and never the argument values", async () => {
+    const events: unknown[] = [];
+    const server = createMcpServer({ run: fakeRun().run, allowWrite: false, version: "1", audit: (event) => events.push(event) });
+    await ask(server, call("modules_disable", { id: "secret-value-123" }));
+    await ask(server, call(readTool().name, { nonsense: "secret-value-456" }));
+    assert.deepEqual(events.map((e) => (e as { exit: unknown }).exit), [null, null]);
+    assert.ok(!JSON.stringify(events).includes("secret-value"));
+  });
+
+  it("does not audit a name that is not a tool: the caller controls that string", async () => {
+    const events: unknown[] = [];
+    const server = createMcpServer({ run: fakeRun().run, allowWrite: false, version: "1", audit: (event) => events.push(event) });
+    await ask(server, call("not-a-tool\nforged log line"));
+    assert.deepEqual(events, []);
+  });
+
+  it("keeps serving when the audit sink throws", async () => {
+    const server = createMcpServer({ run: fakeRun().run, allowWrite: false, version: "1", audit: () => { throw new Error("disk full"); } });
+    const reply = await ask(server, call(readTool().name));
+    assert.equal(reply.result.isError, false);
+  });
+});
+
+describe("mcp redact", () => {
+  it("passes CLI error text through the redactor before the caller sees it, and leaves success output alone", async () => {
+    const { run } = fakeRun({ "modules list --json": { code: 1, err: "connect ECONNREFUSED postgres://u:pw@db:5432/x" }, "auth status": { out: "sign-in: required" } });
+    const server = createMcpServer({ run, allowWrite: false, version: "1", redact: (text) => text.replace(/postgres:\/\/\S+/g, "[redacted]") });
+    const failed = await ask(server, call("modules_list"));
+    assert.equal(failed.result.isError, true);
+    assert.ok(!failed.result.content[0].text.includes("pw@"));
+    assert.match(failed.result.content[0].text, /\[redacted\]/);
+  });
+
+  it("redacts the message of a runner that throws", async () => {
+    const run: McpRun = async () => { throw new Error("spawn /home/owner/secret/path ENOENT"); };
+    const server = createMcpServer({ run, allowWrite: false, version: "1", redact: () => "[redacted]" });
+    const reply = await ask(server, call("modules_list"));
+    assert.ok(!reply.result.content[0].text.includes("/home/owner"));
+  });
+
+  it("changes nothing without a redactor (stdio keeps its text)", async () => {
+    const { run } = fakeRun({ "modules list --json": { code: 1, err: "plain failure" } });
+    const reply = await ask(createMcpServer({ run, allowWrite: false, version: "1" }), call("modules_list"));
+    assert.match(reply.result.content[0].text, /plain failure/);
+  });
+});

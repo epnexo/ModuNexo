@@ -11,6 +11,21 @@ export interface CliRunOptions {
   maxBytes?: number;
 }
 
+/**
+ * The only variables the CLI child inherits from the web server. The web process holds more (auth secrets, mail and
+ * cloud credentials, the stdio write switch); a tool run on a remote caller's behalf gets what the CLI reads and no more.
+ */
+const CHILD_ENV_ALLOWLIST = ["PATH", "HOME", "NODE_ENV", "LOG_FORMAT", "DATABASE_URL", "MODUNEXO_MASTER_KEY", "MODUNEXO_DATA_DIR", "EPNEXO_DATA_DIR", "MODUNEXO_DIST_DIR"];
+
+export function allowedChildEnv(source: Record<string, string | undefined>): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const name of CHILD_ENV_ALLOWLIST) {
+    const value = source[name];
+    if (value !== undefined) env[name] = value;
+  }
+  return env;
+}
+
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_MAX_BYTES = 1_048_576;
 

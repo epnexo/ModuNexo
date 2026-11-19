@@ -8,6 +8,10 @@ export interface McpServerOptions {
   /** Offer and allow the write tools. Off unless the owner asked for it with MODUNEXO_MCP_WRITE=1. */
   allowWrite: boolean;
   version: string;
+  /** Called once per call to a known tool: `exit` is the CLI's exit code, or null when the call never ran. Never holds arguments. */
+  audit?: (event: { tool: string; exit: number | null }) => void;
+  /** Applied to CLI error text (stderr, a thrown message, a failed command's output) before the caller reads it. */
+  redact?: (text: string) => string;
 }
 
 const PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"] as const;
@@ -34,6 +38,15 @@ function clip(text: string): string {
 }
 
 export function createMcpServer(options: McpServerOptions) {
+  const redact = options.redact ?? ((text: string) => text);
+  // A broken audit sink must never turn a good call into a failed one.
+  const audit = (tool: string, exit: number | null) => {
+    try {
+      options.audit?.({ tool, exit });
+    } catch {
+      // ignored on purpose
+    }
+  };
   const tools = TOOLS.filter((tool) => options.allowWrite || !tool.write);
   // The CLI keeps a database pool and some process-wide state per run: one call at a time.
   let queue: Promise<unknown> = Promise.resolve();
@@ -48,23 +61,24 @@ export function createMcpServer(options: McpServerOptions) {
     const err: string[] = [];
     try {
       const code = await options.run(argv, { out: (line) => out.push(line), err: (line) => err.push(line) });
-      return { code, out: out.join("\n"), err: err.join("\n") };
+      return { code, out: out.join("\n"), err: redact(err.join("\n")) };
     } catch (error) {
-      return { code: 1, out: out.join("\n"), err: [...err, error instanceof Error ? error.message : String(error)].join("\n") };
+      return { code: 1, out: out.join("\n"), err: redact([...err, error instanceof Error ? error.message : String(error)].join("\n")) };
     }
   }
 
   async function runTool(tool: ToolDef, args: Args): Promise<ToolResult> {
     if (tool.name === "validate") return validate();
     const done = await runCommand(tool.argv!(args));
-    if (done.code !== 0) return toolText(clip(`exit ${done.code}: ${done.err || done.out || "the command failed"}`), true);
+    audit(tool.name, done.code);
+    if (done.code !== 0) return toolText(clip(`exit ${done.code}: ${done.err || redact(done.out) || "the command failed"}`), true);
     return toolText(clip(done.out || done.err || "done"));
   }
 
   async function validate(): Promise<ToolResult> {
     const findings: string[] = [];
     const [modules, auth, users] = [await runCommand(["modules", "list", "--json"]), await runCommand(["auth", "status"]), await runCommand(["user", "list", "--json"])];
-    const unavailable = (name: string, done: { code: number; err: string; out: string }) => findings.push(`${name} could not run (exit ${done.code}): ${done.err || done.out || "no message"}`);
+    const unavailable = (name: string, done: { code: number; err: string; out: string }) => findings.push(`${name} could not run (exit ${done.code}): ${done.err || redact(done.out) || "no message"}`);
 
     let moduleCount: number | null = null;
     if (modules.code !== 0) unavailable("modules list", modules);
@@ -102,6 +116,7 @@ export function createMcpServer(options: McpServerOptions) {
       }
     }
 
+    audit("validate", findings.length === 0 ? 0 : 1);
     const report = { ok: findings.length === 0, signIn, modules: moduleCount, users: userCount, findings };
     return toolText(JSON.stringify(report, null, 2));
   }
@@ -110,12 +125,18 @@ export function createMcpServer(options: McpServerOptions) {
     const named = typeof params === "object" && params !== null ? (params as { name?: unknown; arguments?: unknown }) : {};
     const known = typeof named.name === "string" ? TOOLS.find((tool) => tool.name === named.name) : undefined;
     if (known === undefined) return failure(id, INVALID_PARAMS, `unknown tool "${String(named.name)}"`);
-    if (known.write && !options.allowWrite) return result(id, toolText(`"${known.name}" changes the platform and writes are off: start the server with MODUNEXO_MCP_WRITE=1 to allow it.`, true));
+    if (known.write && !options.allowWrite) {
+      audit(known.name, null);
+      return result(id, toolText(`"${known.name}" changes the platform and writes are off: start the server with MODUNEXO_MCP_WRITE=1 to allow it.`, true));
+    }
     let args: Args;
     try {
       args = checkArguments(known, named.arguments);
     } catch (error) {
-      if (error instanceof ArgumentError) return result(id, toolText(`${known.name}: ${error.message}`, true));
+      if (error instanceof ArgumentError) {
+        audit(known.name, null);
+        return result(id, toolText(`${known.name}: ${error.message}`, true));
+      }
       throw error;
     }
     return result(id, await exclusive(() => runTool(known, args)));
