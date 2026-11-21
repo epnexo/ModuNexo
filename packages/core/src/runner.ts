@@ -82,6 +82,29 @@ export async function migrateModule(pool: pg.Pool, registry: Registry, moduleId:
 }
 
 /**
+ * Gives each of `moduleIds` its own database login and its rights, and writes its declarations (jobs, events,
+ * subscriptions) for the database, without applying any migration. This is what `db:migrate` does for the modules that
+ * are already installed: a module installed before logins existed belongs to the platform user until this runs, and
+ * the worker refuses to start while the declarations are empty. Same lock as a migration; safe to repeat. Returns the
+ * ids it handled, in dependency order.
+ */
+export async function adoptModules(pool: pg.Pool, registry: Registry, moduleIds: readonly string[], options: MigrateOptions & { moduleRoles: ModuleRoles | (() => ModuleRoles) }): Promise<string[]> {
+  const wanted = new Set(moduleIds);
+  const manifests = registry.resolveOrder().filter((manifest) => manifest.id !== CORE_MODULE_ID && wanted.has(manifest.id));
+  if (manifests.length === 0) return [];
+  return withMigrationLock(pool, options, async (client) => {
+    const given = options.moduleRoles;
+    const roles = typeof given === "function" ? given() : given;
+    for (const manifest of manifests) {
+      await roles.provision(client, manifest.id, manifest.schema);
+      await syncDeclarations(client, manifest);
+      await roles.syncReads(client, manifest, registry);
+    }
+    return manifests.map((manifest) => manifest.id);
+  });
+}
+
+/**
  * The migration files of `manifest` that are not applied yet, in order, without applying or locking anything.
  * Throws when the files are unreadable or the history of an applied file was rewritten, as a run would.
  */
