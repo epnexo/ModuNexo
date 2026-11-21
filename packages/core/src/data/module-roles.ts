@@ -113,7 +113,25 @@ export class ModuleRoles {
     return ready;
   }
 
+  /**
+   * Roles belong to the cluster but the advisory lock below only serializes one database, so two databases of the
+   * same cluster that create or update the same role name at once can collide in the catalog. Those errors are
+   * transient: try again, the second pass finds the role there.
+   */
   async #create(schema: string): Promise<string> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.#createOnce(schema);
+      } catch (error) {
+        const code = (error as { code?: string }).code;
+        const transient = code === "XX000" ? /tuple concurrently updated/.test(String((error as Error).message)) : code === "42710" || code === "23505";
+        if (!transient || attempt >= 5) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 25 * attempt));
+      }
+    }
+  }
+
+  async #createOnce(schema: string): Promise<string> {
     const role = moduleRoleName(schema);
     const quotedRole = quoteIdentifier(role);
     quoteIdentifier(schema);
