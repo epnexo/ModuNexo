@@ -124,7 +124,7 @@ export class ModuleRoles {
         return await this.#createOnce(schema);
       } catch (error) {
         const code = (error as { code?: string }).code;
-        const transient = code === "XX000" ? /tuple concurrently updated/.test(String((error as Error).message)) : code === "42710" || code === "23505";
+        const transient = code === "XX000" ? /tuple concurrently (updated|deleted)/.test(String((error as Error).message)) : code === "42710" || code === "23505";
         if (!transient || attempt >= 5) throw error;
         await new Promise((resolve) => setTimeout(resolve, 25 * attempt));
       }
