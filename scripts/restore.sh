@@ -61,4 +61,4 @@ tar -xzf "$backup/packages.tar.gz" -C "$data"
 # A backup made before modules could store files has no files.tar.gz.
 if [ -f "$backup/files.tar.gz" ]; then tar -xzf "$backup/files.tar.gz" -C "$data"; fi
 echo "restored $(cat "$backup/BACKUP_INFO" | head -n 1) into $(db_part "$url" name)"
-echo "next: copy your .env (same MODUNEXO_MASTER_KEY), then: npm install && npm run registry:generate && npm run web:build"
+echo "next: copy your .env (same MODUNEXO_MASTER_KEY), then: npm install && npm run db:migrate && npm run registry:generate && npm run web:build"
