@@ -14,6 +14,10 @@ export async function syncDeclarations(client: pg.PoolClient, manifest: ModuleMa
     await client.query("begin");
     await client.query("delete from core.module_jobs where module_id = $1", [manifest.id]);
     await client.query("delete from core.event_subscriptions where subscriber_module = $1", [manifest.id]);
+    await client.query("delete from core.module_declared_events where module_id = $1", [manifest.id]);
+    for (const event of manifest.events ?? []) {
+      await client.query("insert into core.module_declared_events (module_id, name) values ($1, $2) on conflict do nothing", [manifest.id, event.name]);
+    }
     for (const job of manifest.jobs ?? []) {
       await client.query("insert into core.module_jobs (module_id, name, max_attempts, timeout_seconds) values ($1, $2, $3, $4)", [
         manifest.id,
@@ -40,6 +44,7 @@ export async function syncDeclarations(client: pg.PoolClient, manifest: ModuleMa
 export async function clearDeclarations(client: Pick<pg.PoolClient, "query">, moduleId: string): Promise<void> {
   await client.query("delete from core.module_jobs where module_id = $1", [moduleId]);
   await client.query("delete from core.event_subscriptions where subscriber_module = $1", [moduleId]);
+  await client.query("delete from core.module_declared_events where module_id = $1", [moduleId]);
 }
 
 const key = (parts: (string | number)[]) => parts.join("\u0001");
@@ -53,10 +58,12 @@ export async function checkDeclarations(db: Executor, registry: Registry): Promi
   const enabled = (await db.query("select id from core.modules where state = 'enabled'")).rows.map((row) => row.id as string);
   const wantedJobs = new Set<string>();
   const wantedSubs = new Set<string>();
+  const wantedEvents = new Set<string>();
   for (const id of enabled) {
     const manifest = registry.get(id);
     if (manifest === undefined) continue;
     for (const job of manifest.jobs ?? []) wantedJobs.add(key([id, job.name, job.maxAttempts ?? DEFAULT_MAX_ATTEMPTS, job.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS]));
+    for (const event of manifest.events ?? []) wantedEvents.add(key([id, event.name]));
     for (const sub of manifest.subscriptions ?? []) wantedSubs.add(key([id, sub.event, sub.job]));
   }
   const haveJobs = new Set(
@@ -69,10 +76,15 @@ export async function checkDeclarations(db: Executor, registry: Registry): Promi
       key([r.subscriber_module as string, r.event_type as string, r.job_name as string]),
     ),
   );
+  const haveEvents = new Set(
+    (await db.query("select module_id, name from core.module_declared_events where module_id = any($1::text[])", [enabled])).rows.map((r) => key([r.module_id as string, r.name as string])),
+  );
   const problems: string[] = [];
   const show = (value: string) => value.split("\u0001").join("/");
   for (const item of wantedJobs) if (!haveJobs.has(item)) problems.push(`job ${show(item)} is declared but not in core.module_jobs`);
   for (const item of haveJobs) if (!wantedJobs.has(item)) problems.push(`job ${show(item)} is in core.module_jobs but not declared`);
+  for (const item of wantedEvents) if (!haveEvents.has(item)) problems.push(`event ${show(item)} is declared but not in core.module_declared_events`);
+  for (const item of haveEvents) if (!wantedEvents.has(item)) problems.push(`event ${show(item)} is in core.module_declared_events but not declared`);
   for (const item of wantedSubs) if (!haveSubs.has(item)) problems.push(`subscription ${show(item)} is declared but not in core.event_subscriptions`);
   for (const item of haveSubs) if (!wantedSubs.has(item)) problems.push(`subscription ${show(item)} is in core.event_subscriptions but not declared`);
   return problems;

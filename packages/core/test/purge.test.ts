@@ -55,6 +55,7 @@ describe("purgeModule: guards and atomicity", () => {
       "select to_regclass('core.module_jobs') is not null as present",
       "delete from core.module_jobs where module_id = $1",
       "delete from core.event_subscriptions where subscriber_module = $1",
+      "delete from core.module_declared_events where module_id = $1",
       "delete from core.module_roles where module_id = $1",
       "select to_regclass('core.module_settings') is not null as present",
       "delete from core.module_settings where module_id = $1",
