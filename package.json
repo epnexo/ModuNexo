@@ -1,6 +1,6 @@
 {
   "name": "modunexo-platform",
-  "version": "0.8.0",
+  "version": "0.7.0",
   "private": true,
   "license": "AGPL-3.0-only",
   "type": "module",
@@ -9,7 +9,7 @@
   },
   "workspaces": ["packages/*", "modules/*", "apps/*"],
   "scripts": {
-    "test": "node --env-file-if-exists=.env --import tsx --import ./packages/core/test/helpers/test-env.ts --test \"packages/*/test/**/*.test.ts\" \"apps/*/test/**/*.test.ts\"",
+    "test": "node --env-file-if-exists=.env --import tsx --test \"packages/*/test/**/*.test.ts\" \"apps/*/test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json && npm run typecheck -w @modunexo/web",
     "db:migrate": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/index.ts db:migrate",
     "modunexo": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/index.ts",
