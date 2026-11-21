@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type pg from "pg";
 import { SDK_VERSION, type ModuleManifest } from "@modunexo/sdk";
 import { readRoleName } from "../src/data/module-db.ts";
+import { moduleRoleName } from "../src/data/module-roles.ts";
 import { Registry, type RegistryOptions } from "../src/registry.ts";
 
 export interface Throwaway {
@@ -50,13 +51,15 @@ export class Sandbox {
       await this.pool.query("delete from core.schema_migrations where module_id = $1", [manifest.id]).catch(() => undefined);
       await this.pool.query("delete from core.modules where id = $1", [manifest.id]).catch(() => undefined);
       await this.pool.query("delete from core.module_events where module_id = $1", [manifest.id]).catch(() => undefined);
-      // The read role is the cluster's, not the database's: it would outlive the scratch database.
-      const role = readRoleName(manifest.schema);
-      if ((await this.pool.query("select 1 from pg_roles where rolname = $1", [role])).rowCount) {
-        await this.pool.query(`drop owned by "${role}"`);
-        await this.pool.query(`drop role "${role}"`);
-      }
       await this.pool.query(`drop schema if exists "${manifest.schema}" cascade`);
+      // Roles are the cluster's, not the database's: they would outlive the scratch database and pile up.
+      for (const role of [readRoleName(manifest.schema), moduleRoleName(manifest.schema)]) {
+        if ((await this.pool.query("select 1 from pg_roles where rolname = $1", [role])).rowCount) {
+          await this.pool.query(`drop owned by "${role}"`);
+          await this.pool.query(`drop role "${role}"`);
+        }
+      }
+      await this.pool.query("delete from core.module_roles where module_id = $1", [manifest.id]).catch(() => undefined);
       rmSync(dir, { recursive: true, force: true });
     }
   }

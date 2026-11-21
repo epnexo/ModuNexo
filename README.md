@@ -192,6 +192,9 @@ Limits, stated plainly:
   wants to can read them from the environment and act as the platform. The separate logins stop SQL reaching across
   modules; they do not sandbox code (see S10 of the plan, `odd/tasks/module-db-isolation.md`).
 - Lifecycle hooks and the `ai-usage ingest` command run with the platform's credentials.
+- A trigger, default expression or function a module owns runs with the **caller's** rights, so when the platform
+  itself writes into a module table (hooks, `ai-usage ingest`) that code runs with the platform's rights. A module can
+  also change its own login's password or hold an advisory lock, which only hurts that module or delays others.
 - Each module's pool holds at most 3 connections per process, so seven modules can hold 21 per process (web and
   worker each); keep `max_connections` above that.
 

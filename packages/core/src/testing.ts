@@ -131,10 +131,28 @@ export async function createScratchDatabase(env: Env = process.env): Promise<Scr
       const admin = new pg.Client({ connectionString: adminUrl(scratchUrl.toString()), connectionTimeoutMillis: 2000 });
       await admin.connect();
       try {
+        // Module logins belong to the cluster, not to the database: read the ones this database made before it goes,
+        // drop the database (which frees what they own here), then the roles, so tests do not leave them behind.
+        const names = await moduleLoginsOf(scratchUrl.toString());
         await admin.query(`drop database if exists ${quoteIdentifier(name)} with (force)`);
+        for (const role of names) await admin.query(`drop role if exists ${quoteIdentifier(role)}`).catch(() => undefined);
       } finally {
         await admin.end();
       }
     },
   };
+}
+
+/** The module logins `core.module_roles` records in one database; none when the table is not there (yet). */
+async function moduleLoginsOf(url: string): Promise<string[]> {
+  const client = new pg.Client({ connectionString: url, connectionTimeoutMillis: 2000 });
+  try {
+    await client.connect();
+    const { rows } = await client.query("select role_name from core.module_roles");
+    return rows.map((row) => row.role_name as string);
+  } catch {
+    return [];
+  } finally {
+    await client.end().catch(() => undefined);
+  }
 }
