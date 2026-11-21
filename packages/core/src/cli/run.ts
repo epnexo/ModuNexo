@@ -12,7 +12,7 @@ import { LifecycleRefusedError, LifecycleService, type ModuleStatus, fileHookLoa
 import { createPool, resolveDatabaseUrl } from "../pool.ts";
 import { moduleRolesFor } from "../data/module-roles.ts";
 import { Registry } from "../registry.ts";
-import { MigrationRunError, migrate, pendingMigrations } from "../runner.ts";
+import { MigrationRunError, adoptModules, migrate, pendingMigrations } from "../runner.ts";
 import { SettingValueError, SettingsError } from "../settings/service.ts";
 import { EventError } from "../events/index.ts";
 import { FileError, defaultFileStorage } from "../files/index.ts";
@@ -66,7 +66,7 @@ commands:
   modules apply <sha256> [--group <id>] [--data-dir <path>] [--actor <name>] [--json]
                                    install or upgrade a package that "modules add" staged: place, build the web
                                    app, run the lifecycle, restart the server; undone if a step fails
-  db:migrate                       apply the core migrations; report installed modules that need "modules upgrade"
+  db:migrate                       apply the core migrations; give installed modules their own login; report those that need "modules upgrade"
   registry:generate [--dry-run] [--out <dir>]
                                    write the web app registration for the enabled modules
   admin create --email <email> --name <name>
@@ -526,6 +526,8 @@ async function modulesCommand(parsed: Parsed, service: LifecycleService, io: Cli
  * Applies the core's migrations. A module's schema changes only through the lifecycle: install applies its first
  * migrations and upgrade applies later ones, so `core.modules.installed_version` always matches the schema. For
  * the installed modules this command therefore only reports what is waiting for an upgrade, and what it cannot check.
+ * It does give each installed module its own database login and write its declarations (see `adoptModules`), which a
+ * module installed before logins existed needs, and which needs `MODUNEXO_MASTER_KEY` when any module is installed.
  */
 async function migrateCommand(context: Context, service: LifecycleService, pool: pg.Pool, io: CliIo): Promise<void> {
   const coreOnly = new Registry();
@@ -534,7 +536,12 @@ async function migrateCommand(context: Context, service: LifecycleService, pool:
   if (applied.length === 0) io.out("nothing to apply");
   for (const { moduleId, filename } of applied) io.out(`applied ${moduleId}/${filename}`);
 
-  for (const status of (await service.list()).filter((s) => s.status !== "available")) {
+  const installed = (await service.list()).filter((s) => s.status !== "available");
+  // Each installed module gets its own database login and its declarations; the master key is only needed when there is one.
+  const adopted = await adoptModules(pool, context.registry, installed.map((s) => s.id), { moduleRoles: () => moduleRolesFor(pool) });
+  if (adopted.length > 0) io.out(`module logins and declarations are up to date for ${adopted.length} installed module${adopted.length === 1 ? "" : "s"}`);
+
+  for (const status of installed) {
     const manifest = context.registry.get(status.id);
     if (manifest === undefined) {
       io.err(`warning: module "${status.id}" is installed but its package is not on disk; skipped`);

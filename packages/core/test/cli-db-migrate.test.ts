@@ -6,6 +6,9 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { type TestContext, afterEach, beforeEach, describe, it } from "node:test";
+import { Registry } from "../src/registry.ts";
+import { createPool } from "../src/pool.ts";
+import { migrate } from "../src/runner.ts";
 import { createScratchDatabase } from "../src/testing.ts";
 
 const execute = promisify(execFile);
@@ -70,6 +73,44 @@ describe("db:migrate command", () => {
     await inScratchDatabase(t, async (url) => {
       const { stdout, stderr } = await run(["--modules-dir", modulesDir], { DATABASE_URL: url });
       assert.match(stderr, /warning: "dangling" is a symlink whose target cannot be read/);
+      assert.match(stdout, /applied core\/0001_init\.sql/);
+    });
+  });
+
+  it("gives the installed modules their own login and their declarations, and leaves a second run unchanged", async (t) => {
+    // A module installed by the version before logins existed: its schema belongs to the platform user.
+    addModule("alpha", { "0001_create.sql": "create table items (x int); insert into items values (7);" });
+    await inScratchDatabase(t, async (url) => {
+      await run(["--modules-dir", modulesDir], { DATABASE_URL: url });
+      const pool = createPool(url);
+      try {
+        const registry = new Registry({ allowUnsupportedPlatform: true });
+        registry.registerCore();
+        const manifest = (await import(join(modulesDir, "alpha", "manifest.ts"))).default;
+        registry.register({ ...manifest, migrationsDir: join(modulesDir, "alpha", "migrations") });
+        await migrate(pool, registry);
+        await pool.query("insert into core.modules (id, state, installed_version) values ('alpha', 'enabled', '1.0.0')");
+        const owner = async () => (await pool.query("select pg_get_userbyid(nspowner) as o from pg_namespace where nspname = 'alpha'")).rows[0].o as string;
+        assert.notEqual(await owner(), "mnx_m_alpha", "owned by the platform before");
+        assert.equal((await pool.query("select 1 from core.module_roles")).rowCount, 0);
+
+        const first = await run(["--modules-dir", modulesDir], { DATABASE_URL: url });
+        assert.match(first.stdout, /module logins and declarations are up to date for 1 installed module/);
+        assert.equal(await owner(), "mnx_m_alpha");
+        assert.equal((await pool.query("select 1 from core.module_roles where module_id = 'alpha'")).rowCount, 1);
+        assert.deepEqual((await pool.query("select x from alpha.items")).rows, [{ x: 7 }], "the data stays");
+
+        await run(["--modules-dir", modulesDir], { DATABASE_URL: url });
+        assert.equal(await owner(), "mnx_m_alpha");
+      } finally {
+        await pool.end();
+      }
+    });
+  });
+
+  it("does not ask for the master key when no module is installed", async (t) => {
+    await inScratchDatabase(t, async (url) => {
+      const { stdout } = await run(["--modules-dir", modulesDir], { DATABASE_URL: url, MODUNEXO_MASTER_KEY: "" });
       assert.match(stdout, /applied core\/0001_init\.sql/);
     });
   });

@@ -6,6 +6,12 @@ root, `packages/core` and `apps/web`); the SDK keeps its own (`SDK_VERSION`), th
 checked against, and it changes only when the contract with modules changes. See "Versioning" in the README.
 
 ## [Unreleased]
+### Fixed
+
+- `npm run db:migrate` now gives every installed module its own database login, hands it its schema and writes its jobs,
+  events and subscriptions for the database, as 0.8.0 said it did. In 0.8.0 only an install or upgrade did, so a platform
+  updated from 0.7.0 kept its modules owned by the platform user and the worker refused to start (empty
+  `core.module_jobs`). It needs `MODUNEXO_MASTER_KEY` only when a module is installed.
 
 ## [0.8.0] - 2026-11-21
 ### Security
