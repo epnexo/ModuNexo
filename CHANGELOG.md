@@ -6,6 +6,8 @@ root, `packages/core` and `apps/web`); the SDK keeps its own (`SDK_VERSION`), th
 checked against, and it changes only when the contract with modules changes. See "Versioning" in the README.
 
 ## [Unreleased]
+
+## [0.8.1] - 2026-11-21
 ### Fixed
 
 - `npm run db:migrate` now gives every installed module its own database login, hands it its schema and writes its jobs,
