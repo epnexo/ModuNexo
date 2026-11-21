@@ -6,6 +6,8 @@ root, `packages/core` and `apps/web`); the SDK keeps its own (`SDK_VERSION`), th
 checked against, and it changes only when the contract with modules changes. See "Versioning" in the README.
 
 ## [Unreleased]
+
+## [0.8.0] - 2026-11-21
 ### Security
 
 - **Each module has its own database login** (`mnx_m_<schema>`, password derived from `MODUNEXO_MASTER_KEY`). Its
