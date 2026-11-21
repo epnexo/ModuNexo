@@ -131,11 +131,7 @@ export async function createScratchDatabase(env: Env = process.env): Promise<Scr
       const admin = new pg.Client({ connectionString: adminUrl(scratchUrl.toString()), connectionTimeoutMillis: 2000 });
       await admin.connect();
       try {
-        // Module logins belong to the cluster, not to the database: read the ones this database made before it goes,
-        // drop the database (which frees what they own here), then the roles, so tests do not leave them behind.
-        const names = await moduleLoginsOf(scratchUrl.toString());
         await admin.query(`drop database if exists ${quoteIdentifier(name)} with (force)`);
-        for (const role of names) await admin.query(`drop role if exists ${quoteIdentifier(role)}`).catch(() => undefined);
       } finally {
         await admin.end();
       }
@@ -143,16 +139,34 @@ export async function createScratchDatabase(env: Env = process.env): Promise<Scr
   };
 }
 
-/** The module logins `core.module_roles` records in one database; none when the table is not there (yet). */
-async function moduleLoginsOf(url: string): Promise<string[]> {
-  const client = new pg.Client({ connectionString: url, connectionTimeoutMillis: 2000 });
+/**
+ * Drops the module logins that tests left in the cluster. Logins belong to the cluster, not to one database, and test
+ * databases run in parallel with the same module ids, so no test may drop them while others run (the catalog tuples
+ * race, and one test's login would vanish under another). This runs once, after the whole run: a login that a live
+ * database still owns objects in refuses to drop and stays. Returns how many it dropped.
+ */
+export async function dropLeftoverModuleLogins(env: Env = process.env): Promise<number> {
+  const base = resolveTestDatabaseUrl(env);
+  if (!base) return 0;
+  const admin = new pg.Client({ connectionString: adminUrl(base), connectionTimeoutMillis: 2000 });
   try {
-    await client.connect();
-    const { rows } = await client.query("select role_name from core.module_roles");
-    return rows.map((row) => row.role_name as string);
+    await admin.connect();
   } catch {
-    return [];
-  } finally {
-    await client.end().catch(() => undefined);
+    return 0;
   }
+  let dropped = 0;
+  try {
+    const { rows } = await admin.query("select rolname from pg_roles where rolname like 'mnx\\_m\\_%' or rolname like 'mnx\\_ro\\_%'");
+    for (const { rolname } of rows as { rolname: string }[]) {
+      try {
+        await admin.query(`drop role ${quoteIdentifier(rolname)}`);
+        dropped++;
+      } catch {
+        // Still owns objects in a database that is alive, or is in use: leave it.
+      }
+    }
+  } finally {
+    await admin.end().catch(() => undefined);
+  }
+  return dropped;
 }

@@ -10,6 +10,7 @@
   "workspaces": ["packages/*", "modules/*", "apps/*"],
   "scripts": {
     "test": "node --env-file-if-exists=.env --import tsx --import ./packages/core/test/helpers/test-env.ts --test \"packages/*/test/**/*.test.ts\" \"apps/*/test/**/*.test.ts\"",
+    "posttest": "node --env-file-if-exists=.env --import tsx scripts/drop-test-roles.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json && npm run typecheck -w @modunexo/web",
     "db:migrate": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/index.ts db:migrate",
     "modunexo": "node --env-file-if-exists=.env --import tsx packages/core/src/cli/index.ts",
