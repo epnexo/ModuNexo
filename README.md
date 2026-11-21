@@ -173,6 +173,28 @@ await db.transaction(async (tx) => {
 - A module that is not installed and enabled gets `DbAccessError` (`not-enabled`). Outside the running platform
   (a script, a test) `getDb` throws `DbUnavailableError`, like `getSetting`.
 
+**Each module has its own database login.** The platform creates a Postgres role per module (`mnx_m_<schema>`, with a
+password derived from `MODUNEXO_MASTER_KEY`, never stored), makes it the owner of the module's schema, and runs the
+module's migrations and every `getDb` statement on that login. The login cannot read `core` or another module's
+schema, and `set_config('role', ...)` cannot take it anywhere else, so a module cannot read the platform's tables or
+a sibling's data with SQL. What a module needs from `core` goes through four `SECURITY DEFINER` functions that take the
+module id from the login, never from an argument: `record_migration`, `publish_event`, `enqueue_job` and `record_file`.
+Because the password comes from the master key, **installing, upgrading or migrating with modules installed needs
+`MODUNEXO_MASTER_KEY`** (the web app and the worker already require it). Modules installed before this existed are
+adopted on the next `db:migrate`, which moves their tables to the module's login; the worker refuses to start until
+that has run, because `core.module_jobs` and `core.event_subscriptions` are filled by it. Purging a module drops its
+login. Roles live in the database cluster, not in one database, so two platform databases on the same cluster must not
+install the same module id.
+
+Limits, stated plainly:
+
+- Module code still runs **in the platform's process**, which holds `DATABASE_URL` and the master key. A module that
+  wants to can read them from the environment and act as the platform. The separate logins stop SQL reaching across
+  modules; they do not sandbox code (see S10 of the plan, `odd/tasks/module-db-isolation.md`).
+- Lifecycle hooks and the `ai-usage ingest` command run with the platform's credentials.
+- Each module's pool holds at most 3 connections per process, so seven modules can hold 21 per process (web and
+  worker each); keep `max_connections` above that.
+
 ### Relating modules: `reader`
 
 A module may **read** another module's data when it lists that module in `dependsOn` (which install already requires
@@ -183,11 +205,12 @@ const people = await getDb("field-notes").reader("contacts").query("select id, n
 ```
 
 The handle is `READ ONLY` in Postgres, so a write through it fails in the database with `25006`, not by convention.
-A module that is not in `dependsOn` is refused by name (`not-a-dependency`), and `dependsOn` is one-way. There are no
+The module's login is granted `SELECT` on the schemas of its `dependsOn` modules and on nothing else, so a module that
+is not listed is refused by name (`not-a-dependency`) and also by the database. `dependsOn` is one-way. There are no
 cross-module writes: the other module exposes its own page or route, and you link by id.
 
-This is the platform's contract for well-behaved modules, not a sandbox. Module code runs in the platform's process
-with its database credentials, so a module that wants to can still reach around it. Install only what you trust.
+The database refuses SQL that crosses modules, but this is still not a sandbox: module code runs in the platform's
+process with its credentials, so a module that wants to can reach around it. Install only what you trust.
 
 ## Module lifecycle
 

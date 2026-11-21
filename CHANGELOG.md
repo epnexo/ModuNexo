@@ -7,6 +7,25 @@ checked against, and it changes only when the contract with modules changes. See
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-21
+### Security
+
+- **Each module has its own database login** (`mnx_m_<schema>`, password derived from `MODUNEXO_MASTER_KEY`). Its
+  migrations and every `getDb`, `reader` and `readOwn` statement run on that login, which owns the module's schema,
+  cannot read `core` or other modules' schemas, and can read a dependency's schema only if it is in `dependsOn`. This
+  closes the read leak of the old `READ ONLY` role (`set_config('role', ...)` plus `query_to_xml`). What a module needs
+  from `core` goes through `SECURITY DEFINER` functions that take the module id from the login: `record_migration`,
+  `publish_event`, `enqueue_job` and `record_file`.
+- Module code still runs in the platform process with the platform's credentials; see "Data: `getDb`" in the README.
+
+### Changed
+
+- Installing, upgrading or migrating with modules installed needs `MODUNEXO_MASTER_KEY`.
+- Modules installed before this version are adopted by `npm run db:migrate`: their tables, sequences, views and types
+  move to the module's login. The worker refuses to start until that has run, because `core.module_jobs` and
+  `core.event_subscriptions` (new tables) are filled by it and must match the manifests.
+- Purging a module drops its login. The old `mnx_ro_<schema>` roles are dropped on adoption.
+
 ## [0.7.0] - 2026-11-19
 ### Added
 
