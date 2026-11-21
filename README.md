@@ -1324,7 +1324,11 @@ files has no `files.tar.gz` and restores as before.
 
 Restore never overwrites: it checks `SHA256SUMS` first and refuses a database that already has tables or folders that
 already hold modules, packages or files, changing nothing. Create an empty database, restore, copy your `.env` with the same
-master key, then `npm install && npm run registry:generate && npm run web:build`. Test a restore on a scratch database
+master key, then `npm install && npm run db:migrate && npm run registry:generate && npm run web:build`. `db:migrate` matters
+when modules are installed: each module's database login belongs to the cluster, not to the database, so a restore into a
+new cluster does not bring them, and the restore skips the dump's privileges for that reason. `db:migrate` creates the logins
+again (it needs the same `MODUNEXO_MASTER_KEY`), hands each module's schema back to its login and grants what it needs; until
+it has run, the worker refuses to start. Test a restore on a scratch database
 before you need one, and copy the backup folders off the machine.
 
 ### Container and CI

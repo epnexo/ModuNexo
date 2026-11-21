@@ -45,8 +45,10 @@ pg_dump_db() {
 }
 
 # pg_restore_db <url>: reads a custom-format dump on stdin into an existing, empty database. Stops at the first error.
+# --no-privileges: the dump's GRANTs name each module's database login, which does not exist in a fresh cluster; `db:migrate`
+# creates the logins again and gives them their rights.
 pg_restore_db() {
-  if [ "$(pg_mode)" = direct ]; then pg_restore --no-owner --exit-on-error -d "$1"; else compose_guard "$1"; compose_exec pg_restore --no-owner --exit-on-error -U "$(db_part "$1" user)" -d "$(db_part "$1" name)"; fi
+  if [ "$(pg_mode)" = direct ]; then pg_restore --no-owner --no-privileges --exit-on-error -d "$1"; else compose_guard "$1"; compose_exec pg_restore --no-owner --no-privileges --exit-on-error -U "$(db_part "$1" user)" -d "$(db_part "$1" name)"; fi
 }
 
 # pg_scalar <url> <sql>: the single value a query returns.
