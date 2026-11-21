@@ -180,7 +180,9 @@ schema, and `set_config('role', ...)` cannot take it anywhere else, so a module 
 a sibling's data with SQL. What a module needs from `core` goes through four `SECURITY DEFINER` functions that take the
 module id from the login, never from an argument: `record_migration`, `publish_event`, `enqueue_job` and `record_file`.
 Because the password comes from the master key, **installing, upgrading or migrating with modules installed needs
-`MODUNEXO_MASTER_KEY`** (the web app and the worker already require it). Modules installed before this existed are
+`MODUNEXO_MASTER_KEY`** (the web app and the worker already require it). The database user in `DATABASE_URL` must be able to create roles
+(`CREATEROLE` or a superuser) **at runtime too, not only when migrating**: the web app and the worker create or refresh a
+module's login the first time that process uses `getDb` for it, and without the attribute that first call fails. Modules installed before this existed are
 adopted on the next `db:migrate`, which moves their tables to the module's login; the worker refuses to start until
 that has run, because `core.module_jobs` and `core.event_subscriptions` are filled by it. Purging a module drops its
 login. Roles live in the database cluster, not in one database, so two platform databases on the same cluster must not

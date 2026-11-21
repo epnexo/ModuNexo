@@ -1,13 +1,20 @@
 -- What a module's own database login may do in `core`: publish an event, queue a job, record a file, each through a
 -- SECURITY DEFINER function that takes the module from `session_user` (the login the connection was opened with,
 -- which SQL cannot change), never from an argument. The platform keeps two tables up to date from the manifests so the
--- database can apply the rules itself: the jobs a module declares and who subscribes to which event.
+-- database can apply the rules itself: the jobs a module declares, the events it may publish and who subscribes to
+-- which event.
 
 create table core.module_jobs (
   module_id       text    not null,
   name            text    not null,
   max_attempts    integer not null check (max_attempts between 1 and 20),
   timeout_seconds integer not null check (timeout_seconds between 1 and 3600),
+  primary key (module_id, name)
+);
+
+create table core.module_declared_events (
+  module_id text not null,
+  name      text not null,
   primary key (module_id, name)
 );
 
@@ -53,6 +60,9 @@ declare
 begin
   if p_name is null or char_length(p_name) > 100 or p_name !~ '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$' then
     raise exception 'the event name is not valid';
+  end if;
+  if not exists (select 1 from core.module_declared_events where module_id = v_module and name = p_name) then
+    raise exception 'module "%" does not declare the event "%"', v_module, p_name;
   end if;
   if char_length(v_type) > 200 then
     raise exception 'the event type is over 200 characters';

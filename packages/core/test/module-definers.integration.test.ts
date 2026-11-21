@@ -107,6 +107,29 @@ describe("declarations kept for the database", () => {
     assert.deepEqual(await checkDeclarations(pool!, box.registry()), []);
   });
 
+  test("the database refuses an event the module did not declare, even when its login calls the function directly", async () => {
+    const declared = await pool!.query("select name from core.module_declared_events where module_id = $1", [pub]);
+    assert.deepEqual(declared.rows, [{ name: "created" }]);
+    await assert.rejects(asModule(pub, (tx) => tx.query("select core.publish_event('undeclared', '{}'::jsonb)")), /does not declare the event "undeclared"/);
+    assert.equal((await pool!.query("select 1 from core.events")).rowCount, 0);
+    const ok = await asModule(pub, (tx) => tx.query("select core.publish_event('created', '{}'::jsonb) as id"));
+    assert.equal(ok.rowCount, 1);
+    await pool!.query("delete from core.events");
+    await pool!.query("delete from core.jobs");
+  });
+
+  test("the check names an event the manifest dropped without an upgrade", async () => {
+    const manifest = box.modules.find((m) => m.manifest.id === pub)!.manifest;
+    const before = manifest.events;
+    manifest.events = [];
+    try {
+      const problems = await checkDeclarations(pool!, box.registry());
+      assert.ok(problems.some((p) => /event .* is in core\.module_declared_events but not declared/.test(p)), problems.join(" | "));
+    } finally {
+      manifest.events = before;
+    }
+  });
+
   test("the check names a difference when a manifest changed without an upgrade", async () => {
     const manifest = box.modules.find((m) => m.manifest.id === sub)!.manifest;
     const before = manifest.subscriptions;
