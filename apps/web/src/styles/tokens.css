@@ -52,6 +52,8 @@
   --duration: 180ms;
   --duration-slow: 260ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  /* The pause between neighbours of a staggered entrance (`.rise`). */
+  --stagger: 60ms;
 
   /* Spacing and cards: the defaults every page and module starts from. A module may read them as they are, or set its
      own value for its own page (for example `--card-pad: 1rem` on its root element) and keep the rest. */
@@ -119,5 +121,6 @@
     --duration-fast: 1ms;
     --duration: 1ms;
     --duration-slow: 1ms;
+    --stagger: 0ms;
   }
 }

@@ -6,6 +6,11 @@ root, `packages/core` and `apps/web`); the SDK keeps its own (`SDK_VERSION`), th
 checked against, and it changes only when the contract with modules changes. See "Versioning" in the README.
 
 ## [Unreleased]
+### Added
+
+- Shared classes for what modules kept repeating: `card-link` (a card that lifts on hover and shows the focus ring), `rise` (an
+  entrance, staggered with `--rise-i` and the new `--stagger` token), `empty`, `chip` and `section-title`. Changing them in the
+  platform now changes every module that uses them; the motion is off for anyone who asked for less.
 
 ## [0.9.1] - 2026-11-23
 ### Changed
