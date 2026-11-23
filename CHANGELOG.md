@@ -6,6 +6,14 @@ root, `packages/core` and `apps/web`); the SDK keeps its own (`SDK_VERSION`), th
 checked against, and it changes only when the contract with modules changes. See "Versioning" in the README.
 
 ## [Unreleased]
+### Changed
+
+- Updated `better-auth` from 1.7.18 to 1.7.27. It fixes POST requests sent without a body, such as `/sign-out`, failing with a 415 on
+  Next.js. The other changes of these releases are in plugins this platform does not use (`jwks`, `oauth-provider`, phone, anonymous).
+- Updated TypeScript from 5.9 to 7.0.2, the native compiler. `npm run typecheck`, the tests and the production image build (`next build`,
+  amd64 and arm64) pass unchanged.
+- Updated React and React DOM from 19.3.0 to 19.3.1 and `kysely` from 0.29.6 to 0.29.9.
+- The image workflow uses `docker/login-action` 4.8.0 and `docker/metadata-action` 6.2.0.
 
 ## [0.9.0] - 2026-11-23
 ### Changed
