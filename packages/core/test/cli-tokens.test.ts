@@ -9,6 +9,7 @@ import type pg from "pg";
 import { createPool } from "../src/pool.ts";
 import { createScratchDatabase } from "../src/testing.ts";
 import { hashToken } from "../src/tokens/format.ts";
+import { expectOk } from "./helpers/expect-ok.ts";
 
 const script = fileURLToPath(new URL("../src/cli/index.ts", import.meta.url));
 
@@ -58,7 +59,7 @@ async function inScratchDatabase(t: TestContext, work: (db: pg.Pool, cli: Cli) =
   const db = createPool(url);
   const cli: Cli = (args) => spawn([...args, "--modules-dir", modulesDir], { DATABASE_URL: url });
   try {
-    assert.equal((await cli(["db:migrate"])).code, 0);
+    await expectOk(cli, ["db:migrate"]);
     await work(db, cli);
   } finally {
     await db.end();

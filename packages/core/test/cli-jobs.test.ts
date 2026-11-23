@@ -8,6 +8,7 @@ import { type TestContext, afterEach, beforeEach, describe, it } from "node:test
 import type pg from "pg";
 import { createPool } from "../src/pool.ts";
 import { createScratchDatabase } from "../src/testing.ts";
+import { expectOk } from "./helpers/expect-ok.ts";
 
 const script = fileURLToPath(new URL("../src/cli/index.ts", import.meta.url));
 
@@ -70,8 +71,8 @@ async function inScratchDatabase(t: TestContext, work: (db: pg.Pool, cli: Cli, u
   const db = createPool(url);
   const cli: Cli = (args) => run([...args, "--modules-dir", modulesDir], { DATABASE_URL: url });
   try {
-    assert.equal((await cli(["db:migrate"])).code, 0);
-    assert.equal((await cli(["modules", "install", "alpha"])).code, 0);
+    await expectOk(cli, ["db:migrate"]);
+    await expectOk(cli, ["modules", "install", "alpha"]);
     await work(db, cli, url);
   } finally {
     await db.end();
@@ -200,7 +201,7 @@ describe("cli: worker", () => {
       const file = join(workDir, "out.txt");
       const { child, output } = startWorker(url);
       try {
-        assert.equal((await cli(["jobs", "enqueue", "alpha", "write", "--payload", JSON.stringify({ file, text: "done" })])).code, 0);
+        await expectOk(cli, ["jobs", "enqueue", "alpha", "write", "--payload", JSON.stringify({ file, text: "done" })]);
         assert.ok(await until(() => existsSync(file)), `the handler never ran:\n${output()}`);
         assert.equal(readFileSync(file, "utf8"), "done:1");
         assert.ok(await until(async () => (await db.query("select status from core.jobs where id = 1")).rows[0].status === "succeeded"));

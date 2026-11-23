@@ -5,6 +5,7 @@ import { type TestContext, describe, it } from "node:test";
 import type pg from "pg";
 import { createPool } from "../src/pool.ts";
 import { createScratchDatabase } from "../src/testing.ts";
+import { expectOk } from "./helpers/expect-ok.ts";
 
 const script = fileURLToPath(new URL("../src/cli/index.ts", import.meta.url));
 const MASTER_KEY = "m".repeat(40);
@@ -32,7 +33,7 @@ async function inScratchDatabase(t: TestContext, work: (db: pg.Pool, cli: Cli) =
   const db = createPool(scratch.url);
   const cli: Cli = (args, stdin) => spawn(args, { DATABASE_URL: scratch.url!, MODUNEXO_MASTER_KEY: MASTER_KEY }, stdin);
   try {
-    assert.equal((await cli(["db:migrate"])).code, 0);
+    await expectOk(cli, ["db:migrate"]);
     await work(db, cli);
   } finally {
     await db.end();

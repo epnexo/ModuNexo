@@ -8,6 +8,7 @@ import { type TestContext, afterEach, beforeEach, describe, it } from "node:test
 import type pg from "pg";
 import { createPool } from "../src/pool.ts";
 import { createScratchDatabase } from "../src/testing.ts";
+import { expectOk } from "./helpers/expect-ok.ts";
 
 const script = fileURLToPath(new URL("../src/cli/index.ts", import.meta.url));
 const MASTER_KEY = "c".repeat(40);
@@ -67,7 +68,7 @@ async function inScratchDatabase(t: TestContext, work: (db: pg.Pool, cli: Cli) =
       options.stdin,
     );
   try {
-    if (migrated) assert.equal((await cli(["db:migrate"])).code, 0);
+    if (migrated) await expectOk(cli, ["db:migrate"]);
     await work(db, cli);
   } finally {
     await db.end();

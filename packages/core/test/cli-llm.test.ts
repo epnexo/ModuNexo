@@ -12,6 +12,7 @@ import { createPool } from "../src/pool.ts";
 import { Registry } from "../src/registry.ts";
 import { SettingsService } from "../src/settings/service.ts";
 import { createScratchDatabase } from "../src/testing.ts";
+import { expectOk } from "./helpers/expect-ok.ts";
 
 const script = fileURLToPath(new URL("../src/cli/index.ts", import.meta.url));
 const MASTER_KEY = "q".repeat(40);
@@ -81,9 +82,9 @@ async function withProvider(t: TestContext, reply: (path: string) => { status: n
   const db = createPool(scratch.url);
   const cli: Cli = (args) => run([...args, "--modules-dir", modulesDir], { DATABASE_URL: scratch.url!, MODUNEXO_MASTER_KEY: MASTER_KEY });
   try {
-    assert.equal((await cli(["db:migrate"])).code, 0);
-    assert.equal((await cli(["modules", "install", "alpha"])).code, 0);
-    assert.equal((await cli(["modules", "install", "beta"])).code, 0);
+    await expectOk(cli, ["db:migrate"]);
+    await expectOk(cli, ["modules", "install", "alpha"]);
+    await expectOk(cli, ["modules", "install", "beta"]);
     await work(db, cli, url);
   } finally {
     await db.end();

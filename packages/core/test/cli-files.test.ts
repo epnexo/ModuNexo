@@ -8,6 +8,7 @@ import { type TestContext, afterEach, beforeEach, describe, it } from "node:test
 import type pg from "pg";
 import { createPool } from "../src/pool.ts";
 import { createScratchDatabase } from "../src/testing.ts";
+import { expectOk } from "./helpers/expect-ok.ts";
 
 const script = fileURLToPath(new URL("../src/cli/index.ts", import.meta.url));
 
@@ -56,8 +57,8 @@ async function inScratchDatabase(t: TestContext, work: (db: pg.Pool, cli: Cli) =
   const db = createPool(url);
   const cli: Cli = (args) => run([...args, "--modules-dir", modulesDir], { DATABASE_URL: url, MODUNEXO_DATA_DIR: dataDir });
   try {
-    assert.equal((await cli(["db:migrate"])).code, 0);
-    assert.equal((await cli(["modules", "install", "alpha"])).code, 0);
+    await expectOk(cli, ["db:migrate"]);
+    await expectOk(cli, ["modules", "install", "alpha"]);
     await work(db, cli);
   } finally {
     await db.end();
@@ -153,7 +154,7 @@ describe("cli: files list and delete", () => {
 
   it("modules uninstall --purge removes a module's files, rows and bytes; --keep leaves them", async (t) => {
     await inScratchDatabase(t, async (db, cli) => {
-      assert.equal((await cli(["modules", "install", "beta"])).code, 0);
+      await expectOk(cli, ["modules", "install", "beta"]);
       await seed(db, "alpha", OLD, "old.txt", "2026-10-01T10:00:00Z");
       await seed(db, "beta", OTHER, "other.txt", "2026-10-03T10:00:00Z");
       const kept = await cli(["modules", "uninstall", "beta", "--keep"]);
