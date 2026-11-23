@@ -40,7 +40,7 @@
   "dependencies": {
     "@modunexo/sdk": "^0.1.0",
     "@tailwindcss/postcss": "^4.3.5",
-    "better-auth": "^1.7.18",
+    "better-auth": "^1.7.27",
     "geist": "^1.9.2",
     "kysely": "^0.29.9",
     "lucide-react": "^1.73.0",
