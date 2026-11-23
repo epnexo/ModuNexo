@@ -6,6 +6,8 @@ root, `packages/core` and `apps/web`); the SDK keeps its own (`SDK_VERSION`), th
 checked against, and it changes only when the contract with modules changes. See "Versioning" in the README.
 
 ## [Unreleased]
+
+## [0.9.0] - 2026-11-23
 ### Changed
 
 - The platform now runs on Node 24 (LTS until 2028-04-30). The production image is `node:24-bookworm-slim`, CI runs Node 24, and
