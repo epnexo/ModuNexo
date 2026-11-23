@@ -147,17 +147,6 @@ checked against, and it changes only when the contract with modules changes. See
   Administrator-only access to the page is unchanged.
 
 ## [0.4.0] - 2026-11-08
-## [0.3.3] - 2026-11-08
-### Fixed
-
-- Upgrading or uninstalling a module no longer fails with `EXDEV: cross-device link not permitted` when the modules folder
-  and the data folder are separate volumes, as in a container deployment. The installer moves the replaced or removed
-  folder by copying it when a plain rename is refused, and a copy that fails leaves the original untouched.
-- The Docker image no longer breaks the build with routes generated on the host, and a container started against a
-  database with installed modules now links, registers and builds them on its own (`scripts/docker-entrypoint.sh`)
-  instead of listing them as orphaned. `stack:up` seeds missing module packages into the volume; `WEB_PORT` sets the host
-  port.
-
 ### Added
 
 - Settings > Modules: an **API access** block under every module that declares scopes. An administrator sees the
@@ -165,6 +154,21 @@ checked against, and it changes only when the contract with modules changes. See
   it (a new token with the same name, scopes and life, the old one revoked in the same transaction) or revokes it. The
   address shown can be changed there. New: `TokenService.regenerate`, `find` and `tokenState`, `@modunexo/core/api-access`,
   and the `/api/settings/modules/<id>/tokens` and `/api/settings/api-address` routes.
+
+## [0.3.3] - 2026-11-08
+### Fixed
+
+- Upgrading or uninstalling a module no longer fails with `EXDEV: cross-device link not permitted` when the modules folder
+  and the data folder are separate volumes, as in a container deployment. The installer moves the replaced or removed
+  folder by copying it when a plain rename is refused, and a copy that fails leaves the original untouched.
+
+## [0.3.2] - 2026-11-07
+### Added
+
+- The production image is published for amd64 and arm64, and the production compose file runs a versioned image.
+
+## [0.3.1] - 2026-11-07
+### Added
 
 - Settings > MCP: a four-step screen to connect Claude Code to the platform (where it runs, look only or look and change,
   one command to copy, how to check it), with the tools folded below. The commands follow the `claude mcp add` syntax, with
@@ -183,6 +187,10 @@ checked against, and it changes only when the contract with modules changes. See
 
 ### Fixed
 
+- The Docker image no longer breaks the build with routes generated on the host, and a container started against a
+  database with installed modules now links, registers and builds them on its own (`scripts/docker-entrypoint.sh`)
+  instead of listing them as orphaned. `stack:up` seeds missing module packages into the volume; `WEB_PORT` sets the host
+  port.
 - Next.js is updated from 16.4.0 to 16.4.3. 16.4.0 carries a known security advisory, and `next build` aborted the first time it was run
   after each change with a `SecurityFatalError` (a second run passed). With 16.4.3 the build runs through the first time and
   `npm audit` reports no vulnerabilities.
