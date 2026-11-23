@@ -6,6 +6,8 @@ root, `packages/core` and `apps/web`); the SDK keeps its own (`SDK_VERSION`), th
 checked against, and it changes only when the contract with modules changes. See "Versioning" in the README.
 
 ## [Unreleased]
+
+## [0.9.1] - 2026-11-23
 ### Changed
 
 - Updated `better-auth` from 1.7.18 to 1.7.27. It fixes POST requests sent without a body, such as `/sign-out`, failing with a 415 on
