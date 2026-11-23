@@ -19,7 +19,7 @@ Do these three checks first; they are what keeps a new module on the platform's 
    `modules/<id>`): `contacts` for lists, forms and a pipeline, `agenda` for settings and bookings, `inbox` for a
    conversation view, `ai-usage` for charts. Copy its structure, not its code, and keep its file names and `tests/<id>/` layout.
 2. **Use what the platform already gives** (see "Styling" under Rules): tokens, the global classes (`card`, `badge`,
-   `icon-tile`, `seg`, `stat`, `notice`, `data-table`, `btn`, `input`, `field`), the spacing variables, the SDK. A module that needs a pattern none of them offers writes only that
+   `icon-tile`, `card-link`, `rise`, `empty`, `chip`, `section-title`, `seg`, `stat`, `notice`, `data-table`, `btn`, `input`, `field`), the spacing variables, the SDK. A module that needs a pattern none of them offers writes only that
    pattern, scoped and prefixed.
 3. **A pattern needed twice belongs in the platform.** If a second module would need what a first one built (a dialog,
    a tab strip, an empty state, a file field), stop and add it to the platform's styles instead of
@@ -110,6 +110,10 @@ Do these three checks first; they are what keeps a new module on the platform's 
   - Global classes, one look everywhere: `card` (surface, border, radius, padding, accent line; add layout utilities,
     `p-3` for a dense one), `badge` with a tone `badge-info|success|warning|danger` (a state in one word, with a dot) and
     `icon-tile` (a square holding one icon). Do not hand-write the box recipe `rounded-lg border border-border bg-surface p-4`.
+    Also `card-link` (add it to a `card` that is a link or button: it lifts on hover and shows the focus ring), `rise` (an entrance; set
+    `--rise-i` to the item's index to stagger neighbours), `empty` (the text of an empty state), `chip` (a small pill) and `section-title`
+    (the heading of a part of a page). Motion is off for anyone who asked for less. Do not write your own hover lift, entrance or
+    empty state: a change to these classes reaches every module.
     Also `seg` (a segmented control; the current link has `aria-current`), `stats` > `stat` with `stat-label`, `stat-value`
     and `stat-sub` (a figure; `--stat-tone` colours it, `--stat-line` sets its top line), `notice` (a banner: warning by
     default, `notice-info`, `notice-error`) and `data-table` inside `table-scroll` (a table of records; `right` and `num` on

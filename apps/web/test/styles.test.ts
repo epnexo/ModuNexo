@@ -182,3 +182,33 @@ describe("the accent in tokens.css and in the appearance layer", () => {
   }
   void read;
 });
+
+describe("generic classes shared by modules", () => {
+  const rule = (selector: string): string => globals.match(new RegExp(`${selector.replace(/[.]/g, "\\.")}\\s*\\{([^}]*)\\}`))?.[1] ?? "";
+
+  it("defines the interactive card, the entrance, the empty state, the chip and the section title once, in the components layer", () => {
+    const start = globals.indexOf("@layer components");
+    const components = globals.slice(start, globals.indexOf("\n}\n", start));
+    for (const selector of [".card-link", ".rise", ".empty", ".chip", ".section-title"]) {
+      const declared = [...components.matchAll(new RegExp(`^  ${selector.replace(".", "\\.")}\\s*\\{`, "gm"))];
+      assert.equal(declared.length, 1, `${selector} is declared once in @layer components`);
+    }
+  });
+
+  it("reads colors, radius and timing only from tokens, so one change reaches every module", () => {
+    for (const selector of [".card-link", ".rise", ".empty", ".chip", ".section-title"]) {
+      assert.doesNotMatch(rule(selector), /#[0-9a-f]{3,8}\b|\brgb\(|\bhsl\(|\boklch\(|\d+ms\b/i, `${selector} holds no literal color or duration`);
+    }
+    assert.match(rule(".card-link:hover"), /translateY\(/);
+  });
+
+  it("moves the interactive card and the entrance only for anyone who did not ask for less motion", () => {
+    const reduced = reducedMotionBlocks(globals).join("\n");
+    assert.match(reduced, /\.rise\s*\{[^}]*animation:\s*none/);
+    assert.match(reduced, /\.card-link:hover[^{]*\{[^}]*transform:\s*none/);
+  });
+
+  it("staggers the entrance from one variable a module sets per item", () => {
+    assert.match(rule(".rise"), /animation-delay:\s*calc\(var\(--rise-i,\s*0\)/);
+  });
+});

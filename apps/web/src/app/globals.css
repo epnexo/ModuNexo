@@ -486,6 +486,52 @@
   .chart-fill {
     background: linear-gradient(180deg, var(--chart-top), var(--chart-base));
   }
+  /* Shared by every module, so a change here reaches all of them. A module sets only what is its own, such as the
+     index of an item in `--rise-i`. */
+  .card-link {
+    transition: transform var(--duration) var(--ease-out), border-color var(--duration) var(--ease-out);
+  }
+  .card-link:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent);
+  }
+  .card-link:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  .rise {
+    animation: rise var(--duration-slow) var(--ease-out) both;
+    animation-delay: calc(var(--rise-i, 0) * var(--stagger));
+  }
+  .empty {
+    margin: var(--card-gap) 0;
+    font-size: 0.875rem;
+    color: var(--muted-foreground);
+  }
+  .chip {
+    display: inline-block;
+    padding: 0.15rem 0.6rem;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent-soft-foreground);
+    font-size: 0.78rem;
+  }
+  .section-title {
+    margin: 0 0 var(--card-gap);
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--foreground);
+  }
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
 }
 
 /*
@@ -636,4 +682,13 @@
     fill 400ms ease,
     stroke 400ms ease,
     box-shadow 400ms ease !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise {
+    animation: none;
+  }
+  .card-link:hover {
+    transform: none;
+  }
 }
