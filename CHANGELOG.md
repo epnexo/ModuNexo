@@ -7,6 +7,8 @@ checked against, and it changes only when the contract with modules changes. See
 
 ## [Unreleased]
 
+- **A job payload with a lone surrogate is refused with a clear message** (`the payload cannot be stored: a string in it holds a lone surrogate...`) instead of a raw database error, in `enqueueJob` and `jobs enqueue`; a real emoji is kept.
+
 - **README says what revoking an MCP key does not undo**: a job it already queued, or a proposal it already left, stays until someone cancels or rejects it.
 
 - **Settings > MCP warns when the address was guessed**: an address taken from the request's Host header may not be reachable from another machine, so the screen says so and how to fix it (save the address in a module's API access, or set `WEB_PUBLIC_URL`).

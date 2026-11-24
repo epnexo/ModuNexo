@@ -139,6 +139,7 @@ export class JobService {
     } catch {
       throw new JobError("the payload must be JSON: it cannot be serialised");
     }
+    if (hasLoneSurrogate(payload)) throw new JobError("the payload cannot be stored: a string in it holds a lone surrogate (half of an emoji or another invalid Unicode character)");
     if (Buffer.byteLength(json) > MAX_PAYLOAD_BYTES) throw new JobError(`the payload is over ${MAX_PAYLOAD_BYTES / 1024} KiB`);
     if (options.runAt !== undefined && options.delaySeconds !== undefined) throw new JobError("runAt and delaySeconds cannot be combined");
     const now = this.now();
@@ -377,4 +378,16 @@ export class JobService {
     const pruned = await this.pool.query("delete from core.jobs where finished_at is not null and finished_at < $1::timestamptz", [cutoff]);
     return pruned.rowCount ?? 0;
   }
+}
+
+/** A high surrogate with no low one after it, or a low one with no high one before it (no `u` flag, so these are code units). */
+const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+const wellFormed = (text: string) => !LONE_SURROGATE.test(text);
+
+/** True when any string in the payload, a key included, is not well-formed Unicode: the database refuses it with an error nobody can act on. */
+function hasLoneSurrogate(value: unknown, depth = 0): boolean {
+  if (typeof value === "string") return !wellFormed(value);
+  if (depth > 64 || typeof value !== "object" || value === null) return false;
+  if (Array.isArray(value)) return value.some((item) => hasLoneSurrogate(item, depth + 1));
+  return Object.entries(value).some(([key, item]) => !wellFormed(key) || hasLoneSurrogate(item, depth + 1));
 }
