@@ -36,7 +36,7 @@ const access = (key: TokenView) => (key.scopes.includes("mcp.write") ? "Look and
  * Remote access to the MCP endpoint: keys an administrator issues for another computer's Claude Code, shown once with the
  * command that connects it. Only read keys are issued here; a key that can change the platform is created with the CLI.
  */
-export function McpRemote({ keys, address, canWrite }: { keys: TokenView[]; address: string | null; canWrite: boolean }) {
+export function McpRemote({ keys, address, note = null, canWrite }: { keys: TokenView[]; address: string | null; note?: string | null; canWrite: boolean }) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [expiry, setExpiry] = useState("30");
@@ -121,6 +121,7 @@ export function McpRemote({ keys, address, canWrite }: { keys: TokenView[]; addr
         ) : (
           <code className="break-all font-mono text-sm">{address}/svc/core/mcp</code>
         )}
+        {note === null ? null : <p className="notice notice-warning text-xs">{note}</p>}
         <p className="text-xs text-muted">Reachable from your local network only, unless you put it behind your own HTTPS proxy.</p>
       </div>
 
