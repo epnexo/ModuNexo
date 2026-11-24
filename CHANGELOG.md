@@ -7,6 +7,8 @@ checked against, and it changes only when the contract with modules changes. See
 
 ## [Unreleased]
 
+- **`modunexo actions approve|reject <id>` takes plain digits only**: `1e3` or `0x10` no longer decide proposal 1000 or 16.
+
 - **Actions screen, three fixes from the review**: what a proposal would do is shown only to a person who holds the action's permission (others see that it is hidden); waiting proposals are listed on their own, so a busy week of settled ones cannot push one out of the list; and Settings > MCP no longer counts a pending proposal past its time as waiting.
 
 - **Docs and scaffold for actions**: the README section "Actions for agents" and the MCP tool lists, the module authoring guide, and `modules new` now writes a `count_items` read action (with a note on how to declare one that changes data), so a new module is ready to offer something to an agent.

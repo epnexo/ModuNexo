@@ -412,6 +412,11 @@ describe("the actions command", () => {
     await assert.rejects(go({ action: "run", args: ["nodots"] }), /<module>\.<key>/);
     await assert.rejects(go({ action: "approve", args: ["abc"] }), /not a proposal id/);
     await assert.rejects(go({ action: "approve", args: [] }), /not a proposal id/);
+    // Only plain digits are an id: "1e3" or "0x10" must never decide proposal 1000 or 16.
+    for (const bad of ["1e3", "0x10", " 7 ", "7.0", "+7", "-7", "0", "07", "1".repeat(17)]) {
+      await assert.rejects(go({ action: "approve", args: [bad] }), /not a proposal id/, JSON.stringify(bad));
+      await assert.rejects(go({ action: "reject", args: [bad] }), /not a proposal id/, JSON.stringify(bad));
+    }
   });
 
   test("answers a bad command line as a usage error before it touches the database", async () => {
