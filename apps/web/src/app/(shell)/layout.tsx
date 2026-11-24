@@ -36,7 +36,7 @@ export default async function ShellLayout({ children }: { children: ReactNode })
 
   return (
     <div id="app-shell" data-sidebar={sidebar} className="flex min-h-dvh">
-      <AppearanceHead />
+      <AppearanceHead userId={viewer.userId} />
       <aside id="app-sidebar" className="shell-sidebar sticky top-0 hidden h-dvh shrink-0 flex-col gap-6 overflow-hidden border-r border-border bg-panel p-4 md:flex">
         <div className="shell-brand px-2.5">
           <BrandMark profile={brand.profile} logo={brand.logo} />

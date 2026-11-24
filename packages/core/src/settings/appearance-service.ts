@@ -26,6 +26,8 @@ export async function readAppearance(pool: pg.Pool): Promise<AppearanceState> {
 
 /** The `core.platform_settings` key of the company's custom CSS: the text its administrator wrote. Not under `appearance.`, so the appearance reads never carry it. */
 export const CUSTOM_CSS_KEY = "custom-css.company";
+/** The key a person's custom CSS is logged under in `core.settings_events`; the text lives in `core.user_custom_css`. */
+export const USER_CSS_KEY = "custom-css.person";
 
 /** The text of the company's custom CSS as it was written, or "" when there is none. */
 export async function readCustomCss(pool: pg.Pool): Promise<string> {
@@ -53,6 +55,30 @@ export function servedCustomCss(text: string): string {
   const checked = sanitizeCustomCss(text);
   const css = checked.ok ? checked.css : "";
   lastServed = { text, css };
+  return css;
+}
+
+/** The text of one person's own custom CSS as they wrote it, or "" when there is none. */
+export async function readUserCss(pool: pg.Pool, userId: string): Promise<string> {
+  const { rows } = await pool.query("select css from core.user_custom_css where user_id = $1", [userId]);
+  return (rows[0] as { css: string } | undefined)?.css ?? "";
+}
+
+// A page serves one person's stylesheet on every request, so the last results are kept by text: the check is paid once per change.
+const servedByUser = new Map<string, { text: string; css: string }>();
+const MAX_REMEMBERED_USERS = 64;
+
+/** What a page may serve for this person: their stylesheet rewritten from the rules that pass, or nothing. `null` is nobody (the local operator, the sign-in page). */
+export async function readServedUserCss(pool: pg.Pool, userId: string | null): Promise<string> {
+  if (userId === null) return "";
+  const text = await readUserCss(pool, userId);
+  if (text.trim() === "") return "";
+  const known = servedByUser.get(userId);
+  if (known?.text === text) return known.css;
+  const checked = sanitizeCustomCss(text, "person");
+  const css = checked.ok ? checked.css : "";
+  if (servedByUser.size >= MAX_REMEMBERED_USERS) servedByUser.delete(servedByUser.keys().next().value as string);
+  servedByUser.set(userId, { text, css });
   return css;
 }
 
@@ -87,6 +113,52 @@ export class AppearanceService {
     const checked = sanitizeCustomCss(text);
     if (!checked.ok) throw new SettingValueError(checked.errors.map((error) => `line ${error.line}: ${error.message}`).join("\n"));
     await this.write("platform", [{ key: CUSTOM_CSS_KEY, value: text }], actor);
+  }
+
+  /** One person's own custom CSS as they wrote it, for their editor. */
+  async userCss(userId: string): Promise<string> {
+    return readUserCss(this.pool, userId);
+  }
+
+  /** Checks a person's stylesheet with the same rules as the company's and stores it as written; blank text clears it. The text is never logged. */
+  async setUserCss(userId: string, text: string, actor: string): Promise<void> {
+    if (text.trim() === "") return this.clearUserCss(userId, actor);
+    const checked = sanitizeCustomCss(text, "person");
+    if (!checked.ok) throw new SettingValueError(checked.errors.map((error) => `line ${error.line}: ${error.message}`).join("\n"));
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      await client.query(
+        `insert into core.user_custom_css (user_id, css) values ($1, $2)
+         on conflict (user_id) do update set css = excluded.css, updated_at = now()`,
+        [userId, text],
+      );
+      await client.query("insert into core.settings_events (scope, key, action, actor) values ($1, $2, 'set', $3)", [`user:${userId}`, USER_CSS_KEY, actor]);
+      await client.query("commit");
+    } catch (error) {
+      await client.query("rollback").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /** Removes a person's custom CSS. Nothing stored means nothing happens and nothing is logged. */
+  async clearUserCss(userId: string, actor: string): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      const removed = await client.query("delete from core.user_custom_css where user_id = $1", [userId]);
+      if ((removed.rowCount ?? 0) > 0) {
+        await client.query("insert into core.settings_events (scope, key, action, actor) values ($1, $2, 'unset', $3)", [`user:${userId}`, USER_CSS_KEY, actor]);
+      }
+      await client.query("commit");
+    } catch (error) {
+      await client.query("rollback").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   /** Removes the company's custom CSS. Nothing stored means nothing happens and nothing is logged. */

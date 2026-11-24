@@ -82,6 +82,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const appearanceService = new AppearanceService(pool, registry);
   const appearance = await appearanceService.get();
   const customCss = await appearanceService.customCss();
+  const ownCss = viewer.userId === null ? null : await appearanceService.userCss(viewer.userId);
   const safeMode = (await cookies()).get(SAFE_MODE_COOKIE)?.value === "1";
   const brand = await readBrand(pool);
   const trustedProxies = await readTrustedProxyState(pool);
@@ -157,6 +158,18 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </div>
         <CustomCssForm initial={customCss} canWrite={viewer.canWrite} safeMode={safeMode} />
       </section>
+
+      {ownCss === null ? null : (
+        <section aria-labelledby="my-css-heading" className="flex flex-col gap-5 rounded-lg border border-border bg-surface p-5">
+          <div className="flex flex-col gap-1">
+            <h2 id="my-css-heading" className="text-lg font-semibold tracking-tight">
+              My custom CSS
+            </h2>
+            <p className="text-sm text-muted">Only for your account, on top of the company&apos;s. Nobody else sees it, and it follows the same checks.</p>
+          </div>
+          <CustomCssForm initial={ownCss} canWrite endpoint="/api/settings/appearance/my-css" fieldId="my-css" safeMode={safeMode} />
+        </section>
+      )}
 
           </>) },
           { id: "security", label: "Security", content: (<>

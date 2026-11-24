@@ -45,6 +45,18 @@ export async function authorizeWrite(request: Request): Promise<{ actor: string 
   return { actor: viewer.actor };
 }
 
+/**
+ * What a write to the signed-in person's own things needs: same origin and a signed-in user, whatever their role. The local
+ * operator is nobody in particular, so there is nothing of theirs to write.
+ */
+export async function authorizeSelf(request: Request): Promise<{ actor: string; userId: string } | NextResponse> {
+  if (!sameOriginRequest(request.headers)) return json({ error: "cross-origin request refused" }, 403);
+  const viewer = await resolveViewer(request.headers);
+  if (viewer === null) return json({ error: "sign-in required" }, 401);
+  if (viewer.userId === null) return json({ error: "this belongs to a signed-in user, and sign-in is off" }, 409);
+  return { actor: viewer.actor, userId: viewer.userId };
+}
+
 export type BodyText = { ok: true; text: string } | { ok: false; message: string };
 
 /**
