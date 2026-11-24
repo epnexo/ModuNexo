@@ -12,7 +12,7 @@ checked against, and it changes only when the contract with modules changes. See
   read-only statement; a `write` or `sensitive` action run by a person is that person's decision and queues the module's job at once; asked by an agent it becomes a pending
   proposal that a person holding the action's permission approves or rejects, and that expires after seven days. No agent can approve, nobody can approve what they proposed,
   and approving queues the job once, in the same transaction. Each step is published as a `core.action.*` event with who and what, never the input. Nothing exposes it yet:
-  the CLI, the MCP tools and the portal screens come next, so no module or client changes behaviour.
+  The CLI is there (`modunexo actions list|run|propose|proposals|approve|reject`); the MCP tools and the portal screens come next, so no module or client changes behaviour.
 - **`actions` in the manifest** (SDK 0.1.5): what an agent or a person may ask a module to do, with its own permission, risk and inputs. A `read` action is one
   read-only `select` of the module (inputs bound as `$1`, `$2`...); a `write` or `sensitive` action names one of the module's own `jobs`, which receives the validated
   inputs as its payload. Inputs are a closed set (`text`, `int`, `enum`, `boolean`). The manifest is only validated for now: the platform does not run, propose or
