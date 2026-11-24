@@ -24,6 +24,8 @@ import { CORE_VERSION } from "../version.ts";
 import { runEventsCommand } from "./events.ts";
 import { runFilesCommand } from "./files.ts";
 import { runLlmCommand } from "./llm.ts";
+import { ActionError } from "../actions/index.ts";
+import { runActionsCommand } from "./actions.ts";
 import { runJobsCommand, runWorkerCommand } from "./jobs.ts";
 import { runNewCommand } from "./new.ts";
 import { runAddCommand, runApplyCommand, runChangeCommand, runPackCommand } from "./packages.ts";
@@ -93,6 +95,15 @@ commands:
   worker [--concurrency <n>] [--poll-ms <n>] [--grace-seconds <n>]
                                    run the background jobs of the enabled modules until stopped (SIGINT or SIGTERM);
                                    start it next to the web app, with the same DATABASE_URL and modules folder
+  actions list [--json]            what the enabled modules let an agent or a person do, with its risk and permission
+  actions run <module>.<key> [--input <json>] [--actor <name>] [--via cli|mcp] [--json]
+                                   a read action returns its rows; a write action run by a person queues the module's job at once
+  actions propose <module>.<key> [--input <json>] [--actor <name>] [--via cli|mcp] [--json]
+                                   leave a write or sensitive action waiting for a person (it expires after seven days)
+  actions proposals [--status pending|approved|rejected|expired] [--json]
+                                   the register of what was asked, newest first; the input only with --json
+  actions approve <id>             a person approves a waiting proposal: the module's job is queued once
+  actions reject <id> [--note <text>]
   jobs list [<module>] [--status queued|running|succeeded|dead|cancelled] [--json]
                                    jobs with their state and last error; the payload only with --json
   jobs enqueue <module> <job> [--payload <json>] [--delay-seconds <n>] [--dedupe-key <key>]
@@ -142,6 +153,9 @@ const OPTIONS = {
   "grace-seconds": { type: "string" },
   status: { type: "string" },
   payload: { type: "string" },
+  input: { type: "string" },
+  via: { type: "string" },
+  note: { type: "string" },
   "delay-seconds": { type: "string" },
   "dedupe-key": { type: "string" },
   type: { type: "string" },
@@ -182,6 +196,12 @@ const COMMAND_OPTIONS: Record<string, readonly string[]> = {
   "tokens list": ["json"],
   "tokens revoke": [],
   worker: ["concurrency", "poll-ms", "grace-seconds"],
+  "actions list": ["json"],
+  "actions run": ["input", "actor", "via", "json"],
+  "actions propose": ["input", "actor", "via", "json"],
+  "actions proposals": ["status", "json"],
+  "actions approve": ["actor", "via"],
+  "actions reject": ["note", "actor", "via"],
   "jobs list": ["status", "json"],
   "jobs enqueue": ["payload", "delay-seconds", "dedupe-key"],
   "jobs cancel": [],
@@ -266,6 +286,28 @@ function checkJobsArguments(command: string, ids: string[], values: Parsed["valu
   if (!/^[1-9]\d{0,15}$/.test(ids[0]!)) throw new UsageError(`${command} takes a job id: a whole number`);
 }
 
+/** The shape of an `actions` command line, checked before anything is looked up: how many arguments, and what --via, --status and --input hold. */
+function checkActionsArguments(command: string, ids: string[], values: Parsed["values"]): void {
+  if (command === "actions list" || command === "actions proposals") {
+    if (ids.length > 0) throw new UsageError(`${command} takes no arguments`);
+  } else if (command === "actions run" || command === "actions propose") {
+    if (ids.length !== 1) throw new UsageError(`${command} takes one action, written <module>.<key>`);
+  } else if (ids.length !== 1) throw new UsageError(`${command} takes exactly one proposal id`);
+  if (values.via !== undefined && values.via !== "cli" && values.via !== "mcp") throw new UsageError(`--via must be cli or mcp, not "${String(values.via)}"`);
+  if (values.status !== undefined && !["pending", "approved", "rejected", "expired"].includes(String(values.status))) {
+    throw new UsageError(`--status must be pending, approved, rejected or expired, not "${String(values.status)}"`);
+  }
+  if (values.input !== undefined) {
+    let parsedInput: unknown;
+    try {
+      parsedInput = JSON.parse(values.input as string);
+    } catch {
+      throw new UsageError("--input must be a JSON object");
+    }
+    if (parsedInput === null || typeof parsedInput !== "object" || Array.isArray(parsedInput)) throw new UsageError("--input must be a JSON object");
+  }
+}
+
 function checkEventsArguments(command: string, ids: string[], values: Parsed["values"]): void {
   if (command === "events list") {
     if (ids.length > 1) throw new UsageError("events list takes at most one module id");
@@ -329,6 +371,12 @@ function parse(argv: string[]): Parsed | "help" | "version" {
     }
     command = `tokens ${second}`;
     ids = rest;
+  } else if (first === "actions") {
+    if (second !== "list" && second !== "run" && second !== "propose" && second !== "proposals" && second !== "approve" && second !== "reject") {
+      throw new UsageError(second === undefined ? "no actions command given" : `unknown actions command "${second}"`);
+    }
+    command = `actions ${second}`;
+    ids = rest;
   } else if (first === "jobs") {
     if (second !== "list" && second !== "enqueue" && second !== "cancel" && second !== "retry") {
       throw new UsageError(second === undefined ? "no jobs command given" : `unknown jobs command "${second}"`);
@@ -385,19 +433,20 @@ function parse(argv: string[]): Parsed | "help" | "version" {
     }
   }
   if (command.startsWith("tokens ")) checkTokensArguments(command, ids, parsed.values);
+  if (command.startsWith("actions ")) checkActionsArguments(command, ids, parsed.values);
   if (command.startsWith("jobs ")) checkJobsArguments(command, ids, parsed.values);
   if (command.startsWith("events ")) checkEventsArguments(command, ids, parsed.values);
   if (command.startsWith("files ")) checkFilesArguments(command, ids, parsed.values);
   if (command.startsWith("llm ")) checkLlmArguments(command, ids);
   if (command === "worker") checkWorkerOptions(parsed.values);
   const takesId = command !== "modules list" && command.startsWith("modules ");
-  if (!command.startsWith("settings ") && !command.startsWith("tokens ") && !command.startsWith("jobs ") && !command.startsWith("events ") && !command.startsWith("files ") && !command.startsWith("llm ")) {
+  if (!command.startsWith("settings ") && !command.startsWith("tokens ") && !command.startsWith("actions ") && !command.startsWith("jobs ") && !command.startsWith("events ") && !command.startsWith("files ") && !command.startsWith("llm ")) {
     const noun = command === "modules pack" ? "a folder" : command === "modules add" ? "an archive" : command === "modules apply" ? "a package SHA-256" : "a module id";
     if (takesId && ids.length === 0) throw new UsageError(`${command} needs ${noun}`);
     if (takesId ? ids.length !== 1 : ids.length > 0) throw new UsageError(takesId ? `${command} takes exactly one ${noun.slice(2)}` : `${command} takes no arguments`);
   }
   if (command === "modules apply" && !/^[0-9a-fA-F]{64}$/.test(ids[0]!)) throw new UsageError("modules apply takes the 64 hexadecimal characters of a package SHA-256");
-  if ((typeof parsed.values.actor === "string" || typeof parsed.values["data-dir"] === "string") && !parsed.values.rebuild && command !== "modules apply" && command !== "modules add") {
+  if ((typeof parsed.values.actor === "string" || typeof parsed.values["data-dir"] === "string") && !parsed.values.rebuild && command !== "modules apply" && command !== "modules add" && !command.startsWith("actions ")) {
     throw new UsageError(`--actor and --data-dir apply to ${command} only with --rebuild`);
   }
   if (typeof parsed.values.group === "string" && !/^[1-9][0-9]{0,14}$/.test(parsed.values.group)) {
@@ -779,6 +828,32 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
         );
         return EXIT_OK;
       }
+      if (parsed.command.startsWith("actions ")) {
+        const status = parsed.values.status;
+        if (status !== undefined && !["pending", "approved", "rejected", "expired"].includes(String(status))) throw new UsageError(`--status must be pending, approved, rejected or expired, not "${String(status)}"`);
+        const via = parsed.values.via ?? "cli";
+        if (via !== "cli" && via !== "mcp") throw new UsageError(`--via must be cli or mcp, not "${String(via)}"`);
+        let input: unknown;
+        try {
+          input = typeof parsed.values.input === "string" ? JSON.parse(parsed.values.input) : undefined;
+        } catch {
+          throw new UsageError("--input must be a JSON object");
+        }
+        await runActionsCommand(
+          {
+            action: parsed.command.slice("actions ".length) as "list" | "run" | "propose" | "proposals" | "approve" | "reject",
+            args: parsed.ids,
+            input,
+            status: status as "pending" | "approved" | "rejected" | "expired" | undefined,
+            note: typeof parsed.values.note === "string" ? parsed.values.note : undefined,
+            actor: typeof parsed.values.actor === "string" ? parsed.values.actor : via === "mcp" ? "agent:mcp" : "cli",
+            via,
+            json: parsed.values.json === true,
+          },
+          { pool, registry: context.registry, io },
+        );
+        return EXIT_OK;
+      }
       const delay = parsed.values["delay-seconds"];
       await runJobsCommand(
         {
@@ -902,7 +977,7 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
       io.err(`${USAGE.split("\n")[0]} (run with --help for the commands)`);
       return EXIT_USAGE;
     }
-    if (error instanceof Refusal || error instanceof LifecycleRefusedError || error instanceof RegistrationError || error instanceof AdminRefusedError || error instanceof ModeRefusedError || error instanceof SettingsError || error instanceof SettingValueError || error instanceof TokenError || error instanceof JobError || error instanceof EventError || error instanceof FileError || error instanceof LlmError) {
+    if (error instanceof Refusal || error instanceof ActionError || error instanceof LifecycleRefusedError || error instanceof RegistrationError || error instanceof AdminRefusedError || error instanceof ModeRefusedError || error instanceof SettingsError || error instanceof SettingValueError || error instanceof TokenError || error instanceof JobError || error instanceof EventError || error instanceof FileError || error instanceof LlmError) {
       io.err(`refused: ${error.message}`);
       return EXIT_REFUSED;
     }

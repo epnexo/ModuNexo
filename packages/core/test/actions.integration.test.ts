@@ -3,6 +3,8 @@ import { after, before, beforeEach, describe, it } from "node:test";
 import type pg from "pg";
 import type { ActionDeclaration } from "@modunexo/sdk";
 import { ActionError, ActionService, type Actor } from "../src/actions/index.ts";
+import { runActionsCommand, type ActionsCommand } from "../src/cli/actions.ts";
+import { type CliIo, runCli } from "../src/cli/run.ts";
 import { moduleRolesFor } from "../src/data/module-roles.ts";
 import { migrate } from "../src/runner.ts";
 import { createPool } from "../src/pool.ts";
@@ -228,6 +230,15 @@ describe("approving and rejecting", () => {
     assert.equal((await jobs()).length, 0);
   });
 
+  test("never takes a decision that arrives through an agent's channel, whoever it says it is and whatever it holds", async () => {
+    const proposal = await service.propose({ moduleId, key: "add_note" }, { text: "x" }, agent());
+    const viaMcp: Actor = { name: "boss@example.test", via: "mcp", can: () => true };
+    await rejects(service.approve(proposal.id, viaMcp), "forbidden");
+    await rejects(service.reject(proposal.id, viaMcp), "forbidden");
+    assert.equal((await service.get(proposal.id))?.status, "pending");
+    assert.equal((await jobs()).length, 0);
+  });
+
   test("cannot be approved by the identity that proposed it", async () => {
     const proposal = await service.propose({ moduleId, key: "add_note" }, { text: "mine" }, { name: "ada@example.test", via: "portal", can: () => true });
     await rejects(service.approve(proposal.id, person("ada@example.test")), "self_approval");
@@ -338,5 +349,79 @@ describe("expiry and outcome", () => {
     assert.deepEqual((await service.list({})).map((row) => row.id), [b.id, a.id]);
     assert.deepEqual((await service.list({ status: "pending" })).map((row) => row.id), [b.id]);
     assert.equal((await service.list({ limit: 1 })).length, 1);
+  });
+});
+
+describe("the actions command", () => {
+  const out = (): { lines: string[]; io: { out: (line: string) => void; err: (line: string) => void } } => {
+    const lines: string[] = [];
+    return { lines, io: { out: (line) => lines.push(line), err: (line) => lines.push(line) } };
+  };
+  const command = (over: Partial<ActionsCommand>): ActionsCommand => ({ action: "list", args: [], input: undefined, status: undefined, note: undefined, actor: "cli", via: "cli", json: false, ...over });
+  const go = async (over: Partial<ActionsCommand>) => {
+    const sink = out();
+    await runActionsCommand(command(over), { pool: pool!, registry: box.registry(), io: sink.io, service });
+    return sink.lines;
+  };
+
+  test("lists what the modules offer as a table, and as JSON with the inputs but without the module's statement or job", async () => {
+    const table = (await go({})).join("\n");
+    assert.match(table, /ACTION\s+RISK\s+PERMISSION/);
+    assert.match(table, new RegExp(`${moduleId}\\.add_note\\s+write\\s+acts\\.write`));
+    const json = JSON.parse((await go({ json: true })).join("\n")) as { ref: string; input: Record<string, unknown>; sql?: string; job?: string }[];
+    const note = json.find((entry) => entry.ref === `${moduleId}.add_note`);
+    assert.deepEqual(Object.keys(note?.input ?? {}), ["text"]);
+    assert.equal(json.some((entry) => "sql" in entry || "job" in entry), false);
+  });
+
+  test("runs a read for the rows as JSON, and a write as the person that ran it", async () => {
+    await seedNotes();
+    assert.deepEqual(JSON.parse((await go({ action: "run", args: [`${moduleId}.find_notes`], input: { text: "email" } }))[0]!).map((row: { body: string }) => row.body), ["email Bob"]);
+    const [line] = await go({ action: "run", args: [`${moduleId}.add_note`], input: { text: "from the cli" }, actor: "ada@example.test" });
+    assert.match(line!, /queued job \d+ \(proposal \d+, approved by ada@example.test\)/);
+  });
+
+  test("lets an agent's channel propose and read, and a person decide, and nobody else", async () => {
+    const [proposed] = await go({ action: "propose", args: [`${moduleId}.add_note`], input: { text: "ask first" }, actor: "agent:mcp", via: "mcp" });
+    assert.match(proposed!, /proposal \d+ is waiting for a person/);
+    const id = Number(/proposal (\d+)/.exec(proposed!)![1]);
+    assert.match((await go({ action: "proposals", status: "pending" })).join("\n"), new RegExp(`${id}\\s+pending\\s+${moduleId}\\.add_note\\s+write\\s+agent:mcp`));
+    await assert.rejects(go({ action: "approve", args: [String(id)], actor: "agent:mcp", via: "mcp" }), (error: unknown) => error instanceof ActionError && error.code === "forbidden");
+    await assert.rejects(go({ action: "run", args: [`${moduleId}.add_note`], input: { text: "x" }, actor: "agent:mcp", via: "mcp" }), (error: unknown) => error instanceof ActionError && error.code === "needs_approval");
+    assert.match((await go({ action: "approve", args: [String(id)], actor: "boss@example.test" }))[0]!, new RegExp(`proposal ${id} approved: job \\d+ queued`));
+    assert.equal((await jobs()).length, 1);
+  });
+
+  test("shows the input of a proposal only in the JSON form, and rejects with a note", async () => {
+    const proposal = await service.propose({ moduleId, key: "add_note" }, { text: "PRIVATE-WORDS" }, agent());
+    assert.doesNotMatch((await go({ action: "proposals" })).join("\n"), /PRIVATE-WORDS/);
+    assert.match((await go({ action: "proposals", json: true })).join("\n"), /PRIVATE-WORDS/);
+    assert.equal((await go({ action: "reject", args: [String(proposal.id)], note: "no thanks", actor: "boss@example.test" }))[0], `proposal ${proposal.id} rejected`);
+    assert.equal((await service.get(proposal.id))?.decisionNote, "no thanks");
+  });
+
+  test("refuses a reference that is not <module>.<key> and an id that is not a number", async () => {
+    await assert.rejects(go({ action: "run", args: ["nodots"] }), /<module>\.<key>/);
+    await assert.rejects(go({ action: "approve", args: ["abc"] }), /not a proposal id/);
+    await assert.rejects(go({ action: "approve", args: [] }), /not a proposal id/);
+  });
+
+  test("answers a bad command line as a usage error before it touches the database", async () => {
+    const run = async (argv: string[]) => {
+      const sink = out();
+      const code = await runCli(argv, sink.io as unknown as CliIo);
+      return { code, text: sink.lines.join("\n") };
+    };
+    for (const [argv, message] of [
+      [["actions"], /no actions command given/],
+      [["actions", "nope"], /unknown actions command "nope"/],
+      [["actions", "run", "m.k", "--via", "robot"], /--via must be cli or mcp/],
+      [["actions", "run", "m.k", "--input", "{nope"], /--input must be a JSON object/],
+      [["actions", "proposals", "--status", "maybe"], /--status must be pending, approved, rejected or expired/],
+    ] as const) {
+      const result = await run([...argv]);
+      assert.equal(result.code, 2, argv.join(" "));
+      assert.match(result.text, message);
+    }
   });
 });

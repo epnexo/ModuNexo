@@ -280,6 +280,8 @@ export class ActionService {
 
   /** Locks a pending proposal for a decision, after checking that the decider may take it. Returns the client holding the transaction. */
   async #lockPending(id: number, actor: Actor): Promise<{ client: pg.PoolClient; row: Row; action: ActionDeclaration }> {
+    // A decision is a person's. Whatever an agent's channel says about who it is or what it holds, it cannot take one.
+    if (actor.via === "mcp") throw new ActionError("forbidden", "a decision is taken by a person, never through an agent's channel");
     await this.expireDue();
     const client = await this.pool.connect();
     try {
