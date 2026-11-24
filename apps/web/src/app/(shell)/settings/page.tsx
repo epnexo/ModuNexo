@@ -13,6 +13,7 @@ import { CustomCssForm } from "../../../components/settings/custom-css-form";
 import { SAFE_MODE_COOKIE } from "../../../server/safe-mode";
 import { ResetIdentity } from "../../../components/settings/reset-identity";
 import { McpPanel } from "../../../components/settings/mcp-panel";
+import { McpActions } from "../../../components/settings/mcp-actions";
 import { McpRemote } from "../../../components/settings/mcp-remote";
 import { ApiAccess } from "../../../components/settings/api-access";
 import { ModulePicker } from "../../../components/settings/module-picker";
@@ -23,6 +24,8 @@ import { SecurityForm } from "../../../components/settings/security-form";
 import { modules } from "../../../generated/modules";
 import { resolvePublicUrl } from "../../../server/launch";
 import { buildAccessView, buildTokenViews } from "../../../server/api-access-view";
+import { buildMcpActionsView } from "../../../server/mcp-actions-view";
+import { actionService } from "../../../server/actions-deps";
 import { buildChecksView } from "../../../server/connection-checks";
 import { mcpConnection } from "../../../server/mcp-connection";
 import { pickModule } from "../../../server/module-picker";
@@ -91,6 +94,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const address = resolveApiAddress({ saved: await new ApiAddressService(pool).get(), publicUrl: publicUrlOrigin(), requestOrigin: requestOrigin(await headers()) });
   const now = new Date();
   const mcpKeys = buildTokenViews(await tokens.list("core"), now);
+  const actions = actionService();
+  const mcpActions = buildMcpActionsView({ catalog: await actions.catalog(), waiting: (await actions.list({ status: "pending", limit: 100 })).length });
   // Only the module that is open is described and rendered: its settings, its token list and its HTML are the cost of one
   // module, however many are installed. The id comes from the address, so it is checked against the enabled modules.
   const enabledModules = modules.filter((manifest) => enabled.has(manifest.id)).map((manifest) => ({ id: manifest.id, name: manifest.name }));
@@ -191,6 +196,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           { id: "mcp", label: "MCP", content: (<>
           <McpPanel view={mcpConnection()} />
           <McpRemote keys={mcpKeys} address={address.address} canWrite={viewer.canWrite} />
+          <McpActions view={mcpActions} />
         </>) },
           { id: "modules", label: "Modules", content: (<>
       {selected === null ? (

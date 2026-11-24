@@ -7,6 +7,8 @@ checked against, and it changes only when the contract with modules changes. See
 
 ## [Unreleased]
 
+- **Settings > MCP says what agents can do in your modules**: each enabled module's actions, grouped by module, with what happens to each (a read runs at once; anything that changes data waits for a person), how many proposals are waiting with a link to the Actions screen, and how an agent uses them. It only describes: who may propose is still decided by the key and the write option.
+
 - **Actions screen** (`/actions`, Admin block): the proposals an agent left waiting, each with what it would do, who proposed it and when it expires, and Approve / Reject (with an optional reason) for a person who holds the action's permission; below, the actions the person may run by hand (a form made from the inputs the module declared) and the register of what happened to every proposal. Three routes behind it: `POST /api/actions/run`, `POST /api/actions/proposals/{id}/approve` and `.../reject`; they refuse another origin, need a signed-in person, and the service decides everything else (permission, no self-approval, still waiting).
 ### Added
 
