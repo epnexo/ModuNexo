@@ -257,6 +257,34 @@ describe("DashboardService.overview: the platform's own signals", () => {
     assert.equal((await service.overview()).alerts.some((alert) => alert.kind === "operation_failed" && alert.moduleId === rich), false, "older than a week");
   });
 
+  guard("raises alerts for what agents asked: proposals waiting, an approved action that failed and proposals that expired, never the input or the error text", async () => {
+    await pool!.query("delete from core.action_proposals");
+    const insert = (status: string, outcome: string | null, proposed: string, expires: string, input = "{}", error: string | null = null) =>
+      pool!.query(
+        `insert into core.action_proposals (module_id, action_key, risk, status, input, proposed_by, proposed_via, proposed_at, expires_at, outcome, last_error)
+         values ($1, 'archive', 'write', $2, $3::jsonb, 'mcp:laptop', 'mcp', ${proposed}, ${expires}, $4, $5)`,
+        [rich, status, input, outcome, error],
+      );
+    await insert("pending", null, "now()", "now() + interval '6 days'", '{"note":"secret-input-xyz"}');
+    await insert("pending", null, "now()", "now() + interval '6 days'");
+    await insert("pending", null, "now() - interval '8 days'", "now() - interval '1 day'");
+    await insert("approved", "failed", "now()", "now() + interval '6 days'", "{}", "secret-error-abc at http://internal");
+    await insert("approved", "executed", "now()", "now() + interval '6 days'");
+    await insert("expired", null, "now() - interval '2 days'", "now() - interval '1 day'");
+    await insert("expired", null, "now() - interval '40 days'", "now() - interval '33 days'");
+    const { alerts } = await service.overview();
+    const mine = alerts.filter((alert) => alert.kind === "proposals_waiting" || alert.kind === "action_failed" || alert.kind === "proposals_expired");
+    assert.deepEqual(
+      mine.map((alert) => [alert.kind, alert.severity, alert.count, alert.href]),
+      [["proposals_waiting", "warning", 2, "/actions"], ["action_failed", "error", 1, "/actions"], ["proposals_expired", "info", 1, "/actions"]],
+      "a pending one past its time and an old expired one are not counted",
+    );
+    assert.match(mine.find((alert) => alert.kind === "action_failed")!.label, new RegExp(`archive.*${rich}`));
+    assert.doesNotMatch(JSON.stringify(alerts), /secret-input|secret-error|internal/);
+    await pool!.query("delete from core.action_proposals");
+    assert.equal((await service.overview()).alerts.some((alert) => alert.href === "/actions"), false, "nothing to say, nothing listed");
+  });
+
   guard("raises an alert for an enabled module with required settings still unset, with the count and not the keys", async () => {
     incomplete[plain] = ["webhook_secret", "llm.key"];
     incomplete[off] = ["whatever"];
