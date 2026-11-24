@@ -6,6 +6,8 @@ root, `packages/core` and `apps/web`); the SDK keeps its own (`SDK_VERSION`), th
 checked against, and it changes only when the contract with modules changes. See "Versioning" in the README.
 
 ## [Unreleased]
+
+- **Actions screen** (`/actions`, Admin block): the proposals an agent left waiting, each with what it would do, who proposed it and when it expires, and Approve / Reject (with an optional reason) for a person who holds the action's permission; below, the actions the person may run by hand (a form made from the inputs the module declared) and the register of what happened to every proposal. Three routes behind it: `POST /api/actions/run`, `POST /api/actions/proposals/{id}/approve` and `.../reject`; they refuse another origin, need a signed-in person, and the service decides everything else (permission, no self-approval, still waiting).
 ### Added
 
 - **The register of what agents ask modules to do** (`core.action_proposals`, migration 0018, `ActionService`): a `read` action runs at once as the module's own
