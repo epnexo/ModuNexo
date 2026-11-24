@@ -81,6 +81,12 @@ Do these three checks first; they are what keeps a new module on the platform's 
   A worker process runs it with `getDb` and `getSetting`; it can run more than once (at-least-once), so make it
   idempotent, and honour `ctx.signal`. Keep the job file free of Next.js imports: it does not run inside Next. See
   the README section "Background jobs".
+- To let an agent (MCP, CLI) do something in the module, declare `actions: [{ key, label, description, risk, permission, input?, sql | job }]`
+  and set `platform` to `^0.1.5`. A `read` action is one read-only `select` using `$1..$n` for the declared inputs; a `write`
+  or `sensitive` one names one of the module's `jobs`, which gets the validated input as its payload and must be idempotent. The
+  agent can only propose a change: a person with the action's `permission` approves it in the platform before the job runs. Every
+  action needs a declared permission, reads too, and an input is `text`, `int`, `enum` or `boolean` only. See the README section
+  "Actions for agents".
 - To tell other modules or the browser that something happened, declare `events: [{ name, permission? }]` and call
   `publishEvent(moduleId, name, payload?, { tx })` as the last step of the transaction that wrote the data (`tx` from
   `getDb(...).transaction`). Only an event with a `permission` is streamed to browsers (`GET /api/events`); never put a

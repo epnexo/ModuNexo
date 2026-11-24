@@ -51,6 +51,10 @@ export default defineModule({
   pages: [{ path: ${JSON.stringify(path)}, entry: "./web/page.tsx", kind: "page", dynamic: "force-dynamic", permission: ${JSON.stringify(permission)} }],
   // What this module puts on the dashboard: each statement is one read-only select on this module's own tables.
   dashboard: { stats: [{ key: "items", label: "Items", href: ${JSON.stringify(path)}, permission: ${JSON.stringify(permission)}, sql: "select count(*) from items" }] },
+  // What an agent may ask of this module over MCP. A read runs at once as one read-only select ($1, $2 are the declared inputs).
+  // Something that changes data is declared the same way with risk "write" and \`job: "<one of this module's jobs>"\` instead of sql:
+  // the agent can only propose it, and a person approves it in the platform before the job runs.
+  actions: [{ key: "count_items", label: "Count items", description: "How many items there are.", risk: "read", permission: ${JSON.stringify(permission)}, sql: "select count(*)::int as items from items" }],
 });
 `,
     "migrations/0001_init.sql": `-- Runs with search_path set to this module's schema. Never edit an applied file: add 0002_*.sql instead.
@@ -139,6 +143,7 @@ export async function scaffoldModule(input: ScaffoldInput): Promise<ScaffoldResu
       nav: [{ label: name, href: `/${id}`, icon: "app", permission: `${schema}.use` }],
       pages: [{ path: `/${id}`, entry: "./web/page.tsx", kind: "page", dynamic: "force-dynamic", permission: `${schema}.use` }],
       dashboard: { stats: [{ key: "items", label: "Items", href: `/${id}`, permission: `${schema}.use`, sql: "select count(*) from items" }] },
+      actions: [{ key: "count_items", label: "Count items", description: "How many items there are.", risk: "read", permission: `${schema}.use`, sql: "select count(*)::int as items from items" }],
     });
   } catch (error) {
     if (error instanceof ManifestError) throw new ScaffoldRefusedError(`"${id}" cannot be used: ${error.problems.join("; ")}`);

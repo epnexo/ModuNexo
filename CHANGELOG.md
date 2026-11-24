@@ -7,6 +7,8 @@ checked against, and it changes only when the contract with modules changes. See
 
 ## [Unreleased]
 
+- **Docs and scaffold for actions**: the README section "Actions for agents" and the MCP tool lists, the module authoring guide, and `modules new` now writes a `count_items` read action (with a note on how to declare one that changes data), so a new module is ready to offer something to an agent.
+
 - **The dashboard's "Needs attention" also tells what agents asked**: proposals waiting for a person (warning), an approved action whose job failed (error) and proposals that expired without a decision this week (info), each linking to the Actions screen. They carry the count and the names only, never the input or an error text.
 
 - **Settings > MCP says what agents can do in your modules**: each enabled module's actions, grouped by module, with what happens to each (a read runs at once; anything that changes data waits for a person), how many proposals are waiting with a link to the Actions screen, and how an agent uses them. It only describes: who may propose is still decided by the key and the write option.

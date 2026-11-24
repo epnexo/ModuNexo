@@ -327,11 +327,13 @@ Run it from the repository root (it reads `.env` there, so `DATABASE_URL` and th
 
 - **Read** (always): `modules_list`, `users_list`, `settings_list`, `tokens_list`, `jobs_list`, `events_list`, `files_list`,
   `auth_status`, `llm_probe`, and `validate`, which checks module flags, the sign-in mode and that an active administrator
-  exists. Job, event and file lists never include payloads or content.
+  exists, plus `actions_list`, `actions_run` (read actions only) and `proposals_list`, which serve what modules let an
+  agent do (see "Actions for agents"). Job, event and file lists never include payloads or content.
 - **Write** (only with `MODUNEXO_MCP_WRITE=1`; hidden and refused otherwise): `modules_enable`, `modules_disable` (no web
-  rebuild), `jobs_enqueue`, `jobs_retry`, `jobs_cancel`, `events_publish`.
+  rebuild), `jobs_enqueue`, `jobs_retry`, `jobs_cancel`, `events_publish`, and `actions_propose`, which only leaves a
+  proposal for a person to decide.
 - **Never offered**, whatever the switch says: creating administrators or users, setting a secret, issuing tokens,
-  `auth disable`, installing, uninstalling or purging modules, deleting files.
+  `auth disable`, installing, uninstalling or purging modules, deleting files, approving or rejecting a proposal.
 
 A value that is not a plain name (letters, digits and `. _ : -`, not starting with `-`) is refused before any command
 runs. One call runs at a time and a long output is cut at 100,000 characters. What an MCP client can do is what the
@@ -789,6 +791,50 @@ npm run modunexo -- jobs retry <id>                                   # dead onl
 - **Docker.** The `worker` service in `docker-compose.yml` (profile `app`) runs the same image with `modunexo worker`.
 - **Not here yet.** Cron expressions, a per-job concurrency limit, a screen to see jobs, a worker health endpoint, and
   hot reload of handler code.
+
+### Actions for agents
+
+A module can say what an agent may do in it, and the platform decides how: a read runs at once, and anything that changes
+data is only **proposed** until a person approves it. The module declares them in `actions` (at most 20), and the same
+list serves the CLI, MCP and the Actions screen, so nothing else has to be written per client.
+
+```ts
+actions: [
+  { key: "find_templates", label: "Find templates", description: "Lists templates, all or by part of the name.",
+    risk: "read", permission: "documents.read",
+    input: { q: { type: "text", maxLength: 80 } },
+    sql: "select id, name from templates where $1::text is null or name ilike '%' || $1 || '%' order by name limit 50" },
+  { key: "archive_template", label: "Archive a template", description: "Archives a template so it is not offered for new documents.",
+    risk: "write", permission: "documents.write",
+    input: { template: { type: "int", min: 1, max: 2147483647, required: true } },
+    job: "archive_template" },
+]
+```
+
+- **`risk`** is `read`, `write` or `sensitive`. A read names one `sql`: a single `select` (or `with`) without `;`, up to 2000
+  characters, where `$1`, `$2`... are the declared inputs in the order they were declared. It runs with the module's own
+  read-only login and returns at most 100 rows. `write` and `sensitive` name one `job` of the module, which receives the
+  validated input as its payload; it can run more than once, so make it idempotent (see "Background jobs").
+- **`permission`** is mandatory, reads included, and must be a permission the module declares.
+- **`input`** is a closed set of kinds: `text` (`maxLength`), `int` (`min`, `max`), `enum` (`values`) and `boolean`, each
+  optionally `required`, at most 12 inputs. Whatever does not fit is refused before anything runs.
+- **A person** in the portal who runs a change is the decision itself: it is recorded as approved and the job is queued.
+  **An agent** cannot: it leaves a `pending` proposal (at most 100 waiting, each expiring after 7 days). A person who holds the
+  action's permission approves or rejects it on the Actions screen (`/actions`, Admin block) or with `modunexo actions
+  approve|reject <id>`. The one who proposed it cannot approve it, and no MCP tool approves.
+- **The register** (`core.action_proposals`) keeps who proposed, what, who decided and what the job did (`executed` or
+  `failed`). The input is kept so the approver sees what they approve, and is never copied into an event. Each step also
+  writes a `core.action.*` event (`proposed`, `approved`, `rejected`, `expired`, `executed`, `failed`) with the names and no
+  input. A module cannot yet subscribe to those events.
+- **Where it shows**: the Actions screen (waiting proposals, run by hand, history), Settings > MCP (what each module offers and
+  how an agent uses it) and the dashboard's "Needs attention" (proposals waiting, an approved action that failed, proposals that
+  expired).
+
+From the command line: `modunexo actions list`, `run <module>.<key> --input '{...}'` (a read, or a change as that person),
+`propose`, `proposals [--status ...]`, `approve <id>` and `reject <id> [--note ...]`; `--via mcp` records the caller as an agent.
+Over MCP an agent lists with `actions_list`, reads with `actions_run` and proposes with `actions_propose` (the connection with
+write tools); the proposal is recorded under the key's name. Adding `actions` to a module is additive: raise the module's
+version and its `platform` to `^0.1.5`.
 
 ### Events and realtime
 
