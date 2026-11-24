@@ -37,7 +37,7 @@ export function SecurityForm({ initial, invalidStored, canWrite }: { initial: st
   return (
     <form onSubmit={save} className="flex flex-col gap-5">
       {invalidStored ? (
-        <p role="alert" className="max-w-xl rounded-md bg-warning-soft px-3 py-2 text-sm">
+        <p role="alert" data-guard className="max-w-xl rounded-md bg-warning-soft px-3 py-2 text-sm">
           The stored list is not valid any more (a range may be too broad, or the value was edited by hand), so no proxy is trusted. Saving a new list
           replaces it.
         </p>

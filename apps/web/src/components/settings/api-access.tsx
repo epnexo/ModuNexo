@@ -221,7 +221,7 @@ export function ApiAccess({ moduleId, name, view, canWrite }: { moduleId: string
                       </button>
                     </div>
                   ) : (
-                    <div role="alert" className="flex flex-wrap items-center gap-2 rounded-md bg-warning-soft px-3 py-2 text-sm">
+                    <div role="alert" data-guard className="flex flex-wrap items-center gap-2 rounded-md bg-warning-soft px-3 py-2 text-sm">
                       <span className="min-w-0 flex-1">
                         {asking === "regenerate" ? "The current token stops working at once and you get a new one. Anything using it must be updated." : "Anything using this token stops working at once. This cannot be undone."}
                       </span>

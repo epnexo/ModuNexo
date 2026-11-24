@@ -900,6 +900,48 @@ describe("web app: with a module installed", () => {
     assert.match(html(login), /matchMedia|"dark"/);
   });
 
+  test("the company's custom CSS is checked as a whole, added to every page after the platform's, and switched off by safe mode", async () => {
+    const path = "/api/settings/appearance/custom-css";
+    const same = { origin: origin(), cookie };
+    const stored = () => db!.query("select 1 from core.platform_settings where key = 'custom-css.company'");
+
+    const refused = await put(path, { css: ".card{padding:1rem}\n@import 'https://evil.example/x.css';\nbody{color:red}\n.card{background:url(https://evil.example/x)}" }, { cookie });
+    assert.equal(refused.status, 422, refused.body);
+    const refusal = (JSON.parse(refused.body) as { error: string }).error;
+    for (const line of [/line 2: @import is not allowed/, /line 3: selector "body" is not allowed/, /line 4: property "background" is not allowed/]) assert.match(refusal, line);
+    assert.equal((await stored()).rowCount, 0, "a refused stylesheet stores nothing");
+    assert.equal((await put(path, { css: 7 }, { cookie })).status, 400);
+    assert.equal((await put(path, { css: "", other: 1 }, { cookie })).status, 400);
+    assert.ok([401, 403].includes((await put(path, { css: ".card{padding:1rem}" })).status), "without a session nobody writes it");
+    assert.equal((await stored()).rowCount, 0);
+
+    const saved = await put(path, { css: "/* mine */ .card { border-color: var(--accent) }" }, { cookie });
+    assert.equal(saved.status, 200, saved.body);
+    const custom = /<style data-custom(?:="true")?>@layer custom\{\.card\{border-color:var\(--accent\);\}\}<\/style>/;
+    for (const target of ["/", "/settings", "/e2e-fixture"]) assert.match(html(await call("GET", target, { cookie })), custom, `${target} carries it`);
+    const login = html(await call("GET", "/login"));
+    assert.match(login, custom, "the sign-in page too, so a broken stylesheet can be escaped there");
+    assert.ok(login.indexOf("<style>") < login.indexOf("<style data-custom"), "after the platform's own appearance");
+    assert.doesNotMatch(login, /mine/, "the text as typed is never served, only what was rewritten from the rules that passed");
+
+    // Safe mode: the cookie is set and the parameter is gone; with the cookie, no custom CSS anywhere.
+    const on = await call("GET", "/login?nocss=1");
+    assert.equal(on.status, 307);
+    assert.equal(on.headers.location, "/login", "the same page, without the parameter");
+    assert.match(String(on.headers["set-cookie"]), /modunexo\.nocss=1/);
+    assert.doesNotMatch(html(await call("GET", "/login", { cookie: "modunexo.nocss=1" })), /data-custom/);
+    assert.doesNotMatch(html(await call("GET", "/settings", { cookie: `${cookie}; modunexo.nocss=1` })), /<style data-custom/);
+    assert.match(String((await call("GET", "/login?nocss=0")).headers["set-cookie"]), /modunexo\.nocss=;/);
+
+    // A value written straight into the database is never served as text.
+    await db!.query("update core.platform_settings set value = $1::jsonb where key = 'custom-css.company'", [JSON.stringify("@import 'https://evil.example/x.css'; .card{padding:1rem}")]);
+    assert.doesNotMatch(html(await call("GET", "/login")), /evil\.example|data-custom/);
+
+    assert.equal((await call("DELETE", path, same)).status, 200);
+    assert.equal((await stored()).rowCount, 0);
+    assert.doesNotMatch(html(await call("GET", "/login")), /data-custom/);
+  });
+
   test("a module can have its own accent and corners, and can go back to following the platform", async () => {
     assert.equal((await put(`/api/settings/modules/${FIXTURE_ID}/appearance`, { theme: "dark" }, { cookie })).status, 400, "the theme is not per module");
     assert.equal((await put(`/api/settings/modules/${FIXTURE_ID}/appearance`, { accentHue: -5 }, { cookie })).status, 422);

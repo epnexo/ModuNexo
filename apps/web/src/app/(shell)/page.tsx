@@ -23,9 +23,10 @@ const TONE: Record<DashboardView["headline"]["tone"], string> = {
   error: "bg-danger-soft text-danger-soft-foreground",
 };
 
-function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+/** `guard` marks a part no customization may hide or restyle: what needs the visitor's attention. */
+function Section({ id, title, guard = false, children }: { id: string; title: string; guard?: boolean; children: ReactNode }) {
   return (
-    <section aria-labelledby={`${id}-heading`} className="flex flex-col gap-3">
+    <section aria-labelledby={`${id}-heading`} data-guard={guard ? "" : undefined} className="flex flex-col gap-3">
       <h2 id={`${id}-heading`} className="text-lg font-semibold tracking-tight">
         {title}
       </h2>
@@ -80,7 +81,7 @@ export default async function DashboardPage() {
       </div>
 
       {view.alerts.length === 0 ? null : (
-        <Section id="alerts" title="Needs attention">
+        <Section id="alerts" title="Needs attention" guard>
           <AlertsList alerts={view.alerts} />
         </Section>
       )}

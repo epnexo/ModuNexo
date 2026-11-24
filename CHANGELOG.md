@@ -12,6 +12,14 @@ checked against, and it changes only when the contract with modules changes. See
   it sets `--layout-gap`, `--card-pad` and `--card-gap`) and **motion** (`full` or `reduced`; reduced makes every transition and entrance
   instant, and full never overrides a visitor who asked their system for less motion). They are in Settings and in
   `modunexo settings` (`appearance.density`, `appearance.motion`, and the same under `appearance.module.<id>.`).
+- **Custom CSS** for the company, in Settings > Appearance (administrators only). The whole text is parsed and checked before anything is
+  stored, and a refusal lists the line of every problem: only the platform's tokens on `:root`, and rules scoped to
+  `[data-module="<id>"]` or to a documented platform class, with a short list of properties (colors, spacing, borders, text size,
+  shadows, durations) inside bounds that cannot hide or break a page. It cannot load anything (`url()`, `@import`, `@font-face`), run
+  anything, move or hide an element, use `!important`, or reach a guard element: every `role="alert"` and the dashboard's "Needs
+  attention" carry `data-guard`. What is served is not the text as typed but a rewrite of the rules that passed, checked again on every
+  read, in the `custom` layer after the platform's and the modules'. Add `?nocss=1` to any address, the sign-in page included, to see it
+  without the custom CSS in that browser (`?nocss=0` turns it back on). `postcss` is now a dependency of the core.
 - The cascade has two new layers after Tailwind's, `module` and `custom`. A module's stylesheet is written inside `@layer module { ... }`, so
   what a company or a person customizes later beats it without `!important`.
 - Shared classes for what modules kept repeating: `card-link` (a card that lifts on hover and shows the focus ring), `rise` (an
