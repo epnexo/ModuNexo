@@ -976,6 +976,9 @@ dashboard: {
   platform draws the bars, grows them from the base, shows the value above each bar and the average of them, and opens `href`
   when a bar is pressed. A row that is not a label and a number, or a statement that fails, makes the chart "not available";
   no rows is "Nothing to show yet". The field exists since SDK `0.1.2`; an older platform refuses it as `unknown field "charts"`.
+  To open the detail of the bar that was pressed, write `{label}` once in the query string of `href` (`/usage?day={label}`): each bar puts
+  its own label there, encoded as one value, so the page it opens is yours to filter. Since SDK `0.1.4`; a module that uses it asks for
+  `platform: "^0.1.4"`. In the path, twice, or with any other braces the manifest is refused.
 - `sql` is one `select` (or `with`) statement of at most 2000 characters, with no `;`, written as the module's own
   migrations are (unqualified table names). It runs in a `READ ONLY` transaction as a role that can read the module's schema and nothing else,
   with that schema as `search_path` and a 3 second limit, so the database itself refuses a write, and a plain or qualified read of `core` or of

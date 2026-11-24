@@ -233,7 +233,10 @@ export interface DashboardChart {
   /** Stable identifier, unique among the module's charts. */
   key: string;
   label: string;
-  /** The screen the chart opens when it is clicked; a path of this platform that starts with "/". */
+  /**
+   * The screen the chart opens when it is clicked; a path of this platform that starts with "/". Where the query string holds
+   * `{label}` (once), each bar puts its own label there, so a click opens the detail of that bar: `/usage?day={label}`.
+   */
   href: string;
   /** Key of a permission declared in `permissions`; the chart is hidden from anyone without it. */
   permission?: string;
@@ -325,6 +328,17 @@ const MAX_DASHBOARD_LABEL_CHARS = 80;
 const MAX_DASHBOARD_SQL_CHARS = 2000;
 /** A single read statement. The READ ONLY transaction is what really forbids writes; this only catches a mistake early. */
 /** A path of this platform: not "//host" and, since a browser reads a backslash as a slash, no backslash, space, control or zero-width character. */
+/** What a chart's `href` writes where the label of the bar that was clicked goes. */
+export const CHART_LABEL_PLACEHOLDER = "{label}";
+
+/**
+ * The link of one bar: the chart's `href` with the bar's label where `{label}` stands, encoded so it can only ever be one value of the
+ * query string (no `&`, `/`, `?` or `#` of its own, and nothing in it is read as another placeholder or a replacement pattern).
+ */
+export function chartBarHref(href: string, label: string): string {
+  return href.replace(CHART_LABEL_PLACEHOLDER, () => encodeURIComponent(label));
+}
+
 const DASHBOARD_HREF = /^\/(?![/\\])[^\s\\\u0000-\u001f\u007f\u200b-\u200f\u2028\u2029\ufeff]*$/;
 const DASHBOARD_SQL = /^(select|with)[\s(]/i;
 const KNOWN_NAV_FIELDS = new Set(["label", "href", "icon", "group", "order", "permission"]);
@@ -730,7 +744,13 @@ function checkJobs(jobs: unknown, problems: string[]): void {
   });
 }
 
-function checkDashboardEntries(list: unknown, name: string, known: Set<string>, withSeverity: boolean, permissionKeys: Set<string>, problems: string[]): void {
+/** A chart's link may carry `{label}` once, in the query string; anything else with braces is refused. Every other link is as `DASHBOARD_HREF` says. */
+function chartHrefOk(href: string): boolean {
+  if (!/[{}]/.test(href)) return DASHBOARD_HREF.test(href);
+  return /^[^?{}]*\?[^{}]*\{label\}[^{}]*$/.test(href) && DASHBOARD_HREF.test(href.replace(CHART_LABEL_PLACEHOLDER, "x"));
+}
+
+function checkDashboardEntries(list: unknown, name: string, known: Set<string>, withSeverity: boolean, permissionKeys: Set<string>, problems: string[], labelInHref = false): void {
   eachItem(list, name, problems, (entry, where, index) => {
     checkUnknownFields(entry, known, where, problems);
     if (typeof entry.key !== "string" || !KEY.test(entry.key)) {
@@ -741,8 +761,8 @@ function checkDashboardEntries(list: unknown, name: string, known: Set<string>, 
     if (!isNonEmptyString(entry.label) || entry.label.length > MAX_DASHBOARD_LABEL_CHARS) {
       problems.push(`${where}.label must be a non-empty string of at most ${MAX_DASHBOARD_LABEL_CHARS} characters`);
     }
-    if (typeof entry.href !== "string" || !DASHBOARD_HREF.test(entry.href)) {
-      problems.push(`${where}.href must start with "/" and stay on this platform`);
+    if (typeof entry.href !== "string" || !(labelInHref ? chartHrefOk(entry.href) : DASHBOARD_HREF.test(entry.href))) {
+      problems.push(`${where}.href must start with "/" and stay on this platform${labelInHref ? `; it may carry ${CHART_LABEL_PLACEHOLDER} once, in the query string` : ""}`);
     }
     if (entry.permission !== undefined && !(typeof entry.permission === "string" && permissionKeys.has(entry.permission))) {
       problems.push(`${where}.permission must be the key of a permission declared in "permissions"`);
@@ -773,7 +793,7 @@ function checkDashboard(dashboard: unknown, permissionKeys: Set<string>, problem
   if (stats !== undefined) checkDashboardEntries(stats, "dashboard.stats", KNOWN_STAT_FIELDS, false, permissionKeys, problems);
   if (alerts !== undefined) checkDashboardEntries(alerts, "dashboard.alerts", KNOWN_ALERT_FIELDS, true, permissionKeys, problems);
   if (charts !== undefined) {
-    checkDashboardEntries(charts, "dashboard.charts", KNOWN_CHART_FIELDS, false, permissionKeys, problems);
+    checkDashboardEntries(charts, "dashboard.charts", KNOWN_CHART_FIELDS, false, permissionKeys, problems, true);
     if (Array.isArray(charts) && charts.length > MAX_DASHBOARD_CHARTS) problems.push(`dashboard.charts must have at most ${MAX_DASHBOARD_CHARTS} entries`);
   }
   const empty = (list: unknown) => list === undefined || (Array.isArray(list) && list.length === 0);
