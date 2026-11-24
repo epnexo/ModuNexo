@@ -68,7 +68,7 @@ export interface ModuleCards {
 }
 
 export interface PlatformAlert {
-  kind: "job_dead" | "operation_failed" | "settings_incomplete";
+  kind: "job_dead" | "operation_failed" | "settings_incomplete" | "proposals_waiting" | "action_failed" | "proposals_expired";
   severity: DashboardSeverity;
   moduleId: string;
   /** Names the module and the job or operation. Never carries an error text or a setting's key. */
@@ -210,7 +210,7 @@ export class DashboardService {
 
   /** The platform's own state: module and job totals, what needs a look, and the newest activity. */
   async overview(): Promise<PlatformOverview> {
-    const [moduleRows, jobRows, dead, failed, events, operations, settings] = await Promise.all([
+    const [moduleRows, jobRows, dead, failed, events, operations, settings, proposals, actionsFailed] = await Promise.all([
       this.pool.query("select state, count(*)::int as n from core.modules group by state"),
       this.pool.query("select status, count(*)::int as n from core.jobs where status in ('queued', 'running') group by status"),
       this.pool.query(
@@ -228,6 +228,19 @@ export class DashboardService {
       this.pool.query("select module_id, type, created_at from core.events order by id desc limit 10"),
       this.pool.query("select module_id, version, kind, status, coalesce(finished_at, started_at) as at from core.module_operations order by id desc limit 5"),
       this.#incomplete(),
+      // What agents asked of the modules: how many proposals wait for a person (a pending one past its time is not waiting any more)
+      // and how many lapsed without a decision this week.
+      this.pool.query(
+        `select count(*) filter (where status = 'pending' and expires_at > now())::int as waiting,
+                count(*) filter (where status = 'expired' and expires_at > now() - interval '${RECENT}')::int as expired
+         from core.action_proposals`,
+      ),
+      // An approved action whose job ended badly, per module and action, while it is recent. Only names: never the input or the error.
+      this.pool.query(
+        `select module_id, action_key, count(*)::int as n, max(coalesce(settled_at, proposed_at)) as at from core.action_proposals
+         where outcome = 'failed' and coalesce(settled_at, proposed_at) > now() - interval '${RECENT}'
+         group by module_id, action_key order by max(coalesce(settled_at, proposed_at)) desc limit 10`,
+      ),
     ]);
     const count = (rows: { n: number; state?: string; status?: string }[], key: "state" | "status", value: string) => rows.find((row) => row[key] === value)?.n ?? 0;
     const alerts: PlatformAlert[] = [];
@@ -261,6 +274,40 @@ export class DashboardService {
         label: `${moduleName} still needs ${missing} required ${missing === 1 ? "setting" : "settings"}`,
         href: "/settings",
         count: missing,
+        at: null,
+      });
+    }
+    const { waiting, expired } = proposals.rows[0] as { waiting: number; expired: number };
+    if (waiting > 0) {
+      alerts.push({
+        kind: "proposals_waiting",
+        severity: "warning",
+        moduleId: "core",
+        label: `${waiting} ${waiting === 1 ? "proposal from an agent is" : "proposals from agents are"} waiting for a person`,
+        href: "/actions",
+        count: waiting,
+        at: null,
+      });
+    }
+    for (const row of actionsFailed.rows as { module_id: string; action_key: string; n: number; at: Date }[]) {
+      alerts.push({
+        kind: "action_failed",
+        severity: "error",
+        moduleId: row.module_id,
+        label: `Action "${row.action_key}" of ${row.module_id} failed after it was approved`,
+        href: "/actions",
+        count: row.n,
+        at: row.at,
+      });
+    }
+    if (expired > 0) {
+      alerts.push({
+        kind: "proposals_expired",
+        severity: "info",
+        moduleId: "core",
+        label: `${expired} ${expired === 1 ? "proposal" : "proposals"} from agents expired without a decision`,
+        href: "/actions",
+        count: expired,
         at: null,
       });
     }
