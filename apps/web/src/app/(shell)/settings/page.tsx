@@ -95,7 +95,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const now = new Date();
   const mcpKeys = buildTokenViews(await tokens.list("core"), now);
   const actions = actionService();
-  const mcpActions = buildMcpActionsView({ catalog: await actions.catalog(), waiting: (await actions.list({ status: "pending", limit: 100 })).length });
+  const mcpActions = buildMcpActionsView({ catalog: await actions.catalog(), waiting: (await actions.list({ status: "pending", limit: 100 })).filter((proposal) => proposal.expiresAt.getTime() > now.getTime()).length });
   // Only the module that is open is described and rendered: its settings, its token list and its HTML are the cost of one
   // module, however many are installed. The id comes from the address, so it is checked against the enabled modules.
   const enabledModules = modules.filter((manifest) => enabled.has(manifest.id)).map((manifest) => ({ id: manifest.id, name: manifest.name }));

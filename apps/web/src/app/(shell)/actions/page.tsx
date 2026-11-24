@@ -36,7 +36,9 @@ export default async function ActionsPage() {
   }
 
   const service = actionService();
-  const [catalog, proposals] = await Promise.all([service.catalog(), service.list({ limit: 100 })]);
+  // Waiting ones are asked for on their own, so a busy week of settled rows can never push one out of the list.
+  const [catalog, pending, recent] = await Promise.all([service.catalog(), service.list({ status: "pending", limit: 100 }), service.list({ limit: 100 })]);
+  const proposals = [...pending, ...recent.filter((proposal) => proposal.status !== "pending")];
   const view = buildActionsView({ catalog, proposals, can: (permission) => subjectCan(viewer.subject, permission) });
 
   return (

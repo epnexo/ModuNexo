@@ -7,6 +7,8 @@ checked against, and it changes only when the contract with modules changes. See
 
 ## [Unreleased]
 
+- **Actions screen, three fixes from the review**: what a proposal would do is shown only to a person who holds the action's permission (others see that it is hidden); waiting proposals are listed on their own, so a busy week of settled ones cannot push one out of the list; and Settings > MCP no longer counts a pending proposal past its time as waiting.
+
 - **Docs and scaffold for actions**: the README section "Actions for agents" and the MCP tool lists, the module authoring guide, and `modules new` now writes a `count_items` read action (with a note on how to declare one that changes data), so a new module is ready to offer something to an agent.
 
 - **The dashboard's "Needs attention" also tells what agents asked**: proposals waiting for a person (warning), an approved action whose job failed (error) and proposals that expired without a decision this week (info), each linking to the Actions screen. They carry the count and the names only, never the input or an error text.
