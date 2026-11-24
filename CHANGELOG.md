@@ -7,6 +7,9 @@ checked against, and it changes only when the contract with modules changes. See
 
 ## [Unreleased]
 
+- **Read actions give ids and counts as numbers**: a bigint column (an id, `count(*)`) comes out as `1` and not `"1"` when the number is exact; a value too large to be exact stays text, and no other column is touched.
+- **Settings > MCP no longer fails with the page** when the catalog or the proposals cannot be read: the block says so.
+
 - **`modunexo actions approve|reject <id>` takes plain digits only**: `1e3` or `0x10` no longer decide proposal 1000 or 16.
 
 - **Actions screen, three fixes from the review**: what a proposal would do is shown only to a person who holds the action's permission (others see that it is hidden); waiting proposals are listed on their own, so a busy week of settled ones cannot push one out of the list; and Settings > MCP no longer counts a pending proposal past its time as waiting.

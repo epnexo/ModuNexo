@@ -1,3 +1,4 @@
+import { numberBigints } from "./rows.ts";
 import type pg from "pg";
 import type { ActionDeclaration } from "@modunexo/sdk";
 import { CORE_MODULE_ID } from "../core-module.ts";
@@ -213,7 +214,7 @@ export class ActionService {
       try {
         // The limit is the database's: the statement is a subquery, so a table of millions of rows never reaches this process.
         const result = await this.#db.readOwn(ref.moduleId).query(`select * from (${action.sql!}) as action_rows limit ${MAX_ROWS}`, checked.ordered);
-        return { kind: "rows", rows: result.rows };
+        return { kind: "rows", rows: numberBigints(result.rows, (result as { fields?: { name: string; dataTypeID: number }[] }).fields ?? []) };
       } catch (error) {
         // The reason goes to the server's log, where only an operator reads it; the caller is told no more than "it failed".
         platformLog.warn("actions.read_failed", { module: ref.moduleId, action: ref.key, error });

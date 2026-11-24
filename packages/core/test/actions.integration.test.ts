@@ -45,6 +45,7 @@ before(async () => {
     { key: "all_notes", label: "All notes", description: "Every note.", risk: "read", permission: "acts.read", sql: "select id, body from notes order by id" },
     { key: "broken", label: "Broken", description: "A statement that fails.", risk: "read", permission: "acts.read", sql: "select 1 / 0 as boom" },
     { key: "many", label: "Many", description: "A million rows.", risk: "read", permission: "acts.read", sql: "select g as n from generate_series(1, 1000000) g order by g" },
+    { key: "totals", label: "Totals", description: "Counts as the database gives them.", risk: "read", permission: "acts.read", sql: "select count(*) as total, 9007199254740993::bigint as huge, 5::int as small, '7' as code from notes" },
     { key: "add_note", label: "Add a note", description: "Adds a note.", risk: "write", permission: "acts.write", input: { text: { type: "text", maxLength: 100, required: true } }, job: "add_note" },
     { key: "close_deal", label: "Close a deal", description: "Marks a deal as won.", risk: "sensitive", permission: "acts.close", job: "close_deal" },
   ];
@@ -100,7 +101,7 @@ describe("the catalog", () => {
   test("lists the actions of the enabled modules, each with its module and reference, and none of a disabled one", async () => {
     const catalog = await service.catalog();
     const mine = catalog.filter((entry) => entry.moduleId === moduleId);
-    assert.deepEqual(mine.map((entry) => entry.ref), [`${moduleId}.find_notes`, `${moduleId}.all_notes`, `${moduleId}.broken`, `${moduleId}.many`, `${moduleId}.add_note`, `${moduleId}.close_deal`]);
+    assert.deepEqual(mine.map((entry) => entry.ref), [`${moduleId}.find_notes`, `${moduleId}.all_notes`, `${moduleId}.broken`, `${moduleId}.many`, `${moduleId}.totals`, `${moduleId}.add_note`, `${moduleId}.close_deal`]);
     assert.equal(mine.find((entry) => entry.key === "add_note")?.action.risk, "write");
     assert.equal(catalog.some((entry) => entry.moduleId === offId), false, "a disabled module offers nothing");
     assert.equal(catalog.some((entry) => entry.moduleId === "core"), false);
@@ -130,6 +131,16 @@ describe("a read action", () => {
     await rejects(service.run({ moduleId: offId, key: "do_it" }, {}, person("x")), "disabled");
     await rejects(service.run({ moduleId, key: "find_notes" }, {}, person("x")), "invalid_input");
     await assert.rejects(service.run({ moduleId, key: "broken" }, {}, person("x")), (error: unknown) => error instanceof ActionError && error.code === "failed" && !/division|zero|1 \/ 0/i.test(error.message));
+  });
+});
+
+describe("what a read action returns", () => {
+  test("gives a bigint (an id, a count) as a number when it is exact, and leaves every other column as it is", async () => {
+    const result = await service.run({ moduleId, key: "totals" }, {}, person("ada@example.test"));
+    assert.equal(result.kind, "rows");
+    if (result.kind !== "rows") return;
+    const count = (await pool!.query(`select count(*)::int as n from ${box.modules[0]!.manifest.schema}.notes`)).rows[0].n as number;
+    assert.deepEqual(result.rows, [{ total: count, huge: "9007199254740993", small: 5, code: "7" }], "a count is a number, a value too big to be exact stays text");
   });
 });
 

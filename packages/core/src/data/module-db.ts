@@ -177,7 +177,8 @@ export class ModuleDbService implements DbReader {
         query: async <Row extends Record<string, unknown>>(sql: string, params: readonly unknown[] = []): Promise<DbResult<Row>> => {
           if (!open) throw new DbAccessError("closed", "this handle was used after its transaction ended");
           const result = await client.query({ text: sql, values: [...params], queryMode: "extended" } as pg.QueryConfig);
-          return { rows: result.rows as Row[], rowCount: result.rowCount ?? 0 };
+          // `fields` is not part of the SDK's DbResult: the platform's own readers (the actions service) use it to see column types.
+          return { rows: result.rows as Row[], rowCount: result.rowCount ?? 0, fields: result.fields.map(({ name, dataTypeID }) => ({ name, dataTypeID })) } as DbResult<Row>;
         },
       };
       const value = await run(tx);
