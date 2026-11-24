@@ -214,9 +214,9 @@ describe("generic classes shared by modules", () => {
 });
 
 describe("cascade layers", () => {
-  it("orders module, then custom, after Tailwind's own layers, so a module keeps beating utilities and only customization beats a module", () => {
+  it("orders module, then the company's custom, then the person's, after Tailwind's own layers, so a module keeps beating utilities and only customization beats a module", () => {
     const tailwind = globals.indexOf('@import "tailwindcss"');
-    const order = globals.search(/^@layer module,\s*custom;/m);
+    const order = globals.search(/^@layer module,\s*custom,\s*person;/m);
     assert.ok(tailwind >= 0 && order > tailwind, "the order is declared once, after the Tailwind import");
     assert.equal([...globals.matchAll(/^@layer [a-z, ]+;/gm)].length, 1, "one order statement in the file");
   });

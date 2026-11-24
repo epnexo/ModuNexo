@@ -51,6 +51,8 @@ const VALUE_ALPHABET = /^[a-zA-Z0-9\s.,%#()/+\-*]+$/;
 const FORBIDDEN_WORDS = /\b(?:url|image-set|expression|javascript|attr|env|src|paint|element|cross-fade|-webkit-image-set)\b/i;
 
 export type CustomCssError = { line: number; message: string };
+/** Where a stylesheet lands in the cascade: the company's, then the person's, which is last and so wins. */
+export type CustomCssLayer = "custom" | "person";
 export type CustomCssResult = { ok: true; css: string } | { ok: false; errors: CustomCssError[] };
 
 type Check = (value: string) => string | null;
@@ -186,7 +188,7 @@ function serializeDeclaration(decl: Declaration): string {
   return `${decl.prop}:${decl.value.replace(/\s+/g, " ").trim()};`;
 }
 
-export function sanitizeCustomCss(input: string): CustomCssResult {
+export function sanitizeCustomCss(input: string, layer: CustomCssLayer = "custom"): CustomCssResult {
   const errors: CustomCssError[] = [];
   const refuse = (node: { source?: { start?: { line: number } } } | undefined, message: string) => errors.push({ line: node?.source?.start?.line ?? 1, message });
 
@@ -271,5 +273,5 @@ export function sanitizeCustomCss(input: string): CustomCssResult {
   }
 
   if (errors.length > 0) return { ok: false, errors: errors.sort((a, b) => a.line - b.line) };
-  return { ok: true, css: served.length === 0 ? "" : `@layer custom{${served.join("")}}` };
+  return { ok: true, css: served.length === 0 ? "" : `@layer ${layer}{${served.join("")}}` };
 }

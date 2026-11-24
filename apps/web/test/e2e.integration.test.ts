@@ -942,6 +942,46 @@ describe("web app: with a module installed", () => {
     assert.doesNotMatch(html(await call("GET", "/login")), /data-custom/);
   });
 
+  test("a person's own custom CSS is theirs alone, checked like the company's, and comes last in the cascade", async () => {
+    const path = "/api/settings/appearance/my-css";
+    const own = (text: string) => put(path, { css: text }, { cookie: userCookie });
+    const stored = () => db!.query("select 1 from core.user_custom_css");
+    const person = /<style data-person(?:="true")?>@layer person\{\.card\{border-color:oklch\(0\.5 0\.1 30\);\}\}<\/style>/;
+    const company = /<style data-custom(?:="true")?>@layer custom\{/;
+
+    // Who may write it: a signed-in person, from this site, for themselves.
+    assert.equal((await call("PUT", path, { cookie: userCookie }, { css: ".card{padding:1rem}" })).status, 403, "not from another origin");
+    assert.ok([401, 403].includes((await put(path, { css: ".card{padding:1rem}" })).status), "not without a session");
+    assert.equal((await put(path, { css: 1 }, { cookie: userCookie })).status, 400);
+    assert.equal((await put(path, { css: "", userId: "someone-else" }, { cookie: userCookie })).status, 400, "there is no way to name another person");
+    assert.equal((await stored()).rowCount, 0);
+
+    // The same checks as the company's, with every line, and nothing stored.
+    const refused = await own("@import 'https://evil.example/x.css';\nbody{color:red}\n.card{background:url(https://evil.example/x)}");
+    assert.equal(refused.status, 422, refused.body);
+    const refusal = (JSON.parse(refused.body) as { error: string }).error;
+    for (const line of [/line 1: @import is not allowed/, /line 2: selector "body" is not allowed/, /line 3: property "background" is not allowed/]) assert.match(refusal, line);
+    assert.equal((await stored()).rowCount, 0);
+
+    // The company's first, then the person's; each shows to the right people.
+    assert.equal((await put("/api/settings/appearance/custom-css", { css: ".card { padding: 1rem }" }, { cookie })).status, 200);
+    const saved = await own(".card { border-color: oklch(0.5 0.1 30) }");
+    assert.equal(saved.status, 200, saved.body);
+    const mine = html(await call("GET", "/e2e-fixture", { cookie: userCookie }));
+    assert.match(mine, person);
+    assert.match(mine, company, "the company's is there too");
+    assert.ok(mine.indexOf("<style data-custom") < mine.indexOf("<style data-person"), "the person's comes after the company's");
+    assert.doesNotMatch(html(await call("GET", "/", { cookie })), /data-person/, "an administrator does not see the other person's");
+    assert.doesNotMatch(html(await call("GET", "/login")), /data-person/, "the sign-in page has no person");
+
+    // Safe mode switches both off; clearing it removes it for good.
+    assert.doesNotMatch(html(await call("GET", "/e2e-fixture", { cookie: `${userCookie}; modunexo.nocss=1` })), /data-person|data-custom/);
+    assert.equal((await call("DELETE", path, { origin: origin(), cookie: userCookie })).status, 200);
+    assert.equal((await stored()).rowCount, 0);
+    assert.doesNotMatch(html(await call("GET", "/e2e-fixture", { cookie: userCookie })), /data-person/);
+    assert.equal((await call("DELETE", "/api/settings/appearance/custom-css", { origin: origin(), cookie })).status, 200);
+  });
+
   test("a module can have its own accent and corners, and can go back to following the platform", async () => {
     assert.equal((await put(`/api/settings/modules/${FIXTURE_ID}/appearance`, { theme: "dark" }, { cookie })).status, 400, "the theme is not per module");
     assert.equal((await put(`/api/settings/modules/${FIXTURE_ID}/appearance`, { accentHue: -5 }, { cookie })).status, 422);

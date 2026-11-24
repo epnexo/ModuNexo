@@ -48,6 +48,16 @@ describe("sanitizeCustomCss: what it accepts", () => {
   });
 });
 
+describe("sanitizeCustomCss: the layer a stylesheet goes in", () => {
+  it("writes the company's stylesheet in the custom layer and a person's in the person layer, the last one, with the same rules for both", () => {
+    assert.equal(accepted(".card{padding:1rem}"), "@layer custom{.card{padding:1rem;}}");
+    const person = sanitizeCustomCss(".card{padding:1rem}", "person");
+    assert.ok(person.ok);
+    assert.equal(person.ok && person.css, "@layer person{.card{padding:1rem;}}");
+    for (const hostile of ["@import 'x';", ".card{background:url(x)}", "[data-guard]{padding:1rem}"]) assert.equal(sanitizeCustomCss(hostile, "person").ok, false, hostile);
+  });
+});
+
 describe("sanitizeCustomCss: what it refuses, and where", () => {
   it("refuses every at-rule that loads or declares something, and any at-rule inside a media query", () => {
     refused('@import "https://evil.example/x.css";', /@import is not allowed/, 1);

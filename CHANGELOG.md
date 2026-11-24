@@ -20,6 +20,11 @@ checked against, and it changes only when the contract with modules changes. See
   attention" carry `data-guard`. What is served is not the text as typed but a rewrite of the rules that passed, checked again on every
   read, in the `custom` layer after the platform's and the modules'. Add `?nocss=1` to any address, the sign-in page included, to see it
   without the custom CSS in that browser (`?nocss=0` turns it back on). `postcss` is now a dependency of the core.
+- **A person's own custom CSS**, in Settings > Appearance ("My custom CSS"), for the account that is signed in. The same checks as the company's,
+  stored per person in `core.user_custom_css` (migration 0017, removed with the person), shown only to them, and applied last: the cascade is
+  now platform, module, company (`custom`), person (`person`). `PUT|DELETE /api/settings/appearance/my-css` take the person from the session,
+  never from the request. Safe mode (`?nocss=1`) switches off both. Only administrators can open Settings today, so only they have an editor
+  for now; the endpoint already works for any signed-in user.
 - The cascade has two new layers after Tailwind's, `module` and `custom`. A module's stylesheet is written inside `@layer module { ... }`, so
   what a company or a person customizes later beats it without `!important`.
 - Shared classes for what modules kept repeating: `card-link` (a card that lifts on hover and shows the focus ring), `rise` (an

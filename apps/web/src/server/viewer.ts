@@ -9,6 +9,8 @@ export interface Viewer {
   actor: string;
   /** What the top bar shows; null for the local operator. */
   email: string | null;
+  /** The signed-in user's id; null for the local operator, who is nobody in particular. */
+  userId: string | null;
   /** May change settings: an administrator, or the local operator while sign-in is off. */
   canWrite: boolean;
 }
@@ -19,8 +21,8 @@ export interface Viewer {
  */
 export async function resolveViewer(headers: Headers): Promise<Viewer | null> {
   const { pool, auth } = platform();
-  if ((await readSignInMode(pool)) === "disabled") return { subject: { kind: "operator" }, actor: "local operator", email: null, canWrite: true };
+  if ((await readSignInMode(pool)) === "disabled") return { subject: { kind: "operator" }, actor: "local operator", email: null, userId: null, canWrite: true };
   const session = await auth.api.getSession({ headers });
   if (session === null || !sessionIsUsable(session.user)) return null;
-  return { subject: { kind: "user", role: session.user.role }, actor: session.user.email, email: session.user.email, canWrite: session.user.role === "admin" };
+  return { subject: { kind: "user", role: session.user.role }, actor: session.user.email, email: session.user.email, userId: session.user.id, canWrite: session.user.role === "admin" };
 }

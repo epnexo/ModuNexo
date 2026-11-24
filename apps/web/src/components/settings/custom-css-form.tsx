@@ -10,7 +10,21 @@ const MAX_BYTES = 16 * 1024;
  * The company's custom CSS. The server checks the whole text and answers with the line of every problem, so what is shown
  * under the editor is exactly what it refused; nothing is stored until the whole stylesheet passes.
  */
-export function CustomCssForm({ initial, canWrite, safeMode }: { initial: string; canWrite: boolean; safeMode: boolean }) {
+export function CustomCssForm({
+  initial,
+  canWrite,
+  safeMode,
+  endpoint = "/api/settings/appearance/custom-css",
+  fieldId = "custom-css",
+}: {
+  initial: string;
+  canWrite: boolean;
+  safeMode: boolean;
+  /** Where it is saved: the company's by default, or the signed-in person's own. */
+  endpoint?: string;
+  /** Distinguishes the two editors when both are on the page. */
+  fieldId?: string;
+}) {
   const router = useRouter();
   const [text, setText] = useState(initial);
   const [pending, setPending] = useState(false);
@@ -21,7 +35,7 @@ export function CustomCssForm({ initial, canWrite, safeMode }: { initial: string
     setPending(true);
     setStatus(null);
     try {
-      const response = await fetch("/api/settings/appearance/custom-css", {
+      const response = await fetch(endpoint, {
         method,
         headers: { "content-type": "application/json" },
         ...(method === "PUT" ? { body: JSON.stringify({ css: text }) } : {}),
@@ -53,27 +67,27 @@ export function CustomCssForm({ initial, canWrite, safeMode }: { initial: string
         </p>
       ) : null}
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="custom-css" className="text-sm font-medium">
+        <label htmlFor={fieldId} className="text-sm font-medium">
           Stylesheet
         </label>
         <textarea
-          id="custom-css"
+          id={fieldId}
           value={text}
           disabled={!canWrite || pending}
           onChange={(event) => setText(event.target.value)}
           spellCheck={false}
           rows={12}
           className="min-h-48 w-full rounded-md border border-border-strong bg-surface p-3 font-mono text-sm outline-none transition-colors duration-150 focus-visible:border-accent disabled:opacity-60"
-          aria-describedby="custom-css-help custom-css-size"
+          aria-describedby={`${fieldId}-help ${fieldId}-size`}
           placeholder={'.card { border-color: var(--accent); }\n[data-module="ai-usage"] .au-card { padding: 1rem; }'}
         />
         <div className="flex flex-wrap justify-between gap-2 text-sm text-muted">
-          <p id="custom-css-help">
+          <p id={`${fieldId}-help`}>
             Set the platform&apos;s tokens on <code>:root</code>, or restyle a module&apos;s pages (<code>[data-module=&quot;id&quot;]</code>) or the platform&apos;s own
             classes (<code>.card</code>, <code>.badge</code>, <code>.btn</code>…) with colors, spacing, borders, text size and shadows. Nothing can be loaded, hidden or moved.
             If a page breaks, add <code>?nocss=1</code> to its address.
           </p>
-          <p id="custom-css-size" data-numeric className={bytes > MAX_BYTES ? "text-danger" : undefined}>
+          <p id={`${fieldId}-size`} data-numeric className={bytes > MAX_BYTES ? "text-danger" : undefined}>
             {bytes.toLocaleString("en-US")} / {MAX_BYTES.toLocaleString("en-US")} bytes
           </p>
         </div>
