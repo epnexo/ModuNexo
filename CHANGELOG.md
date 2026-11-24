@@ -7,6 +7,8 @@ checked against, and it changes only when the contract with modules changes. See
 
 ## [Unreleased]
 
+- **Uninstalling a module without purge cancels its queued jobs**, so a job queued long ago cannot run, stale, when the module is installed again. A running job is left to finish and other modules' jobs are not touched.
+
 - **The worker tells a running job to stop when it shuts down**: when the 30 s grace period ends and a job is still running, its `ctx.signal` aborts (reason: "the worker is shutting down") and what it throws after that is not counted as a failure; the lease expires and another worker retries it. A job that finishes within the grace period is recorded as before.
 
 - **A job payload with a lone surrogate is refused with a clear message** (`the payload cannot be stored: a string in it holds a lone surrogate...`) instead of a raw database error, in `enqueueJob` and `jobs enqueue`; a real emoji is kept.
