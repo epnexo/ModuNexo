@@ -25,7 +25,13 @@ export interface ToolDef {
   fields: Record<string, Field>;
   required?: readonly string[];
   /** The CLI argv for validated arguments. Absent for a tool that composes several commands itself. */
-  argv?: (args: Args) => string[];
+  argv?: (args: Args, context: ToolContext) => string[];
+}
+
+/** What the server knows about whoever is calling, for the tools that record it. */
+export interface ToolContext {
+  /** The name the caller's requests are recorded under (see `mcpActor`). */
+  actor: string;
 }
 
 export class ArgumentError extends Error {}
@@ -38,6 +44,7 @@ export const NEVER_OFFERED: readonly { label: string; reason: string }[] = [
   { label: "auth disable", reason: "It opens the platform to the local network without a sign-in." },
   { label: "modules install / uninstall / purge", reason: "Installing runs code with database access; purging drops data for good." },
   { label: "files delete", reason: "It removes stored files and their bytes irreversibly." },
+  { label: "actions approve / reject", reason: "A person decides what an agent proposes, in the portal or on the command line; no tool of the MCP can." },
 ];
 
 const JOB_STATUSES = ["queued", "running", "succeeded", "dead", "cancelled"] as const;
@@ -125,6 +132,23 @@ export const TOOLS: readonly ToolDef[] = [
   ),
   read("auth_status", "Say whether the platform asks for a sign-in (required) or serves local requests without one (disabled).", {}, () => ["auth", "status"]),
   read("llm_probe", "Ask the LLM provider a module is configured with for its models, to check the connection. Never prints the key.", { module: moduleId() }, (a) => ["llm", "probe", text(a, "module"), "--json"]),
+  read("actions_list", "List what the enabled modules let an agent do: each action with its risk (read, write or sensitive) and the inputs it takes. A read action is run with actions_run; a write or sensitive one is proposed with actions_propose and a person approves it.", {}, () => ["actions", "list", "--json", "--via", "mcp"]),
+  {
+    name: "actions_run",
+    description: "Run a READ action of a module and return its rows. An action that changes data is refused here: propose it with actions_propose.",
+    write: false,
+    fields: { action: { kind: "name", description: "The action, written <module>.<key>, as actions_list shows it." }, input: { kind: "object", description: "What the action asks for, a JSON object with the inputs actions_list names." } },
+    required: ["action"],
+    argv: (a, context) => ["actions", "run", text(a, "action"), ...optional(a, "input", "--input", (v: object) => JSON.stringify(v)), "--via", "mcp", "--actor", context.actor],
+  },
+  read("proposals_list", "List what was proposed and what became of it, newest first: who proposed it, whether a person approved or rejected it, and how it ended. The input is not shown.", { status: { kind: "enum", values: ["pending", "approved", "rejected", "expired"], description: "Only proposals in this state." } }, (a) => [
+    "actions",
+    "proposals",
+    ...optional(a, "status", "--status"),
+    "--json",
+    "--via",
+    "mcp",
+  ]),
   { name: "validate", description: "Check the platform in one call: module flags (pending upgrades, orphans, invalid versions), the sign-in mode and that an administrator exists. Returns a report with findings.", write: false, fields: {} },
 
   { name: "modules_enable", description: "Enable a disabled module. Does not rebuild the web app.", write: true, fields: { id: moduleId() }, required: ["id"], argv: (a) => ["modules", "enable", text(a, "id")] },
@@ -142,6 +166,14 @@ export const TOOLS: readonly ToolDef[] = [
     },
     required: ["module", "job"],
     argv: (a) => ["jobs", "enqueue", text(a, "module"), text(a, "job"), ...optional(a, "payload", "--payload", (v: object) => JSON.stringify(v)), ...optional(a, "delaySeconds", "--delay-seconds"), ...optional(a, "dedupeKey", "--dedupe-key")],
+  },
+  {
+    name: "actions_propose",
+    description: "Ask for an action that changes data (write or sensitive). Nothing runs: it waits for a person to approve it in the portal, and expires after seven days. You cannot approve it yourself.",
+    write: true,
+    fields: { action: { kind: "name", description: "The action, written <module>.<key>, as actions_list shows it." }, input: { kind: "object", description: "What the action asks for, a JSON object with the inputs actions_list names." } },
+    required: ["action"],
+    argv: (a, context) => ["actions", "propose", text(a, "action"), ...optional(a, "input", "--input", (v: object) => JSON.stringify(v)), "--via", "mcp", "--actor", context.actor],
   },
   { name: "jobs_retry", description: "Retry a dead job from its first attempt.", write: true, fields: { id: moduleId("The job id") }, required: ["id"], argv: (a) => ["jobs", "retry", text(a, "id")] },
   { name: "jobs_cancel", description: "Cancel a queued job.", write: true, fields: { id: moduleId("The job id") }, required: ["id"], argv: (a) => ["jobs", "cancel", text(a, "id")] },

@@ -88,7 +88,8 @@ export async function runActionsCommand(command: ActionsCommand, deps: { pool: p
   }
   if (command.action === "proposals") {
     const proposals = await service.list({ ...(command.status === undefined ? {} : { status: command.status }) });
-    if (command.json) return io.out(JSON.stringify(proposals.map((proposal) => view(proposal, true)), null, 2));
+    // What a person typed into a proposal is for the people who decide it: an agent reading the register is not shown it.
+    if (command.json) return io.out(JSON.stringify(proposals.map((proposal) => view(proposal, command.via !== "mcp")), null, 2));
     if (proposals.length === 0) return io.out("no proposals");
     table(["ID", "STATUS", "ACTION", "RISK", "BY", "EXPIRES"], proposals.map((proposal) => { const shown = view(proposal, false); return [String(shown.id), shown.status, shown.action, shown.risk, shown.proposedBy, when(proposal.expiresAt)]; }), io);
     return;

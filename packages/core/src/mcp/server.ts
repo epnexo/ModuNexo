@@ -8,6 +8,8 @@ export interface McpServerOptions {
   /** Offer and allow the write tools. Off unless the owner asked for it with MODUNEXO_MCP_WRITE=1. */
   allowWrite: boolean;
   version: string;
+  /** The name the caller's proposals are recorded under: its key's name over HTTP (`mcpActor`), `agent:mcp` for the local server. */
+  actor?: string;
   /** Called once per call to a known tool: `exit` is the CLI's exit code, or null when the call never ran. Never holds arguments. */
   audit?: (event: { tool: string; exit: number | null }) => void;
   /** Applied to CLI error text (stderr, a thrown message, a failed command's output) before the caller reads it. */
@@ -69,7 +71,7 @@ export function createMcpServer(options: McpServerOptions) {
 
   async function runTool(tool: ToolDef, args: Args): Promise<ToolResult> {
     if (tool.name === "validate") return validate();
-    const done = await runCommand(tool.argv!(args));
+    const done = await runCommand(tool.argv!(args, { actor: options.actor ?? "agent:mcp" }));
     audit(tool.name, done.code);
     if (done.code !== 0) return toolText(clip(`exit ${done.code}: ${done.err || redact(done.out) || "the command failed"}`), true);
     return toolText(clip(done.out || done.err || "done"));
