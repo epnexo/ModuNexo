@@ -167,7 +167,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             </h2>
             <p className="text-sm text-muted">Only for your account, on top of the company&apos;s. Nobody else sees it, and it follows the same checks.</p>
           </div>
-          <CustomCssForm initial={ownCss} canWrite endpoint="/api/settings/appearance/my-css" fieldId="my-css" safeMode={safeMode} />
+          <CustomCssForm initial={ownCss} canWrite endpoint="/api/settings/appearance/my-css" fieldId="my-css" saveLabel="Save my custom CSS" safeMode={safeMode} />
         </section>
       )}
 

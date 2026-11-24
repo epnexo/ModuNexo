@@ -16,6 +16,7 @@ export function CustomCssForm({
   safeMode,
   endpoint = "/api/settings/appearance/custom-css",
   fieldId = "custom-css",
+  saveLabel = "Save custom CSS",
 }: {
   initial: string;
   canWrite: boolean;
@@ -24,6 +25,8 @@ export function CustomCssForm({
   endpoint?: string;
   /** Distinguishes the two editors when both are on the page. */
   fieldId?: string;
+  /** The name of the save button, so the two editors on one page are told apart. */
+  saveLabel?: string;
 }) {
   const router = useRouter();
   const [text, setText] = useState(initial);
@@ -99,7 +102,7 @@ export function CustomCssForm({
           className="btn btn-primary inline-flex h-10 items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-70"
         >
           {pending ? <LoaderCircle aria-hidden className="size-4 animate-spin motion-reduce:animate-none" /> : null}
-          Save custom CSS
+          {saveLabel}
         </button>
         <button type="button" disabled={!canWrite || pending || initial === ""} onClick={() => void send("DELETE")} className="btn inline-flex h-10 items-center justify-center disabled:cursor-not-allowed disabled:opacity-70">
           Remove
