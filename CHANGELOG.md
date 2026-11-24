@@ -6,6 +6,8 @@ root, `packages/core` and `apps/web`); the SDK keeps its own (`SDK_VERSION`), th
 checked against, and it changes only when the contract with modules changes. See "Versioning" in the README.
 
 ## [Unreleased]
+
+## [0.10.1] - 2026-11-24
 ### Fixed
 
 - Upgrading or installing a module no longer leaves the previous build directory on disk until the next restart: a second pass clears the builds nobody serves
