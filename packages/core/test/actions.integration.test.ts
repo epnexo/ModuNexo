@@ -400,6 +400,14 @@ describe("the actions command", () => {
     assert.equal((await service.get(proposal.id))?.decisionNote, "no thanks");
   });
 
+  test("leaves out of the register what was typed into a proposal when it is an agent that reads it", async () => {
+    await service.propose({ moduleId, key: "add_note" }, { text: "FOR-THE-APPROVER-ONLY" }, agent());
+    assert.match((await go({ action: "proposals", json: true, via: "cli" })).join("\n"), /FOR-THE-APPROVER-ONLY/, "a person at the command line sees it");
+    const seenByAgent = (await go({ action: "proposals", json: true, via: "mcp" })).join("\n");
+    assert.doesNotMatch(seenByAgent, /FOR-THE-APPROVER-ONLY/);
+    assert.match(seenByAgent, new RegExp(`${moduleId}\\.add_note`), "the rest of the register is there");
+  });
+
   test("refuses a reference that is not <module>.<key> and an id that is not a number", async () => {
     await assert.rejects(go({ action: "run", args: ["nodots"] }), /<module>\.<key>/);
     await assert.rejects(go({ action: "approve", args: ["abc"] }), /not a proposal id/);
@@ -416,6 +424,8 @@ describe("the actions command", () => {
       [["actions"], /no actions command given/],
       [["actions", "nope"], /unknown actions command "nope"/],
       [["actions", "run", "m.k", "--via", "robot"], /--via must be cli or mcp/],
+      [["actions", "list", "--via", "robot"], /--via must be cli or mcp/],
+      [["actions", "proposals", "--via", "robot"], /--via must be cli or mcp/],
       [["actions", "run", "m.k", "--input", "{nope"], /--input must be a JSON object/],
       [["actions", "proposals", "--status", "maybe"], /--status must be pending, approved, rejected or expired/],
     ] as const) {
