@@ -790,7 +790,7 @@ npm run modunexo -- jobs retry <id>                                   # dead onl
   grace can make a worker recover a job that is still running and run it twice.
 - **Trust.** Module code is trusted, and `enqueueJob` takes any module id: a module can queue another module's declared
   job, set its payload or take its dedupe key. Install only packages whose source you trust.
-- **History.** Finished jobs stay 14 days and are pruned by the worker. `uninstall --purge` deletes the module's jobs.
+- **History.** Finished jobs stay 14 days and are pruned by the worker. `uninstall --purge` deletes the module's jobs; an uninstall that keeps the data cancels its queued jobs, so none runs stale when the module is installed again (a running one is left to finish).
 - **Shutdown.** On a stop signal the worker stops claiming, then waits up to 30 seconds for running jobs. If one is still running
   then, its `ctx.signal` aborts (the reason is an error saying the worker is shutting down), so a handler that honours the signal
   can stop cleanly. What a handler throws after that is not counted as the job failing: its lease is left to expire and another

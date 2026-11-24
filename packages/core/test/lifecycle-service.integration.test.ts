@@ -149,6 +149,31 @@ describe("LifecycleService: the full journey", () => {
     ]);
   });
 
+  test("uninstall without purge cancels the module's queued jobs, so they cannot run stale after a later install, and touches no other job", async (box, hooks) => {
+    const mine = withData(box.add());
+    const other = withData(box.add());
+    await serviceFor(box, hooks).install(mine.manifest.id);
+    await serviceFor(box, hooks).install(other.manifest.id);
+    const insert = (moduleId: string, name: string, status: string) =>
+      pool!.query(
+        `insert into core.jobs (module_id, name, status, max_attempts, timeout_seconds, enqueued_by, finished_at)
+         values ($1, $2, $3, 3, 60, 't', case when $3 = 'queued' then null else now() end)`,
+        [moduleId, name, status],
+      );
+    await insert(mine.manifest.id, "queued_a", "queued");
+    await insert(mine.manifest.id, "queued_b", "queued");
+    await insert(mine.manifest.id, "done", "succeeded");
+    await insert(other.manifest.id, "other_queued", "queued");
+    await serviceFor(box, hooks).uninstall(mine.manifest.id, "keep");
+    const statusOf = async (moduleId: string) => (await pool!.query("select name, status, finished_at is not null as finished from core.jobs where module_id = $1 order by name", [moduleId])).rows;
+    assert.deepEqual(await statusOf(mine.manifest.id), [
+      { name: "done", status: "succeeded", finished: true },
+      { name: "queued_a", status: "cancelled", finished: true },
+      { name: "queued_b", status: "cancelled", finished: true },
+    ]);
+    assert.deepEqual(await statusOf(other.manifest.id), [{ name: "other_queued", status: "queued", finished: false }]);
+  });
+
   test("hooks receive the module id, versions, the pool and, for uninstall, the mode", async (box, hooks) => {
     const mod = withData(box.add());
     const id = mod.manifest.id;

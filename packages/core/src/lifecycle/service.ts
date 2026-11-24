@@ -195,6 +195,9 @@ export class LifecycleService {
       }
       at("record");
       if (plan.to === "available") {
+        // A purge deletes the module's jobs with the rest of its data. An uninstall that keeps the data still ends the module's queued
+        // work: a job queued long ago must not run, stale, the day the module is installed again.
+        if (plan.mode !== "purge") await cancelQueuedJobs(client, plan.moduleId);
         await deleteState(client, plan.moduleId);
       } else {
         await upsertState(client, { id: plan.moduleId, state: plan.to, installedVersion: plan.version });
@@ -230,4 +233,11 @@ export class LifecycleService {
       log.warn("lifecycle.login_not_dropped", { moduleId: manifest.id, error });
     }
   }
+}
+
+/** Marks the module's queued jobs cancelled. A running one is left to finish, and a table that does not exist yet is not an error. */
+async function cancelQueuedJobs(client: pg.PoolClient, moduleId: string): Promise<void> {
+  const present = await client.query("select to_regclass('core.jobs') is not null as present");
+  if (!present.rows[0]?.present) return;
+  await client.query("update core.jobs set status = 'cancelled', finished_at = now() where module_id = $1 and status = 'queued'", [moduleId]);
 }
