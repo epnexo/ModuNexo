@@ -174,7 +174,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             name={selected.name}
             entries={selected.entries}
             override={appearance.modules[selected.id] ?? {}}
-            platform={{ accentHue: appearance.platform.accentHue, radius: appearance.platform.radius }}
+            platform={{ accentHue: appearance.platform.accentHue, radius: appearance.platform.radius, density: appearance.platform.density, motion: appearance.platform.motion }}
             canWrite={viewer.canWrite}
           />
           {selected.checks.length === 0 ? null : <ConnectionChecks key={`${selected.id}-checks`} moduleId={selected.id} name={selected.name} checks={selected.checks} canWrite={viewer.canWrite} />}

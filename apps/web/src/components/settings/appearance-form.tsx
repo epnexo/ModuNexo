@@ -8,11 +8,15 @@ export interface PlatformAppearance {
   theme: "system" | "light" | "dark";
   accentHue: number;
   radius: "sharp" | "default" | "round";
+  density: "compact" | "default" | "comfortable";
+  motion: "full" | "reduced";
 }
 
 const RADIUS_REM = { sharp: "0.25rem", default: "0.625rem", round: "1rem" } as const;
 const THEME_LABEL = { system: "Follow the system", light: "Light", dark: "Dark" } as const;
 const RADIUS_LABEL = { sharp: "Sharp", default: "Default", round: "Round" } as const;
+const DENSITY_LABEL = { compact: "Compact", default: "Default", comfortable: "Comfortable" } as const;
+const MOTION_LABEL = { full: "Full", reduced: "Reduced" } as const;
 
 export function AppearanceForm({ initial, canWrite }: { initial: PlatformAppearance; canWrite: boolean }) {
   const router = useRouter();
@@ -109,6 +113,46 @@ export function AppearanceForm({ initial, canWrite }: { initial: PlatformAppeara
           ))}
         </div>
       </fieldset>
+
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="appearance-density" className="text-sm font-medium">
+          Spacing
+        </label>
+        <select
+          id="appearance-density"
+          value={values.density}
+          disabled={!canWrite || pending}
+          onChange={(event) => setValues({ ...values, density: event.target.value as PlatformAppearance["density"] })}
+          className={`${field} max-w-xs`}
+        >
+          {(Object.keys(DENSITY_LABEL) as (keyof typeof DENSITY_LABEL)[]).map((density) => (
+            <option key={density} value={density}>
+              {DENSITY_LABEL[density]}
+            </option>
+          ))}
+        </select>
+        <p className="text-sm text-muted">How much room pages and cards take, in every module.</p>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="appearance-motion" className="text-sm font-medium">
+          Motion
+        </label>
+        <select
+          id="appearance-motion"
+          value={values.motion}
+          disabled={!canWrite || pending}
+          onChange={(event) => setValues({ ...values, motion: event.target.value as PlatformAppearance["motion"] })}
+          className={`${field} max-w-xs`}
+        >
+          {(Object.keys(MOTION_LABEL) as (keyof typeof MOTION_LABEL)[]).map((motion) => (
+            <option key={motion} value={motion}>
+              {MOTION_LABEL[motion]}
+            </option>
+          ))}
+        </select>
+        <p className="text-sm text-muted">Reduced makes every transition instant. Full never overrides a visitor who asked their system for less motion.</p>
+      </div>
 
       <div className="flex items-center gap-3">
         <button

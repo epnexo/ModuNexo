@@ -6,7 +6,9 @@ import {
   type Appearance,
   type AppearanceName,
   type AppearanceState,
+  MODULE_APPEARANCE_NAMES,
   type ModuleAppearance,
+  type ModuleAppearanceName,
   moduleKey,
   modulePrefix,
   platformKey,
@@ -44,7 +46,7 @@ export class AppearanceService {
   }
 
   /** Removes one of a module's overrides so that value follows the platform again. */
-  async unsetModule(moduleId: string, name: "accentHue" | "radius", actor: string): Promise<void> {
+  async unsetModule(moduleId: string, name: ModuleAppearanceName, actor: string): Promise<void> {
     this.knownModule(moduleId);
     await this.remove(moduleId, moduleKey(moduleId, name), actor);
   }
@@ -81,7 +83,7 @@ export class AppearanceService {
   async setModule(moduleId: string, values: ModuleAppearance, actor: string): Promise<void> {
     this.knownModule(moduleId);
     const writes: { key: string; value: string | number }[] = [];
-    for (const name of ["accentHue", "radius"] as const) {
+    for (const name of MODULE_APPEARANCE_NAMES) {
       if (values[name] === undefined) continue;
       const checked = validateAppearanceValue(name, values[name]);
       if (!checked.ok) throw new SettingValueError(checked.message);

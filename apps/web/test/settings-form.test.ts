@@ -69,16 +69,23 @@ describe("planModuleSettingsUpdate", () => {
   });
 });
 
+describe("moduleAppearanceBody density and motion", () => {
+  it("sends what was picked, and null for an empty choice so the module follows the platform again", () => {
+    assert.deepEqual(moduleAppearanceBody("", "", "compact", "reduced"), { accentHue: null, radius: null, density: "compact", motion: "reduced" });
+    assert.deepEqual(moduleAppearanceBody("", "", "", ""), { accentHue: null, radius: null, density: null, motion: null });
+  });
+});
+
 describe("moduleAppearanceBody", () => {
   it("sends what was typed as text, so the server decides whether it is a valid hue", () => {
-    assert.deepEqual(moduleAppearanceBody("abc", ""), { accentHue: "abc", radius: null });
-    assert.deepEqual(moduleAppearanceBody(" 140 ", "round"), { accentHue: "140", radius: "round" });
-    assert.deepEqual(moduleAppearanceBody("12.5", "sharp"), { accentHue: "12.5", radius: "sharp" });
+    assert.deepEqual(moduleAppearanceBody("abc", ""), { accentHue: "abc", radius: null, density: null, motion: null });
+    assert.deepEqual(moduleAppearanceBody(" 140 ", "round"), { accentHue: "140", radius: "round", density: null, motion: null });
+    assert.deepEqual(moduleAppearanceBody("12.5", "sharp"), { accentHue: "12.5", radius: "sharp", density: null, motion: null });
   });
 
   it("sends null, meaning follow the platform, only for a field that was left empty", () => {
-    assert.deepEqual(moduleAppearanceBody("", ""), { accentHue: null, radius: null });
-    assert.deepEqual(moduleAppearanceBody("   ", "default"), { accentHue: null, radius: "default" });
+    assert.deepEqual(moduleAppearanceBody("", ""), { accentHue: null, radius: null, density: null, motion: null });
+    assert.deepEqual(moduleAppearanceBody("   ", "default"), { accentHue: null, radius: "default", density: null, motion: null });
   });
 
   it("never turns text into NaN, which would be serialized as null and clear a stored override", () => {

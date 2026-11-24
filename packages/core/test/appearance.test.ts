@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { DEFAULT_APPEARANCE, appearanceCss, resolveAppearance, themeInitScript, validateAppearanceValue } from "../src/settings/appearance.ts";
+import { DEFAULT_APPEARANCE, DENSITY_REM, appearanceCss, resolveAppearance, themeInitScript, validateAppearanceValue } from "../src/settings/appearance.ts";
 
 const rows = (entries: Record<string, unknown>) => Object.entries(entries).map(([key, value]) => ({ key, value }));
 
@@ -20,7 +20,7 @@ describe("resolveAppearance", () => {
         "appearance.module.beta-two.accentHue": 300,
       }),
     );
-    assert.deepEqual(state.platform, { theme: "dark", accentHue: 140, radius: "round" });
+    assert.deepEqual(state.platform, { theme: "dark", accentHue: 140, radius: "round", density: "default", motion: "full" });
     assert.deepEqual(state.modules, { alpha: { accentHue: 20, radius: "sharp" }, "beta-two": { accentHue: 300 } });
   });
 
@@ -118,7 +118,7 @@ describe("appearanceCss", () => {
       "appearance.module.a1.radius": "round",
       "appearance.theme": "dark",
     });
-    assert.match(out, /^[a-zA-Z0-9\s.:;,\-()/[\]="%{}]*$/);
+    assert.match(out, /^[a-zA-Z0-9\s.:;,\-()/[\]="%{}@]*$/);
     assert.match(out, /oklch\(0\.45 0\.075 12\.35\)/);
   });
 });
@@ -135,5 +135,46 @@ describe("themeInitScript", () => {
     const script = themeInitScript("light", "modunexo.theme");
     assert.match(script, /localStorage\.getItem\("modunexo\.theme"\)/);
     assert.match(script, /catch/);
+  });
+});
+
+describe("density and motion", () => {
+  const css = (entries: Record<string, unknown> = {}) => appearanceCss(resolveAppearance(rows(entries)));
+
+  it("defaults to the shipped spacing and to full motion, and accepts only the named values", () => {
+    assert.equal(DEFAULT_APPEARANCE.density, "default");
+    assert.equal(DEFAULT_APPEARANCE.motion, "full");
+    for (const [name, value] of [["density", "compact"], ["density", "comfortable"], ["motion", "reduced"]] as const) assert.deepEqual(validateAppearanceValue(name, value), { ok: true, value });
+    for (const [name, value] of [["density", "huge"], ["density", 3], ["motion", "off"], ["motion", ""]] as const) {
+      const checked = validateAppearanceValue(name, value);
+      assert.equal(checked.ok, false, `${name}=${String(value)}`);
+      if (!checked.ok) assert.match(checked.message, new RegExp(`^appearance\\.${name}: must be one of`));
+    }
+  });
+
+  it("reads them for the platform and as module overrides, and ignores a value it no longer accepts", () => {
+    const state = resolveAppearance(rows({ "appearance.density": "compact", "appearance.motion": "reduced", "appearance.module.alpha.density": "comfortable", "appearance.module.alpha.motion": "full", "appearance.module.beta.density": "huge" }));
+    assert.equal(state.platform.density, "compact");
+    assert.equal(state.platform.motion, "reduced");
+    assert.deepEqual(state.modules, { alpha: { density: "comfortable", motion: "full" } });
+  });
+
+  it("writes the three spacing tokens of the density for the platform and, scoped, for a module", () => {
+    const platform = css({ "appearance.density": "compact" });
+    const compact = DENSITY_REM.compact;
+    assert.match(platform, new RegExp(`:root\\{[^}]*--layout-gap:${compact.layoutGap};--card-pad:${compact.cardPad};--card-gap:${compact.cardGap}`));
+    const mod = css({ "appearance.module.alpha.density": "comfortable" });
+    const comfortable = DENSITY_REM.comfortable;
+    assert.match(mod, new RegExp(`\\[data-module="alpha"\\]\\{[^}]*--layout-gap:${comfortable.layoutGap};--card-pad:${comfortable.cardPad};--card-gap:${comfortable.cardGap}`));
+    assert.doesNotMatch(css({ "appearance.module.alpha.accentHue": 20 }), /\[data-module="alpha"\]\{[^}]*--card-pad/, "a module that sets no density follows the platform");
+  });
+
+  it("turns motion off with the duration tokens, and turns it on only where the visitor did not ask for less", () => {
+    const reduced = css({ "appearance.motion": "reduced" });
+    assert.match(reduced, /:root\{[^}]*--duration-fast:1ms;--duration:1ms;--duration-slow:1ms;--stagger:0ms/);
+    assert.match(reduced, /\.page-enter\{animation:none\}/);
+    const full = css({ "appearance.module.alpha.motion": "full" });
+    assert.match(full, /@media \(prefers-reduced-motion: no-preference\)\{\[data-module="alpha"\]\{[^}]*--duration:180ms;[^}]*--stagger:60ms/);
+    assert.doesNotMatch(css(), /prefers-reduced-motion/, "the default writes nothing for motion");
   });
 });

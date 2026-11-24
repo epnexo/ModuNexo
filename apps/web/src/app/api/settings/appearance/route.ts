@@ -5,9 +5,9 @@ import { authorizeWrite, json, readJsonBody } from "../../../../server/settings-
 
 export const dynamic = "force-dynamic";
 
-const ALLOWED = ["theme", "accentHue", "radius"];
+const ALLOWED = ["theme", "accentHue", "radius", "density", "motion"];
 
-/** Changes the platform appearance: { theme?, accentHue?, radius? }. One refused value applies none. */
+/** Changes the platform appearance: { theme?, accentHue?, radius?, density?, motion? }. One refused value applies none. */
 export async function PUT(request: Request) {
   const authorized = await authorizeWrite(request);
   if (authorized instanceof Response) return authorized;
