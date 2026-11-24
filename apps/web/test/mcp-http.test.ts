@@ -6,7 +6,7 @@ import { createMcpHttpHandler, scrubCliText } from "../src/server/mcp-http.ts";
 
 const KEY = `mdnx_${"0123abcd"}_${"A".repeat(43)}`;
 
-function harness(options: { write?: boolean | Error; maxBytes?: number; maxQueue?: number; run?: (argv: string[]) => Promise<number> } = {}) {
+function harness(options: { write?: boolean | Error; name?: string; maxBytes?: number; maxQueue?: number; run?: (argv: string[]) => Promise<number> } = {}) {
   const ran: string[][] = [];
   const checked: string[] = [];
   const audited: unknown[] = [];
@@ -20,7 +20,7 @@ function harness(options: { write?: boolean | Error; maxBytes?: number; maxQueue
     identify: async (token) => {
       checked.push(token);
       if (options.write instanceof Error) throw options.write;
-      return { keyId: 42, write: options.write === true };
+      return { keyId: 42, write: options.write === true, ...(options.name === undefined ? {} : { name: options.name }) };
     },
     audit: (event) => audited.push(event),
     ...(options.maxQueue === undefined ? {} : { maxQueue: options.maxQueue }),
@@ -33,6 +33,30 @@ function harness(options: { write?: boolean | Error; maxBytes?: number; maxQueue
 
 const rpc = (method: string, params?: unknown, id: number | string = 1) => ({ jsonrpc: "2.0", id, method, ...(params === undefined ? {} : { params }) });
 const toolNames = async (response: Response) => ((await response.json()) as { result: { tools: { name: string }[] } }).result.tools.map((t) => t.name);
+
+describe("MCP over HTTP: who a proposal is recorded as", () => {
+  const propose = (h: ReturnType<typeof harness>) => h.post(rpc("tools/call", { name: "actions_propose", arguments: { action: "documents.create_template", input: { name: "NDA" } } }));
+
+  it("records it under the name of the key that asked, on the agent's channel", async () => {
+    const h = harness({ write: true, name: "Laptop de Ada" });
+    await propose(h);
+    assert.deepEqual(h.ran[0], ["actions", "propose", "documents.create_template", "--input", '{"name":"NDA"}', "--via", "mcp", "--actor", "mcp:Laptop de Ada"]);
+  });
+
+  it("has a name for a key whose name could not be read, and never takes one from the request", async () => {
+    const h = harness({ write: true });
+    await h.post({ ...rpc("tools/call", { name: "actions_propose", arguments: { action: "documents.create_template", actor: "admin@example.test" } }) });
+    assert.equal(h.ran.length, 0, "an argument that names someone else is refused before anything runs");
+    await propose(h);
+    assert.deepEqual(h.ran[0]!.slice(-2), ["--actor", "mcp:unnamed"]);
+  });
+
+  it("does not offer proposing to a key that cannot write, nor any tool that decides", async () => {
+    const read = await toolNames(await harness({ write: false }).post(rpc("tools/list")));
+    assert.ok(read.includes("actions_list") && !read.includes("actions_propose"));
+    for (const name of await toolNames(await harness({ write: true }).post(rpc("tools/list")))) assert.doesNotMatch(name, /approv|reject|decid/i);
+  });
+});
 
 describe("MCP over HTTP: one JSON-RPC message in, one JSON reply out", () => {
   it("answers initialize and never lets the reply be cached", async () => {

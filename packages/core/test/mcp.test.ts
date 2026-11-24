@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { PassThrough } from "node:stream";
 import { describe, it } from "node:test";
+import { mcpActor } from "../src/mcp/identity.ts";
 import { type McpRun, createMcpServer } from "../src/mcp/server.ts";
+import { NEVER_OFFERED } from "../src/mcp/tools.ts";
 import { serveStdio } from "../src/mcp/stdio.ts";
 
 interface Call {
@@ -335,5 +337,101 @@ describe("mcp redact", () => {
     const { run } = fakeRun({ "modules list --json": { code: 1, err: "plain failure" } });
     const reply = await ask(createMcpServer({ run, allowWrite: false, version: "1" }), call("modules_list"));
     assert.match(reply.result.content[0].text, /plain failure/);
+  });
+});
+
+describe("mcp actions", () => {
+  const tools = async (allowWrite: boolean) => {
+    const server = createMcpServer({ run: fakeRun().run, allowWrite, version: "1" });
+    return (await ask(server, request("tools/list"))).result.tools as { name: string; annotations: { readOnlyHint: boolean; destructiveHint: boolean }; inputSchema: { properties: Record<string, unknown>; required: string[] } }[];
+  };
+
+  it("offers the catalog, the reading of an action and the register to a read-only key, and proposing only to one that may write", async () => {
+    const read = (await tools(false)).map((tool) => tool.name);
+    for (const name of ["actions_list", "actions_run", "proposals_list"]) assert.ok(read.includes(name), `${name} is offered`);
+    assert.ok(!read.includes("actions_propose"), "proposing changes the register, so it waits for the write switch");
+    assert.ok((await tools(true)).some((tool) => tool.name === "actions_propose"));
+  });
+
+  it("has no tool that approves, rejects or decides anything, whatever the key may do", async () => {
+    for (const name of (await tools(true)).map((tool) => tool.name)) assert.doesNotMatch(name, /approv|reject|decid|expire|settle/i, name);
+    assert.ok(NEVER_OFFERED.some((entry) => /approve/i.test(entry.label) && /person/i.test(entry.reason)), "the settings screen says so too");
+  });
+
+  it("hints what each tool does from its kind: proposing is not read-only and destroys nothing, running only reads", async () => {
+    const all = await tools(true);
+    const hint = (name: string) => all.find((tool) => tool.name === name)!.annotations;
+    assert.deepEqual([hint("actions_run").readOnlyHint, hint("actions_list").readOnlyHint, hint("proposals_list").readOnlyHint], [true, true, true]);
+    assert.deepEqual([hint("actions_propose").readOnlyHint, hint("actions_propose").destructiveHint], [false, false]);
+  });
+
+  it("asks for the action by name and the input as an object, and nothing else", async () => {
+    const all = await tools(true);
+    const run = all.find((tool) => tool.name === "actions_run")!;
+    assert.deepEqual(Object.keys(run.inputSchema.properties).sort(), ["action", "input"]);
+    assert.deepEqual(run.inputSchema.required, ["action"]);
+  });
+
+  it("builds the command of each tool as an agent's: on the agent channel, with the caller's identity, and only the input it was given", async () => {
+    const { run, calls } = fakeRun();
+    const server = createMcpServer({ run, allowWrite: true, version: "1", actor: "mcp:laptop-de-ada" });
+    await ask(server, call("actions_list"));
+    await ask(server, call("actions_run", { action: "documents.find_templates", input: { q: "nda" } }));
+    await ask(server, call("actions_run", { action: "documents.count_templates" }));
+    await ask(server, call("actions_propose", { action: "documents.create_template", input: { name: "NDA" } }));
+    await ask(server, call("proposals_list", { status: "pending" }));
+    await ask(server, call("proposals_list"));
+    assert.deepEqual(
+      calls.map((c) => c.argv),
+      [
+        ["actions", "list", "--json", "--via", "mcp"],
+        ["actions", "run", "documents.find_templates", "--input", '{"q":"nda"}', "--via", "mcp", "--actor", "mcp:laptop-de-ada"],
+        ["actions", "run", "documents.count_templates", "--via", "mcp", "--actor", "mcp:laptop-de-ada"],
+        ["actions", "propose", "documents.create_template", "--input", '{"name":"NDA"}', "--via", "mcp", "--actor", "mcp:laptop-de-ada"],
+        ["actions", "proposals", "--status", "pending", "--json", "--via", "mcp"],
+        ["actions", "proposals", "--json", "--via", "mcp"],
+      ],
+    );
+  });
+
+  it("uses agent:mcp for the local server, which has no key to name", async () => {
+    const { run, calls } = fakeRun();
+    const server = createMcpServer({ run, allowWrite: true, version: "1" });
+    await ask(server, call("actions_propose", { action: "documents.create_template" }));
+    assert.deepEqual(calls[0]!.argv.slice(-2), ["--actor", "agent:mcp"]);
+  });
+
+  it("refuses proposing while writes are off without touching the CLI, and a bad name or a non-object input before running anything", async () => {
+    const { run, calls } = fakeRun();
+    const off = createMcpServer({ run, allowWrite: false, version: "1" });
+    assert.equal((await ask(off, call("actions_propose", { action: "documents.create_template" }))).result.isError, true);
+    const on = createMcpServer({ run, allowWrite: true, version: "1" });
+    for (const args of [{ action: "--via" }, { action: "a b" }, { action: "documents.x", input: "text" }, { action: "documents.x", input: [1] }, { input: {} }, { action: "documents.x", extra: 1 }]) {
+      assert.equal((await ask(on, call("actions_run", args))).result.isError, true, JSON.stringify(args));
+    }
+    assert.equal(calls.length, 0);
+  });
+
+  it("answers a refusal of the CLI as a tool error that says why, without the proposal's input", async () => {
+    const { run } = fakeRun({ "actions run documents.create_template --via mcp --actor agent:mcp": { code: 3, err: 'refused: "create_template" changes data: an agent proposes it and a person approves it' } });
+    const reply = await ask(createMcpServer({ run, allowWrite: true, version: "1" }), call("actions_run", { action: "documents.create_template" }));
+    assert.equal(reply.result.isError, true);
+    assert.match(reply.result.content[0].text, /exit 3: refused: .*a person approves it/);
+  });
+});
+
+describe("mcpActor", () => {
+  it("names the caller after its key, in a form that can never be read as a command option", () => {
+    assert.equal(mcpActor("Laptop de Ada"), "mcp:Laptop de Ada");
+    assert.equal(mcpActor("-rm -rf"), "mcp:-rm -rf");
+    assert.ok(mcpActor("--via").startsWith("mcp:"));
+  });
+
+  it("drops what is not printable, cuts a long name, and has a name for a key with none", () => {
+    assert.equal(mcpActor("a\nb\u0000c\td"), "mcp:a_b_c_d");
+    assert.equal(mcpActor("x".repeat(200)).length, 4 + 80);
+    assert.equal(mcpActor(""), "mcp:unnamed");
+    assert.equal(mcpActor(undefined), "mcp:unnamed");
+    assert.equal(mcpActor("  \n "), "mcp:unnamed");
   });
 });

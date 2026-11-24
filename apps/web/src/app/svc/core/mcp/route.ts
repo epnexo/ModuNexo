@@ -26,7 +26,10 @@ const handler = createMcpHttpHandler({
     // `scopedRoute` just checked this key; if it no longer verifies (revoked in between) nothing may run.
     if (!read.ok) throw new Error("the key no longer verifies");
     const write = await tokens.verify(token, { moduleId: "core", scope: "mcp.write" });
-    return { keyId: read.tokenId, write: write.ok };
+    // The key's name is what its proposals are recorded under; a key whose name cannot be read still runs, as "unnamed".
+    const named = await platform().pool.query("select name from core.service_tokens where id = $1", [read.tokenId]).catch(() => undefined);
+    const name = (named?.rows[0] as { name?: string } | undefined)?.name;
+    return { keyId: read.tokenId, write: write.ok, ...(name === undefined ? {} : { name }) };
   },
   // One JSON line per call on the server log: key id, tool, exit code. No argument value, no key, no CLI text.
   audit: (event) => log.info("mcp.call", { ...event }),

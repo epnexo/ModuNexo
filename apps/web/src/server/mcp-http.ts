@@ -1,3 +1,4 @@
+import { mcpActor } from "@modunexo/core/mcp-identity";
 import { type McpRun, createMcpServer } from "@modunexo/core/mcp-server";
 
 /** A JSON-RPC message is a few hundred bytes; a megabyte is far beyond any real tool call. */
@@ -27,7 +28,7 @@ export interface McpHttpDeps {
   run: McpRun;
   version: string;
   /** Who is calling and may they write? Reads the key behind this bearer token. May throw when the platform cannot tell. */
-  identify: (token: string) => Promise<{ keyId: number; write: boolean }>;
+  identify: (token: string) => Promise<{ keyId: number; write: boolean; /** The key's name, which its proposals are recorded under. */ name?: string }>;
   /** One event per tool call. It carries no argument value and no key. */
   audit?: (event: McpAuditEvent) => void;
   maxBytes?: number;
@@ -146,7 +147,7 @@ export function createMcpHttpHandler(deps: McpHttpDeps): (request: Request) => P
 
     const token = BEARER.exec(request.headers.get("authorization") ?? "")?.[1];
     if (token === undefined) return rpcError(401, -32600, "a key is required");
-    let caller: { keyId: number; write: boolean };
+    let caller: { keyId: number; write: boolean; name?: string };
     try {
       caller = await deps.identify(token);
     } catch {
@@ -157,6 +158,7 @@ export function createMcpHttpHandler(deps: McpHttpDeps): (request: Request) => P
     const server = createMcpServer({
       run,
       allowWrite: caller.write,
+      actor: mcpActor(caller.name),
       version: deps.version,
       redact: scrubCliText,
       audit: (event) => deps.audit?.({ caller: caller.keyId, ...event }),
