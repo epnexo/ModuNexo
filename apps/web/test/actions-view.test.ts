@@ -47,4 +47,10 @@ describe("buildActionsView", () => {
     assert.ok(long.waiting[0]!.input.length <= 400 && long.waiting[0]!.input.endsWith("…"));
     assert.equal(buildActionsView({ catalog, proposals: [proposal(1, { input: {} })], can: () => true }).waiting[0]!.input, "(nothing)");
   });
+
+  it("shows what a proposal would do only to a person who may decide it", () => {
+    const view = buildActionsView({ catalog, proposals: [proposal(1), proposal(2, { actionKey: "s", risk: "sensitive", input: { n: 9 } })], can: (permission) => permission === "m.write" });
+    assert.deepEqual(view.waiting.map((row) => [row.id, row.canDecide, row.input.startsWith("(hidden")]), [[2, false, true], [1, true, false]]);
+    assert.doesNotMatch(JSON.stringify(view), /"n: 9"|n: 9/);
+  });
 });

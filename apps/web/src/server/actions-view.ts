@@ -82,6 +82,7 @@ export function buildActionsView(input: { catalog: CatalogEntry[]; proposals: Pr
   const row = (proposal: Proposal): ProposalRow => {
     const ref = `${proposal.moduleId}.${proposal.actionKey}`;
     const known = byRef.get(ref);
+    const allowed = known !== undefined && input.can(known.action.permission);
     return {
       id: proposal.id,
       ref,
@@ -91,8 +92,8 @@ export function buildActionsView(input: { catalog: CatalogEntry[]; proposals: Pr
       proposedVia: proposal.proposedVia,
       proposedAt: proposal.proposedAt.toISOString(),
       expiresAt: proposal.expiresAt.toISOString(),
-      input: inputText(proposal.input),
-      canDecide: known !== undefined && input.can(known.action.permission),
+      input: allowed ? inputText(proposal.input) : "(hidden: you need the action's permission to see what it would do)",
+      canDecide: allowed,
       state: stateOf(proposal),
       decidedBy: proposal.decidedBy,
       decisionNote: proposal.decisionNote,
