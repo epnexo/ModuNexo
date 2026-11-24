@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
+import { servedCustomCss } from "../src/settings/appearance-service.ts";
 import { CUSTOM_CSS_TOKENS, MAX_CUSTOM_CSS_BYTES, sanitizeCustomCss } from "../src/settings/custom-css.ts";
 
 const accepted = (input: string): string => {
@@ -127,6 +128,40 @@ describe("sanitizeCustomCss: what it refuses, and where", () => {
 
   it("refuses an unreasonable number of rules", () => {
     refused(Array.from({ length: 301 }, () => ".card{padding:1rem}").join("\n"), /more than 300 rules/);
+  });
+});
+
+describe("sanitizeCustomCss: what it costs", () => {
+  const time = (run: () => void): number => {
+    const start = performance.now();
+    run();
+    return performance.now() - start;
+  };
+
+  it("decides a hostile selector of any length in linear time, because it runs on every page read", () => {
+    for (const hostile of [`.card ${"a".repeat(5000)}!`, `.card ${"a".repeat(5000)}`, `.card ${".a".repeat(2000)}!`, `.card ${"a1".repeat(2500)}:`]) {
+      const ms = time(() => sanitizeCustomCss(`${hostile}{padding:1rem}`));
+      assert.ok(ms < 100, `${ms.toFixed(1)} ms for a selector of ${hostile.length} characters`);
+    }
+  });
+
+  it("checks the largest stylesheet it allows in a fraction of a frame's budget", () => {
+    const rules = Array.from({ length: 300 }, (_, i) => `.card:hover .part-${i}{padding:1rem;border-color:var(--accent);box-shadow:0 1px 2px oklch(0 0 0 / 0.2)}`).join("\n");
+    const largest = rules.slice(0, MAX_CUSTOM_CSS_BYTES - 200).replace(/\}[^}]*$/, "}");
+    assert.ok(Buffer.byteLength(largest) > 15_000, "close to the 16 KB cap");
+    const ms = time(() => assert.ok(sanitizeCustomCss(largest).ok));
+    assert.ok(ms < 150, `${ms.toFixed(1)} ms`);
+
+    // What a page pays: the same text again is answered from memory, not parsed again.
+    assert.equal(servedCustomCss(largest), servedCustomCss(largest));
+    assert.ok(time(() => servedCustomCss(largest)) < 2, "the second read parses nothing");
+    assert.equal(servedCustomCss("@import 'x';"), "", "and a stylesheet that does not pass is never served");
+  });
+
+  it("takes the platform's own duration tokens where a time goes", () => {
+    assert.match(accepted(".card{transition-duration:var(--duration)}"), /transition-duration:var\(--duration\)/);
+    assert.match(accepted(".card{transition-duration:var(--duration-fast), 200ms}"), /var\(--duration-fast\), 200ms/);
+    refused(".card{transition-duration:var(--evil)}", /"--evil" is not one of the platform's tokens/);
   });
 });
 

@@ -35,8 +35,11 @@ const CORE_CLASSES: ReadonlySet<string> = new Set([
 ]);
 
 const PSEUDO_CLASSES = "hover|focus|focus-visible|focus-within|active|disabled|first-child|last-child";
-const PIECE = String.raw`(?:\.[a-z][a-z0-9_-]*|[a-z][a-z0-9]*|\[data-[a-z][a-z0-9-]*(?:="[a-zA-Z0-9_-]*")?\]|:(?:${PSEUDO_CLASSES})|::(?:before|after))`;
-const COMPOUND = new RegExp(`^${PIECE}+$`);
+// A tag can only open a compound and every other piece starts with its own character (`.`, `[` or `:`), so there is exactly one way to
+// split a selector into pieces and the match is linear. A pattern that let a run of letters be split in many ways would backtrack
+// exponentially, and this runs on every page read.
+const PIECE = String.raw`(?:\.[a-z][a-z0-9_-]*|\[data-[a-z][a-z0-9-]*(?:="[a-zA-Z0-9_-]*")?\]|:(?:${PSEUDO_CLASSES})|::(?:before|after))`;
+const COMPOUND = new RegExp(`^(?=.)(?:[a-z][a-z0-9]*)?${PIECE}*$`);
 const ROOT_SELECTOR = /^:root(?:\[data-theme="(?:light|dark)"\])?$/;
 const MODULE_SCOPE = /^\[data-module="[a-z][a-z0-9]*(?:-[a-z0-9]+)*"\]$/;
 
@@ -100,6 +103,7 @@ const color = (prop: string): Check => (value) => (/\b(?:transparent|inherit|ini
 
 const duration = (prop: string): Check => (value) => {
   for (const part of value.split(",")) {
+    if (/^\s*var\(\s*--duration(?:-fast|-slow)?\s*\)\s*$/.test(part)) continue;
     const match = /^\s*(\d*\.?\d+)(ms|s)\s*$/.exec(part);
     if (match === null) return `${prop}: "${value}" must be a time in ms or s, at most 2s`;
     const ms = Number(match[1]) * (match[2] === "s" ? 1000 : 1);
@@ -156,7 +160,7 @@ function checkValue(prop: string, value: string): string | null {
 }
 
 function checkSelector(selector: string): string | null {
-  const text = selector.trim().replace(/\s*>\s*/g, " > ").replace(/\s+/g, " ");
+  const text = spaced(selector);
   if (/data-guard/i.test(text)) return `selector "${selector.trim()}" reaches a guard element, which no customization may change`;
   const refuse = `selector "${selector.trim()}" is not allowed: use the root, [data-module="<id>"] or a documented platform class`;
   if (ROOT_SELECTOR.test(text)) return null;
@@ -168,8 +172,15 @@ function checkSelector(selector: string): string | null {
   return rest.every((part) => part !== ">" && COMPOUND.test(part)) ? null : refuse;
 }
 
+/** A selector with one space around each child combinator and one between everything else. Split on the combinator rather than matched around it, which is linear. */
+const spaced = (selector: string): string =>
+  selector
+    .split(">")
+    .map((part) => part.trim().replace(/\s+/g, " "))
+    .join(" > ");
+
 /** The selectors of a rule written the way the checks read them, joined the way they are served. */
-const normalized = (selector: string): string => selector.trim().replace(/\s*>\s*/g, ">").replace(/\s+/g, " ");
+const normalized = (selector: string): string => spaced(selector).replace(/ > /g, ">");
 
 function serializeDeclaration(decl: Declaration): string {
   return `${decl.prop}:${decl.value.replace(/\s+/g, " ").trim()};`;
