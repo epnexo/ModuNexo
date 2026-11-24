@@ -17,6 +17,8 @@ export interface McpActionsView {
   changes: number;
   /** Proposals an agent left that no person has decided yet. */
   waiting: number;
+  /** The catalog or the register could not be read, so the screen says so instead of claiming nothing is offered. */
+  unavailable: boolean;
 }
 
 /** What Settings > MCP says about the actions the enabled modules offer an agent. Pure: the page and the tests feed it. */
@@ -38,5 +40,24 @@ export function buildMcpActionsView(input: { catalog: CatalogEntry[]; waiting: n
   }
   const all = modules.flatMap((module) => module.actions);
   const reads = all.filter((action) => action.risk === "read").length;
-  return { modules, total: all.length, reads, changes: all.length - reads, waiting: input.waiting };
+  return { modules, total: all.length, reads, changes: all.length - reads, waiting: input.waiting, unavailable: false };
+}
+
+/** What Settings needs of the actions service, so a test can stand in for the database. */
+export interface McpActionsSource {
+  catalog: () => Promise<CatalogEntry[]>;
+  list: (options: { status: "pending"; limit: number }) => Promise<{ expiresAt: Date }[]>;
+}
+
+/**
+ * Reads the catalog and the waiting proposals for Settings > MCP. A failure of either leaves the page standing, with the block
+ * saying it could not read them: one broken query must not take the whole Settings screen down, and nothing of the error is shown.
+ */
+export async function loadMcpActions(source: McpActionsSource, now: Date): Promise<McpActionsView> {
+  try {
+    const [catalog, pending] = await Promise.all([source.catalog(), source.list({ status: "pending", limit: 100 })]);
+    return buildMcpActionsView({ catalog, waiting: pending.filter((proposal) => proposal.expiresAt.getTime() > now.getTime()).length });
+  } catch {
+    return { ...buildMcpActionsView({ catalog: [], waiting: 0 }), unavailable: true };
+  }
 }
