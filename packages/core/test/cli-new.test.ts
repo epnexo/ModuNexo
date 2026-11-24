@@ -46,6 +46,16 @@ describe("modules new", () => {
     assert.match(result.out, /modules pack/, "says what to do next");
   });
 
+  it("shows how to offer an agent a read action, and the manifest it writes still validates", async () => {
+    const result = await cli("modules", "new", "field-notes", "--dir", work);
+    assert.equal(result.code, 0, result.err);
+    const manifest = readFileSync(join(work, "field-notes", "manifest.ts"), "utf8");
+    assert.match(manifest, /actions: \[\{ key: "count_items"/);
+    assert.match(manifest, /risk: "read"/);
+    assert.match(manifest, /permission: "field_notes\.use"/);
+    assert.match(manifest, /Something that changes data is declared the same way/, "points at what a change needs");
+  });
+
   it("writes the SDK range as plain text, so the packed manifest.json and the manifest.ts that runs later cannot differ", async () => {
     await cli("modules", "new", "field-notes", "--dir", work);
     const manifest = readFileSync(join(work, "field-notes", "manifest.ts"), "utf8");
