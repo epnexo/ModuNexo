@@ -69,7 +69,7 @@ export function LoginForm() {
         />
       </div>
       {failure === null ? null : (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" data-guard className="text-sm text-danger">
           {MESSAGES[failure]}
         </p>
       )}

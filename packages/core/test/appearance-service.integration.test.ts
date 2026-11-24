@@ -50,7 +50,7 @@ describe("AppearanceService", () => {
 
   test("stores the platform appearance, validated, with who changed it", async () => {
     await service.setPlatform({ theme: "dark", accentHue: 140 }, "ada@example.test");
-    assert.deepEqual((await service.get()).platform, { theme: "dark", accentHue: 140, radius: "default" });
+    assert.deepEqual((await service.get()).platform, { ...DEFAULT_APPEARANCE, theme: "dark", accentHue: 140 });
     assert.deepEqual(await events(), [
       { scope: "platform", key: "appearance.theme", action: "set", actor: "ada@example.test" },
       { scope: "platform", key: "appearance.accentHue", action: "set", actor: "ada@example.test" },

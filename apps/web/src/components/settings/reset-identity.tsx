@@ -51,7 +51,7 @@ export function ResetIdentity({ name }: { name: string }) {
             <button type="button" disabled={pending} onClick={() => { setOpen(false); setTyped(""); setError(null); }} className="h-10 rounded-md border border-border-strong px-4 text-sm hover:bg-panel-hover">
               Cancel
             </button>
-            <p role="alert" className="text-sm text-danger">{error}</p>
+            <p role="alert" data-guard className="text-sm text-danger">{error}</p>
           </div>
         </form>
       ) : (

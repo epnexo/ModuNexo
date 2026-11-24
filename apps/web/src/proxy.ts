@@ -19,6 +19,7 @@ import { resolvePublicUrl } from "./server/launch.ts";
 import { servedOverHttpsWithoutPublicUrl } from "./server/public-url-warning.ts";
 import { platform } from "./server/platform.ts";
 import { createRefusalLog } from "./server/refusal-log.ts";
+import { safeModeChange, safeModeRedirect } from "./server/safe-mode.ts";
 import { sessionIsUsable } from "./server/session.ts";
 
 const refusalLog = createRefusalLog((line) => log.warn("access.refused", { detail: line }));
@@ -59,6 +60,9 @@ export async function proxy(request: NextRequest) {
 
     const decision = decideAccess({ pathname, mode, hasSession, local, hostOk, permitted, publicRoute });
     if (decision.action === "allow") {
+      // The way out of a custom stylesheet that broke a page: only after the gate let the request in.
+      const safeMode = request.method === "GET" ? safeModeChange(request.nextUrl.searchParams) : null;
+      if (safeMode !== null) return safeModeRedirect(request, safeMode);
       // Behind a proxy the owner trusts, the sign-in limiter should count the client the proxy saw, not the proxy.
       // Only the header the limiter reads is rewritten; the locality rule above used the original request.
       const forwarded = request.headers.get("x-forwarded-for");

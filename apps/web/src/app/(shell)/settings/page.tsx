@@ -2,12 +2,15 @@ import { readTrustedProxyState, resolveMasterKey } from "@modunexo/core/auth";
 import { ApiAddressService, normalizeApiAddress, resolveApiAddress } from "@modunexo/core/api-access";
 import { AppearanceService, SettingsService, readBrand } from "@modunexo/core/settings";
 import { TokenService } from "@modunexo/core/tokens";
+import { cookies } from "next/headers";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Tabs } from "../../../components/ui/tabs";
 import { BrandForm } from "../../../components/settings/brand-form";
 import { AppearanceForm } from "../../../components/settings/appearance-form";
+import { CustomCssForm } from "../../../components/settings/custom-css-form";
+import { SAFE_MODE_COOKIE } from "../../../server/safe-mode";
 import { ResetIdentity } from "../../../components/settings/reset-identity";
 import { McpPanel } from "../../../components/settings/mcp-panel";
 import { McpRemote } from "../../../components/settings/mcp-remote";
@@ -76,7 +79,10 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const { pool } = platform();
   const registry = webRegistry();
   const enabled = await enabledModuleIds(pool);
-  const appearance = await new AppearanceService(pool, registry).get();
+  const appearanceService = new AppearanceService(pool, registry);
+  const appearance = await appearanceService.get();
+  const customCss = await appearanceService.customCss();
+  const safeMode = (await cookies()).get(SAFE_MODE_COOKIE)?.value === "1";
   const brand = await readBrand(pool);
   const trustedProxies = await readTrustedProxyState(pool);
   const settings = new SettingsService(pool, registry, { masterKey: resolveMasterKey() });
@@ -140,6 +146,16 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           Appearance
         </h2>
         <AppearanceForm initial={appearance.platform} canWrite={viewer.canWrite} />
+      </section>
+
+      <section aria-labelledby="custom-css-heading" className="flex flex-col gap-5 rounded-lg border border-border bg-surface p-5">
+        <div className="flex flex-col gap-1">
+          <h2 id="custom-css-heading" className="text-lg font-semibold tracking-tight">
+            Custom CSS
+          </h2>
+          <p className="text-sm text-muted">Advanced. Your own touches on top of the platform&apos;s look, for every user. It is checked line by line before it is saved.</p>
+        </div>
+        <CustomCssForm initial={customCss} canWrite={viewer.canWrite} safeMode={safeMode} />
       </section>
 
           </>) },

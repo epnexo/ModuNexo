@@ -15,12 +15,34 @@ import {
   resolveAppearance,
   validateAppearanceValue,
 } from "./appearance.ts";
+import { sanitizeCustomCss } from "./custom-css.ts";
 import { SettingValueError, SettingsError } from "./service.ts";
 
 /** The stored appearance, for a reader that only needs to render it (no registry, no writes). */
 export async function readAppearance(pool: pg.Pool): Promise<AppearanceState> {
   const { rows } = await pool.query("select key, value from core.platform_settings where starts_with(key, 'appearance.')");
   return resolveAppearance(rows as { key: string; value: unknown }[]);
+}
+
+/** The `core.platform_settings` key of the company's custom CSS: the text its administrator wrote. Not under `appearance.`, so the appearance reads never carry it. */
+export const CUSTOM_CSS_KEY = "custom-css.company";
+
+/** The text of the company's custom CSS as it was written, or "" when there is none. */
+export async function readCustomCss(pool: pg.Pool): Promise<string> {
+  const { rows } = await pool.query("select value from core.platform_settings where key = $1", [CUSTOM_CSS_KEY]);
+  const value = (rows[0] as { value: unknown } | undefined)?.value;
+  return typeof value === "string" ? value : "";
+}
+
+/**
+ * What a page may serve: the stylesheet parsed and written again from the rules that pass, or nothing. It is checked on
+ * every read, not only on write, so a value put in the database by hand never reaches a page as text.
+ */
+export async function readServedCustomCss(pool: pg.Pool): Promise<string> {
+  const text = await readCustomCss(pool);
+  if (text.trim() === "") return "";
+  const checked = sanitizeCustomCss(text);
+  return checked.ok ? checked.css : "";
 }
 
 /** Reads and writes the platform appearance and the per-module overrides, in `core.platform_settings`. */
@@ -38,6 +60,27 @@ export class AppearanceService {
 
   async get(): Promise<AppearanceState> {
     return readAppearance(this.pool);
+  }
+
+  /** The company's custom CSS as it was written, for the editor. */
+  async customCss(): Promise<string> {
+    return readCustomCss(this.pool);
+  }
+
+  /**
+   * Checks the stylesheet and stores it as written. Anything refused stores nothing and says every line it is on; blank text
+   * clears it. Only the fact that it changed is logged, never the text.
+   */
+  async setCustomCss(text: string, actor: string): Promise<void> {
+    if (text.trim() === "") return this.clearCustomCss(actor);
+    const checked = sanitizeCustomCss(text);
+    if (!checked.ok) throw new SettingValueError(checked.errors.map((error) => `line ${error.line}: ${error.message}`).join("\n"));
+    await this.write("platform", [{ key: CUSTOM_CSS_KEY, value: text }], actor);
+  }
+
+  /** Removes the company's custom CSS. Nothing stored means nothing happens and nothing is logged. */
+  async clearCustomCss(actor: string): Promise<void> {
+    await this.remove("platform", CUSTOM_CSS_KEY, actor);
   }
 
   /** Removes one stored platform value so its default applies again. Nothing stored means nothing is logged. */

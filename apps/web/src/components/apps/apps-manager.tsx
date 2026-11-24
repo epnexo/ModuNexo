@@ -327,7 +327,7 @@ export function AppsManager({ initial, installed, modules, groups }: { initial: 
         </div>
 
         {problems !== null ? (
-          <div role="alert" className="flex flex-col gap-2 rounded-md bg-danger-soft px-3 py-2 text-danger-soft-foreground">
+          <div role="alert" data-guard className="flex flex-col gap-2 rounded-md bg-danger-soft px-3 py-2 text-danger-soft-foreground">
             <p className="font-medium">This package was refused:</p>
             <ul className="list-disc pl-5 text-sm">
               {problems.map((problem) => (
@@ -443,7 +443,7 @@ export function AppsManager({ initial, installed, modules, groups }: { initial: 
               <dd>{staged.review.scripts.length === 0 ? "None (scripts are never run)" : `${staged.review.scripts.join(", ")} (never run)`}</dd>
             </dl>
             {action.blocked !== null ? (
-              <p role="alert" className="rounded-md bg-warning-soft px-3 py-2 text-sm">
+              <p role="alert" data-guard className="rounded-md bg-warning-soft px-3 py-2 text-sm">
                 {action.blocked}
               </p>
             ) : null}
