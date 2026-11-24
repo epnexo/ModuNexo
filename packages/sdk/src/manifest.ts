@@ -223,6 +223,11 @@ export interface DashboardAlert {
   permission?: string;
   /** Like a stat's `sql`, but the first column must be a whole number: the count of what needs attention. At 0 the alert is not shown. */
   sql: string;
+  /**
+   * Optional: the key of one of this module's `actions`. The alert then offers a button that opens that action's form on the Actions
+   * screen, for a person who may run it. Nothing runs by itself, and the action keeps its own permission and approval rules.
+   */
+  action?: string;
 }
 
 /**
@@ -360,7 +365,7 @@ const KNOWN_DASHBOARD_FIELDS = new Set(["stats", "alerts", "charts"]);
 const KNOWN_STAT_FIELDS = new Set(["key", "label", "href", "permission", "sql"]);
 const KNOWN_CHART_FIELDS = KNOWN_STAT_FIELDS;
 const MAX_DASHBOARD_CHARTS = 4;
-const KNOWN_ALERT_FIELDS = new Set(["key", "label", "href", "severity", "permission", "sql"]);
+const KNOWN_ALERT_FIELDS = new Set(["key", "label", "href", "severity", "permission", "sql", "action"]);
 const DASHBOARD_SEVERITIES = ["info", "warning", "error"];
 const MAX_DASHBOARD_ENTRIES = 12;
 const MAX_DASHBOARD_LABEL_CHARS = 80;
@@ -803,7 +808,7 @@ function chartHrefOk(href: string): boolean {
   return /^[^?{}]*\?[^{}]*\{label\}[^{}]*$/.test(href) && DASHBOARD_HREF.test(href.replace(CHART_LABEL_PLACEHOLDER, "x"));
 }
 
-function checkDashboardEntries(list: unknown, name: string, known: Set<string>, withSeverity: boolean, permissionKeys: Set<string>, problems: string[], labelInHref = false): void {
+function checkDashboardEntries(list: unknown, name: string, known: Set<string>, withSeverity: boolean, permissionKeys: Set<string>, actionKeys: Set<string>, problems: string[], labelInHref = false): void {
   eachItem(list, name, problems, (entry, where, index) => {
     checkUnknownFields(entry, known, where, problems);
     if (typeof entry.key !== "string" || !KEY.test(entry.key)) {
@@ -822,6 +827,9 @@ function checkDashboardEntries(list: unknown, name: string, known: Set<string>, 
     }
     if (withSeverity && !DASHBOARD_SEVERITIES.includes(entry.severity as string)) {
       problems.push(`${where}.severity must be one of ${DASHBOARD_SEVERITIES.join(", ")}`);
+    }
+    if (withSeverity && entry.action !== undefined && !(typeof entry.action === "string" && actionKeys.has(entry.action))) {
+      problems.push(`${where}.action must be the key of an action declared in "actions"`);
     }
     if (typeof entry.sql !== "string" || entry.sql.trim() === "") {
       problems.push(`${where}.sql must be a non-empty string`);
@@ -916,7 +924,7 @@ function checkActions(actions: unknown, permissionKeys: Set<string>, jobNames: S
   if (Array.isArray(actions) && actions.length > MAX_ACTIONS) problems.push(`actions must have at most ${MAX_ACTIONS} entries`);
 }
 
-function checkDashboard(dashboard: unknown, permissionKeys: Set<string>, problems: string[]): void {
+function checkDashboard(dashboard: unknown, permissionKeys: Set<string>, actionKeys: Set<string>, problems: string[]): void {
   if (!isPlainObject(dashboard)) {
     problems.push("dashboard must be an object");
     return;
@@ -925,10 +933,10 @@ function checkDashboard(dashboard: unknown, permissionKeys: Set<string>, problem
   const stats = dashboard.stats;
   const alerts = dashboard.alerts;
   const charts = dashboard.charts;
-  if (stats !== undefined) checkDashboardEntries(stats, "dashboard.stats", KNOWN_STAT_FIELDS, false, permissionKeys, problems);
-  if (alerts !== undefined) checkDashboardEntries(alerts, "dashboard.alerts", KNOWN_ALERT_FIELDS, true, permissionKeys, problems);
+  if (stats !== undefined) checkDashboardEntries(stats, "dashboard.stats", KNOWN_STAT_FIELDS, false, permissionKeys, actionKeys, problems);
+  if (alerts !== undefined) checkDashboardEntries(alerts, "dashboard.alerts", KNOWN_ALERT_FIELDS, true, permissionKeys, actionKeys, problems);
   if (charts !== undefined) {
-    checkDashboardEntries(charts, "dashboard.charts", KNOWN_CHART_FIELDS, false, permissionKeys, problems, true);
+    checkDashboardEntries(charts, "dashboard.charts", KNOWN_CHART_FIELDS, false, permissionKeys, actionKeys, problems, true);
     if (Array.isArray(charts) && charts.length > MAX_DASHBOARD_CHARTS) problems.push(`dashboard.charts must have at most ${MAX_DASHBOARD_CHARTS} entries`);
   }
   const empty = (list: unknown) => list === undefined || (Array.isArray(list) && list.length === 0);
@@ -1096,7 +1104,8 @@ export function validateManifest(input: unknown, options: ValidateOptions = {}):
   if (raw.jobs !== undefined) checkJobs(raw.jobs, problems);
   if (raw.events !== undefined) checkEvents(raw.events, permissionKeys, problems);
   if (raw.files !== undefined) checkFiles(raw.files, permissionKeys, problems);
-  if (raw.dashboard !== undefined) checkDashboard(raw.dashboard, permissionKeys, problems);
+  const actionKeys = new Set(Array.isArray(raw.actions) ? raw.actions.flatMap((action) => (isPlainObject(action) && typeof action.key === "string" ? [action.key] : [])) : []);
+  if (raw.dashboard !== undefined) checkDashboard(raw.dashboard, permissionKeys, actionKeys, problems);
   if (raw.actions !== undefined) {
     const declaredJobs = new Set(Array.isArray(raw.jobs) ? raw.jobs.flatMap((job) => (isPlainObject(job) && typeof job.name === "string" ? [job.name] : [])) : []);
     checkActions(raw.actions, permissionKeys, declaredJobs, problems);

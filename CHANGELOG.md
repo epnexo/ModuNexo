@@ -7,6 +7,8 @@ checked against, and it changes only when the contract with modules changes. See
 
 ## [Unreleased]
 
+- **A dashboard alert can offer an action** (SDK 0.1.6, additive): `dashboard.alerts[].action` names one of the module's own `actions`, and an administrator who may run it sees an **Act** button that opens its form on the Actions screen. The manifest is refused if the key is not declared. Nothing runs by itself, and the action keeps its permission and approval rules.
+
 - **Uninstalling a module without purge cancels its queued jobs**, so a job queued long ago cannot run, stale, when the module is installed again. A running job is left to finish and other modules' jobs are not touched.
 
 - **The worker tells a running job to stop when it shuts down**: when the 30 s grace period ends and a job is still running, its `ctx.signal` aborts (reason: "the worker is shutting down") and what it throws after that is not counted as a failure; the lease expires and another worker retries it. A job that finishes within the grace period is recorded as before.

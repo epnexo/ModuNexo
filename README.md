@@ -1023,6 +1023,9 @@ dashboard: {
 - A **stat** is a figure: the first column of the first row of its `sql`, a whole number or a text of at most 60 characters.
 - An **alert** counts something that needs attention: its `sql` returns a whole number, and the alert is shown only while it
   is above 0. `severity` is `info`, `warning` or `error`; the most serious come first.
+  An alert may also carry `action: "<key>"`, the key of one of the module's own `actions` (see "Actions for agents", SDK 0.1.6): an
+  administrator then sees an **Act** button that opens that action's form on the Actions screen. Nothing runs by itself, and the
+  action keeps its own permission and approval rules; a viewer who may not run it sees the alert without the button.
 - A **chart** is a bar chart (`charts: [{ key, label, href, permission, sql }]`, at most 4): each row of its `sql` is a bar, the
   first column its label (text, cut at 24 characters) and the second its value (a number of zero or more); the first 31 rows
   are used, in the order returned, so write the `order by`. Give the two columns different names (`as label`, `as value`). The

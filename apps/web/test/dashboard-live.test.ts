@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import type { AlertRow } from "../src/server/dashboard.ts";
 import { AUTO_REFRESH_MS, MODULE_SEARCH_FROM, barAnimation, barReadout, filterAlerts, filterModules, foldKey, stepBar, severityCounts, shouldAutoRefresh, updatedLabel, valueAnimation } from "../src/server/dashboard-live.ts";
 
-const alert = (key: string, severity: AlertRow["severity"], source = "Platform"): AlertRow => ({ key, severity, source, label: key, detail: "", href: "/", when: null });
+const alert = (key: string, severity: AlertRow["severity"], source = "Platform"): AlertRow => ({ key, severity, source, label: key, detail: "", href: "/", when: null, act: null });
 const ALERTS = [alert("a", "error"), alert("b", "warning", "Inbox"), alert("c", "warning"), alert("d", "info")];
 
 describe("filterAlerts", () => {

@@ -45,6 +45,8 @@ export interface StatCard extends CardBase {
 export interface AlertCard extends CardBase {
   severity: DashboardSeverity;
   count: number | null;
+  /** `<module>.<key>` of the action this alert offers, when the module declares it and the viewer may run it; else null. */
+  action?: string | null;
 }
 
 export interface ChartPoint {
@@ -198,7 +200,11 @@ export class DashboardService {
         alerts.push(
           this.#first(id, alert.key, alert.sql).then((value) => {
             const count = toCount(value);
-            return count === 0 ? null : { ...base(alert), severity: alert.severity, count };
+            if (count === 0) return null;
+            // The button is offered only for an action the module really declares and this viewer may run; the alert itself stays.
+            const declared = alert.action === undefined ? undefined : manifest.actions?.find((candidate) => candidate.key === alert.action);
+            const action = declared !== undefined && canSee(id, declared.permission) ? `${id}.${declared.key}` : null;
+            return { ...base(alert), severity: alert.severity, count, action };
           }),
         );
       }

@@ -52,6 +52,11 @@ export function AlertsList({ alerts }: { alerts: AlertRow[] }) {
             </span>
             {alert.detail === "" ? null : <span className="tabular-nums text-muted">{alert.detail}</span>}
             {alert.when === null ? null : <span className="text-muted">{alert.when}</span>}
+            {alert.act === null ? null : (
+              <Link className="btn btn-sm" href={alert.act.href}>
+                Act
+              </Link>
+            )}
             <Link className={link} href={alert.href}>
               Open
             </Link>

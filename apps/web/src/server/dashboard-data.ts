@@ -28,5 +28,5 @@ export async function loadDashboard(viewer: Viewer): Promise<DashboardView> {
   // A module has no icon of its own: its first menu entry that names one stands for it.
   const icons = new Map<string, string | undefined>();
   for (const entry of navigation) if (!icons.has(entry.moduleId) || icons.get(entry.moduleId) === undefined) icons.set(entry.moduleId, entry.icon);
-  return buildDashboard({ cards, overview, icons, workerLine: due === null ? null : workerLine(due), now: new Date() });
+  return buildDashboard({ cards, overview, icons, workerLine: due === null ? null : workerLine(due), canAct: viewer.canWrite, now: new Date() });
 }

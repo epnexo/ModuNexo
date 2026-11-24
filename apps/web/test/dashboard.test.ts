@@ -22,6 +22,17 @@ describe("buildDashboard: the headline", () => {
 });
 
 describe("buildDashboard: alerts", () => {
+  it("gives an alert a way to act only when the module offers an action, and the viewer can open the Actions screen", () => {
+    const withAction = alertCard({ key: "stale", action: "contacts.archive_stale" });
+    const cardsWith = cards({ alerts: [withAction, alertCard({ key: "plain", action: null }), alertCard({ key: "old" })] });
+    const admin = buildDashboard({ cards: cardsWith, overview: null, canAct: true, now: NOW }).alerts;
+    assert.deepEqual(admin.map((alert) => [alert.key.split(":")[1], alert.act]), [["stale", { ref: "contacts.archive_stale", href: "/actions#run-contacts.archive_stale" }], ["plain", null], ["old", null]]);
+    const other = buildDashboard({ cards: cardsWith, overview: null, canAct: false, now: NOW }).alerts;
+    assert.deepEqual(other.map((alert) => alert.act), [null, null, null], "the Actions screen is for administrators, so no button that leads to a refusal");
+    const unspecified = buildDashboard({ cards: cardsWith, overview: null, now: NOW }).alerts;
+    assert.deepEqual(unspecified.map((alert) => alert.act), [null, null, null], "no button unless it was asked for");
+  });
+
   it("puts the most serious first, and the platform's before a module's of the same severity", () => {
     const view = buildDashboard({
       cards: cards({ alerts: [alertCard({ key: "w", severity: "warning" }), alertCard({ key: "e", severity: "error", label: "Module error" }), alertCard({ key: "i", severity: "info" })] }),

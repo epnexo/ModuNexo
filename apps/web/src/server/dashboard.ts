@@ -14,6 +14,8 @@ export interface DashboardInput {
   workerLine?: string | null;
   /** The icon name each module's first menu entry uses, by module id; a module not listed gets the generic one. */
   icons?: ReadonlyMap<string, string | undefined>;
+  /** The viewer may open the Actions screen, so an alert that offers an action gets its button. */
+  canAct?: boolean;
   now: Date;
 }
 
@@ -27,6 +29,8 @@ export interface AlertRow {
   detail: string;
   href: string;
   when: string | null;
+  /** The button of an alert that offers an action: what to run and where its form is. Null when there is none for this viewer. */
+  act: { ref: string; href: string } | null;
 }
 
 export interface StatRow {
@@ -69,7 +73,7 @@ export interface DashboardView {
 const plural = (count: number, one: string, many: string) => (count === 1 ? one : many);
 
 /** Everything the dashboard page draws, as plain strings, so the page holds no rules of its own. */
-export function buildDashboard({ cards, overview, workerLine = null, icons, now }: DashboardInput): DashboardView {
+export function buildDashboard({ cards, overview, workerLine = null, icons, canAct = false, now }: DashboardInput): DashboardView {
   const platformAlerts: AlertRow[] = (overview?.alerts ?? []).map((alert) => ({
     key: `${alert.kind}:${alert.moduleId}:${alert.label}`,
     severity: alert.severity,
@@ -78,9 +82,10 @@ export function buildDashboard({ cards, overview, workerLine = null, icons, now 
     detail: "",
     href: alert.href,
     when: alert.at === null ? null : formatAgo(alert.at, now),
+    act: null,
   }));
   if (overview !== null && workerLine !== null && workerLine !== "") {
-    platformAlerts.push({ key: "worker", severity: "warning", source: "Platform", label: workerLine, detail: "", href: "/status", when: null });
+    platformAlerts.push({ key: "worker", severity: "warning", source: "Platform", label: workerLine, detail: "", href: "/status", when: null, act: null });
   }
   const moduleAlerts: AlertRow[] = cards.alerts.map((alert) => ({
     key: `${alert.moduleId}:${alert.key}`,
@@ -90,6 +95,8 @@ export function buildDashboard({ cards, overview, workerLine = null, icons, now 
     detail: alert.count === null ? NOT_AVAILABLE : String(alert.count),
     href: alert.href,
     when: null,
+    // The screen is for administrators: a person who could not open it is not shown a button that leads to a refusal.
+    act: canAct && typeof alert.action === "string" ? { ref: alert.action, href: `/actions#run-${alert.action}` } : null,
   }));
   // A stable sort keeps the platform's alerts ahead of a module's of the same severity.
   const alerts = [...platformAlerts, ...moduleAlerts].sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]);
