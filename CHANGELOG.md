@@ -6,6 +6,8 @@ root, `packages/core` and `apps/web`); the SDK keeps its own (`SDK_VERSION`), th
 checked against, and it changes only when the contract with modules changes. See "Versioning" in the README.
 
 ## [Unreleased]
+
+## [0.10.0] - 2026-11-24
 ### Added
 
 - Appearance has two more settings, for the platform and for each module: **spacing** (`density`: compact, default or comfortable;
