@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { runCli } from "@modunexo/core/cli";
-import { DEFAULT_DIST, pidFilePath, prepareServerStart, writeDistTsconfig, writeLiveDist } from "@modunexo/core/install";
+import { DEFAULT_DIST, pidFilePath, prepareServerStart, scheduleStrayCleanup, writeDistTsconfig, writeLiveDist } from "@modunexo/core/install";
 import { log } from "@modunexo/core/log";
 import { DATA_DIR } from "@modunexo/core/packages";
 import { LaunchError, LaunchUsageError, exitCodeFor, planLaunch } from "../src/server/launch.ts";
@@ -55,6 +55,9 @@ async function main(): Promise<number> {
     // server so the new build is served. It restarts on that request only, never because the server died.
     // Every start, the first and each restart, serves the build the record of the live directory names: a module change
     // builds beside the serving build and only then records its directory, so the restart is the switch.
+    // The build a switch replaced is protected for a minute, so it is cleared by a second pass after that minute; each (re)start
+    // replaces the pending pass.
+    let pendingCleanup: { cancel: () => void } | undefined;
     return superviseChild({
       args: serveArgs,
       cwd: webRoot,
@@ -62,6 +65,8 @@ async function main(): Promise<number> {
       signals: process,
       prepare: () => {
         const start = prepareServerStart(webRoot, DATA_DIR);
+        pendingCleanup?.cancel();
+        pendingCleanup = scheduleStrayCleanup(webRoot, DATA_DIR, { onRemoved: (removed) => log.info("web.build_directories_cleared", { removed, after: "switch" }) });
         if (start.warning !== null) log.warn("web.dist_record_ignored", { reason: start.warning });
         if (start.removed.length > 0) log.info("web.build_directories_cleared", { removed: start.removed });
         return { MODUNEXO_DIST_DIR: start.dist };

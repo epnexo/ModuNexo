@@ -1,4 +1,4 @@
-import { readLiveDist, removeStrayDists, distRecordPath } from "./dist.ts";
+import { SWITCH_GRACE_MS, readLiveDist, removeStrayDists, distRecordPath } from "./dist.ts";
 import { readJournal } from "./journal.ts";
 
 export interface ServerStart {
@@ -21,4 +21,46 @@ export function prepareServerStart(webRoot: string, dataDir: string): ServerStar
   const building = readJournal(dataDir)?.dist;
   const removed = removeStrayDists(webRoot, building === undefined ? [live.name] : [live.name, building], { recordPath: distRecordPath(dataDir) });
   return { dist: live.name, warning: live.reason === null ? null : `${live.reason}; serving ${live.name} instead`, removed };
+}
+
+/** A margin after the grace, so the cleanup never fires on the very instant the grace ends. */
+const CLEANUP_MARGIN_MS = 5_000;
+
+export interface CleanupOptions {
+  /** The grace a switch protects the build it replaced for; defaults to the one `removeStrayDists` uses. */
+  graceMs?: number;
+  /** Called with what was removed, when something was. */
+  onRemoved?: (removed: string[]) => void;
+  /** Injectable for tests; the real ones by default. The timer is never allowed to keep the process alive. */
+  setTimer?: (fn: () => void, ms: number) => { unref?: () => unknown } | unknown;
+  clearTimer?: (handle: unknown) => void;
+}
+
+/**
+ * Clears the builds nobody serves once the grace of a switch is over. `prepareServerStart` clears them when the server starts, but
+ * that is the moment of the switch itself, when the build that was replaced is protected for a minute because the server it replaced
+ * may still be draining; so an upgrade left its predecessor on disk (about 190 MB) until the next restart or build. This runs once,
+ * after that minute, and asks the same question again with what is true then: the build named by the record is kept, and so is any
+ * build a run is making right now (its journal names it). A switch in the meantime starts a new grace and removes nothing; the restart
+ * that comes with it schedules the next one, so the supervisor cancels the pending one first.
+ */
+export function scheduleStrayCleanup(webRoot: string, dataDir: string, options: CleanupOptions = {}): { cancel: () => void } {
+  const setTimer = options.setTimer ?? setTimeout;
+  const clearTimer = options.clearTimer ?? ((handle: unknown) => clearTimeout(handle as NodeJS.Timeout));
+  const grace = options.graceMs ?? SWITCH_GRACE_MS;
+  const handle = setTimer(() => {
+    const live = readLiveDist(webRoot, dataDir);
+    const building = readJournal(dataDir)?.dist;
+    const removed = removeStrayDists(webRoot, building === undefined ? [live.name] : [live.name, building], { recordPath: distRecordPath(dataDir), graceMs: grace });
+    if (removed.length > 0) options.onRemoved?.(removed);
+  }, grace + CLEANUP_MARGIN_MS);
+  (handle as { unref?: () => unknown })?.unref?.();
+  let cancelled = false;
+  return {
+    cancel: () => {
+      if (cancelled) return;
+      cancelled = true;
+      clearTimer(handle);
+    },
+  };
 }
