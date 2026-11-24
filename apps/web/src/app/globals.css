@@ -1,6 +1,10 @@
 @import "tailwindcss";
 @import "../styles/tokens.css";
 
+/* After Tailwind's own layers: a module's stylesheet (layer `module`) keeps winning over components and utilities, and what a company or
+   a person customizes (layer `custom`) wins over a module. Unlayered rules below still beat all of them. */
+@layer module, custom;
+
 /* Maps the design tokens to Tailwind's color, radius and font utilities. Nothing here holds a value of its own. */
 @theme inline {
   --color-background: var(--background);

@@ -52,7 +52,7 @@ export function planModuleSettingsUpdate(declarations: readonly SettingDeclarati
  * field means "follow the platform" and is the only thing sent as null. Converting the hue to a number here would
  * turn unparseable text into NaN, which JSON writes as null, and silently clear the override that was stored.
  */
-export function moduleAppearanceBody(hue: string, radius: string): { accentHue: string | null; radius: string | null } {
+export function moduleAppearanceBody(hue: string, radius: string, density = "", motion = ""): { accentHue: string | null; radius: string | null; density: string | null; motion: string | null } {
   const typed = hue.trim();
-  return { accentHue: typed === "" ? null : typed, radius: radius === "" ? null : radius };
+  return { accentHue: typed === "" ? null : typed, radius: radius === "" ? null : radius, density: density === "" ? null : density, motion: motion === "" ? null : motion };
 }

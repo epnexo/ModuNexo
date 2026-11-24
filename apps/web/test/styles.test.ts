@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { DEFAULT_APPEARANCE, appearanceCss } from "@modunexo/core/settings";
+import { DEFAULT_APPEARANCE, DENSITY_REM, appearanceCss } from "@modunexo/core/settings";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
@@ -210,5 +210,29 @@ describe("generic classes shared by modules", () => {
 
   it("staggers the entrance from one variable a module sets per item", () => {
     assert.match(rule(".rise"), /animation-delay:\s*calc\(var\(--rise-i,\s*0\)/);
+  });
+});
+
+describe("cascade layers", () => {
+  it("orders module, then custom, after Tailwind's own layers, so a module keeps beating utilities and only customization beats a module", () => {
+    const tailwind = globals.indexOf('@import "tailwindcss"');
+    const order = globals.search(/^@layer module,\s*custom;/m);
+    assert.ok(tailwind >= 0 && order > tailwind, "the order is declared once, after the Tailwind import");
+    assert.equal([...globals.matchAll(/^@layer [a-z, ]+;/gm)].length, 1, "one order statement in the file");
+  });
+});
+
+describe("density", () => {
+  it("keeps the default density equal to the spacing tokens tokens.css ships", () => {
+    const value = (name: string) => tokens.match(new RegExp(`${name}\\s*:\\s*([^;]+);`))?.[1]?.trim();
+    assert.equal(value("--layout-gap"), DENSITY_REM.default.layoutGap);
+    assert.equal(value("--card-pad"), DENSITY_REM.default.cardPad);
+    assert.equal(value("--card-gap"), DENSITY_REM.default.cardGap);
+  });
+
+  it("keeps the motion tokens equal to the ones tokens.css ships", () => {
+    for (const [name, ms] of [["--duration-fast", "120ms"], ["--duration", "180ms"], ["--duration-slow", "260ms"], ["--stagger", "60ms"]] as const) {
+      assert.equal(tokens.match(new RegExp(`^\\s*${name}\\s*:\\s*([^;]+);`, "m"))?.[1]?.trim(), ms, name);
+    }
   });
 });

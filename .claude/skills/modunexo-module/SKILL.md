@@ -122,7 +122,8 @@ Do these three checks first; they are what keeps a new module on the platform's 
     pairs) and `notice-success`. Use them in markup; never rebuild them.
   - The style is closed: a module's stylesheet never names a platform class and never redefines one. Whatever it adds is
     its own, in `modules/<id>/web/<id>.css`, with every selector under its root class or prefix and colour values only in
-    custom properties. `tests/styles` in the modules repository fails otherwise.
+    custom properties, the whole file inside one `@layer module { ... }` block (the platform orders that layer after its components and
+    utilities and before what a company or a person customizes). `tests/styles` in the modules repository fails otherwise.
   - Spacing and shape are variables with the platform's value as default: `--layout-gap`, `--card-pad`, `--card-gap`,
     `--card-radius`, `--card-line-opacity` (`0` removes the accent line). To differ, set them once on the module's page
     root; do not restyle the global classes.

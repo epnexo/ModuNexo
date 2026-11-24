@@ -5,6 +5,8 @@ import {
   APPEARANCE_NAMES,
   type AppearanceName,
   DEFAULT_APPEARANCE,
+  MODULE_APPEARANCE_NAMES,
+  type ModuleAppearanceName,
   moduleKey,
   platformKey,
 } from "../settings/appearance.ts";
@@ -72,7 +74,7 @@ function settingRow(entry: SettingEntry): Row {
 async function moduleAppearanceRows(appearance: AppearanceService, moduleId: string): Promise<Row[]> {
   const state = await appearance.get();
   const own = state.modules[moduleId] ?? {};
-  return (["accentHue", "radius"] as const).map((name) => {
+  return MODULE_APPEARANCE_NAMES.map((name) => {
     const overridden = own[name] !== undefined;
     return {
       key: platformKey(name),
@@ -117,7 +119,7 @@ function appearanceName(key: string): AppearanceName {
   return name as AppearanceName;
 }
 
-function moduleAppearanceName(key: string): "accentHue" | "radius" {
+function moduleAppearanceName(key: string): ModuleAppearanceName {
   const name = appearanceName(key);
   if (name === "theme") throw new SettingValueError("theme: cannot be overridden per module; it is the platform's, and each visitor can switch it");
   return name;
@@ -179,7 +181,7 @@ export async function runSettingsCommand(command: SettingsCommand, { pool, regis
     }
     if (command.action === "get") {
       const state = await appearance.get();
-      const own = command.module === undefined ? undefined : state.modules[command.module]?.[name as "accentHue" | "radius"];
+      const own = command.module === undefined ? undefined : state.modules[command.module]?.[name as ModuleAppearanceName];
       io.out(String(own ?? state.platform[name] ?? DEFAULT_APPEARANCE[name]));
       return;
     }
@@ -236,4 +238,4 @@ export async function runSettingsCommand(command: SettingsCommand, { pool, regis
 
 // Kept for the CLI's own help text and tests: the keys the command line accepts for appearance.
 export const APPEARANCE_KEYS = APPEARANCE_NAMES.map(platformKey);
-export const MODULE_APPEARANCE_KEYS = (["accentHue", "radius"] as const).map((name) => moduleKey("<id>", name));
+export const MODULE_APPEARANCE_KEYS = MODULE_APPEARANCE_NAMES.map((name) => moduleKey("<id>", name));

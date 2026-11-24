@@ -24,6 +24,8 @@ export interface SettingView {
 export interface ModuleOverride {
   accentHue?: number;
   radius?: "sharp" | "default" | "round";
+  density?: "compact" | "default" | "comfortable";
+  motion?: "full" | "reduced";
 }
 
 interface Props {
@@ -31,7 +33,7 @@ interface Props {
   name: string;
   entries: SettingView[];
   override: ModuleOverride;
-  platform: { accentHue: number; radius: "sharp" | "default" | "round" };
+  platform: { accentHue: number; radius: "sharp" | "default" | "round"; density: "compact" | "default" | "comfortable"; motion: "full" | "reduced" };
   canWrite: boolean;
 }
 
@@ -66,6 +68,8 @@ export function ModuleSettings({ moduleId, name, entries: initialEntries, overri
 
   const [hue, setHue] = useState<string>(override.accentHue === undefined ? "" : String(override.accentHue));
   const [radius, setRadius] = useState<string>(override.radius ?? "");
+  const [density, setDensity] = useState<string>(override.density ?? "");
+  const [motion, setMotion] = useState<string>(override.motion ?? "");
   const [appearancePending, setAppearancePending] = useState(false);
   const [appearanceStatus, setAppearanceStatus] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
 
@@ -108,7 +112,7 @@ export function ModuleSettings({ moduleId, name, entries: initialEntries, overri
     setAppearancePending(true);
     setAppearanceStatus(null);
     try {
-      const { ok, data } = await put(`/api/settings/modules/${encodeURIComponent(moduleId)}/appearance`, moduleAppearanceBody(hue, radius));
+      const { ok, data } = await put(`/api/settings/modules/${encodeURIComponent(moduleId)}/appearance`, moduleAppearanceBody(hue, radius, density, motion));
       if (ok) {
         setAppearanceStatus({ kind: "ok", text: "Saved." });
         router.refresh();
@@ -282,6 +286,27 @@ export function ModuleSettings({ moduleId, name, entries: initialEntries, overri
               <option value="sharp">Sharp</option>
               <option value="default">Default</option>
               <option value="round">Round</option>
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor={`${moduleId}-density`} className="text-sm font-medium">
+              Spacing
+            </label>
+            <select id={`${moduleId}-density`} value={density} disabled={!canWrite || appearancePending} onChange={(event) => setDensity(event.target.value)} className={`${INPUT} w-64`}>
+              <option value="">Follow platform ({platform.density})</option>
+              <option value="compact">Compact</option>
+              <option value="default">Default</option>
+              <option value="comfortable">Comfortable</option>
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor={`${moduleId}-motion`} className="text-sm font-medium">
+              Motion
+            </label>
+            <select id={`${moduleId}-motion`} value={motion} disabled={!canWrite || appearancePending} onChange={(event) => setMotion(event.target.value)} className={`${INPUT} w-64`}>
+              <option value="">Follow platform ({platform.motion})</option>
+              <option value="full">Full</option>
+              <option value="reduced">Reduced</option>
             </select>
           </div>
         </div>

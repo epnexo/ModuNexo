@@ -1,11 +1,11 @@
-import { AppearanceService, SettingValueError, validateAppearanceValue } from "@modunexo/core/settings";
+import { AppearanceService, MODULE_APPEARANCE_NAMES, type ModuleAppearanceName, SettingValueError, validateAppearanceValue } from "@modunexo/core/settings";
 import { platform } from "../../../../../../server/platform.ts";
 import { enabledModuleIds, webRegistry } from "../../../../../../server/registry.ts";
 import { authorizeWrite, json, readJsonBody } from "../../../../../../server/settings-api.ts";
 
 export const dynamic = "force-dynamic";
 
-/** A module's own appearance: { accentHue?: number | null, radius?: string | null }. Null follows the platform again. */
+/** A module's own appearance: { accentHue?: number | null, radius?, density?, motion?: string | null }. Null follows the platform again. */
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
   const authorized = await authorizeWrite(request);
   if (authorized instanceof Response) return authorized;
@@ -17,13 +17,13 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const body = parsed.body;
   if (typeof body !== "object" || body === null || Array.isArray(body)) return json({ error: "the request body must be an object" }, 400);
   const keys = Object.keys(body);
-  const unknown = keys.filter((key) => key !== "accentHue" && key !== "radius");
+  const unknown = keys.filter((key) => !(MODULE_APPEARANCE_NAMES as readonly string[]).includes(key));
   if (unknown.length > 0) return json({ error: `"${unknown[0]}" cannot be overridden per module` }, 400);
 
-  const values = body as Record<"accentHue" | "radius", unknown>;
+  const values = body as Record<ModuleAppearanceName, unknown>;
   const toSet: Record<string, string | number> = {};
-  const toClear: ("accentHue" | "radius")[] = [];
-  for (const name of ["accentHue", "radius"] as const) {
+  const toClear: ModuleAppearanceName[] = [];
+  for (const name of MODULE_APPEARANCE_NAMES) {
     if (!(name in values)) continue;
     if (values[name] === null) {
       toClear.push(name);
