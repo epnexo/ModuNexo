@@ -275,6 +275,16 @@ describe("web app: sign-in disabled", () => {
     assert.equal(location(await call("GET", "/login")), "/");
   });
 
+  test("has no person to keep a custom stylesheet for, and says so, while the company's stays the operator's to write", async () => {
+    const refused = await put("/api/settings/appearance/my-css", { css: ".card{padding:1rem}" });
+    assert.equal(refused.status, 409, refused.body);
+    assert.match(refused.body, /signed-in user/);
+    assert.equal((await call("DELETE", "/api/settings/appearance/my-css", { origin: origin() })).status, 409);
+    assert.doesNotMatch(html(await call("GET", "/settings")), /My custom CSS/, "no editor for a person who does not exist");
+    assert.equal((await put("/api/settings/appearance/custom-css", { css: ".card{padding:1rem}" })).status, 200);
+    assert.equal((await call("DELETE", "/api/settings/appearance/custom-css", { origin: origin() })).status, 200);
+  });
+
   test("refuses every request that carries a public address, with a body that says nothing", async () => {
     const cases: Record<string, string>[] = [
       { "x-forwarded-for": "8.8.8.8" },
