@@ -759,7 +759,7 @@ export async function runCli(argv: string[], io: CliIo = consoleIo): Promise<num
       );
       return EXIT_OK;
     }
-    if (parsed.command.startsWith("jobs ") || parsed.command.startsWith("events ") || parsed.command.startsWith("files ") || parsed.command.startsWith("llm ") || parsed.command === "worker") {
+    if (parsed.command.startsWith("actions ") || parsed.command.startsWith("jobs ") || parsed.command.startsWith("events ") || parsed.command.startsWith("files ") || parsed.command.startsWith("llm ") || parsed.command === "worker") {
       let modulesDir: string;
       try {
         modulesDir = resolveModulesDir(typeof parsed.values["modules-dir"] === "string" ? parsed.values["modules-dir"] : undefined);
