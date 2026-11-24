@@ -34,10 +34,10 @@ function ref(text: string | undefined): { moduleId: string; key: string } {
   return { moduleId: text.slice(0, dot), key: text.slice(dot + 1) };
 }
 
+/** Plain digits only, as the web routes and the jobs commands take them: "1e3" or "0x10" must never decide another proposal. */
 function proposalId(text: string | undefined): number {
-  const id = Number(text);
-  if (text === undefined || !Number.isSafeInteger(id) || id < 1) throw new ActionError("not_pending", `"${text ?? ""}" is not a proposal id`);
-  return id;
+  if (text === undefined || !/^[1-9][0-9]{0,15}$/.test(text)) throw new ActionError("not_pending", `"${text ?? ""}" is not a proposal id`);
+  return Number(text);
 }
 
 /** A proposal as the commands print it. The input is only in the JSON form, because it can be anything a person typed. */
