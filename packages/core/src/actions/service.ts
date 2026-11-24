@@ -94,6 +94,8 @@ const DAY_MS = 86_400_000;
 const MAX_ROWS = 100;
 const MAX_ERROR_CHARS = 500;
 const DEFAULT_MAX_PENDING = 100;
+/** The advisory lock that keeps the number of pending proposals honest. */
+const PENDING_LOCK = 7_340_001;
 
 type Executor = Pick<pg.PoolClient, "query">;
 
@@ -209,8 +211,9 @@ export class ActionService {
 
     if (action.risk === "read") {
       try {
-        const result = await this.#db.readOwn(ref.moduleId).query(action.sql!, checked.ordered);
-        return { kind: "rows", rows: result.rows.slice(0, MAX_ROWS) };
+        // The limit is the database's: the statement is a subquery, so a table of millions of rows never reaches this process.
+        const result = await this.#db.readOwn(ref.moduleId).query(`select * from (${action.sql!}) as action_rows limit ${MAX_ROWS}`, checked.ordered);
+        return { kind: "rows", rows: result.rows };
       } catch (error) {
         // The reason goes to the server's log, where only an operator reads it; the caller is told no more than "it failed".
         platformLog.warn("actions.read_failed", { module: ref.moduleId, action: ref.key, error });
@@ -249,13 +252,15 @@ export class ActionService {
     const checked = checkActionInput(action, raw);
     if (!checked.ok) throw new ActionError("invalid_input", checked.message);
     await this.expireDue();
-    const pending = await this.pool.query("select count(*)::int as n from core.action_proposals where status = 'pending'");
-    if ((pending.rows[0] as { n: number }).n >= this.#maxPending) throw new ActionError("too_many_pending", `there are already ${this.#maxPending} proposals waiting for a person`);
 
     const now = this.#now();
     const client = await this.pool.connect();
     try {
       await client.query("begin");
+      // One at a time past this point: the count and the insert must not be separated by another proposal, or the cap would only be a hope.
+      await client.query("select pg_advisory_xact_lock($1)", [PENDING_LOCK]);
+      const pending = await client.query("select count(*)::int as n from core.action_proposals where status = 'pending'");
+      if ((pending.rows[0] as { n: number }).n >= this.#maxPending) throw new ActionError("too_many_pending", `there are already ${this.#maxPending} proposals waiting for a person`);
       const inserted = await client.query(
         `insert into core.action_proposals (module_id, action_key, risk, input, proposed_by, proposed_via, proposed_at, expires_at)
          values ($1, $2, $3, $4::jsonb, $5, $6, $7, $8) returning *`,
@@ -281,10 +286,12 @@ export class ActionService {
       await client.query("begin");
       const found = await client.query("select * from core.action_proposals where id = $1 for update", [id]);
       const row = found.rows[0] as Row | undefined;
-      if (row === undefined || row.status !== "pending") throw new ActionError("not_pending", `proposal ${id} is not waiting for a decision`);
+      if (row === undefined) throw new ActionError("not_pending", `proposal ${id} is not waiting for a decision`);
       const action = this.registry.get(row.module_id)?.actions?.find((candidate) => candidate.key === row.action_key);
       if (action === undefined) throw new ActionError("unknown_action", `module "${row.module_id}" no longer declares the action "${row.action_key}"`);
+      // Who may decide comes first: whoever may not is told nothing about the state of the proposal.
       if (!actor.can(action.permission)) throw new ActionError("forbidden", `"${actor.name}" does not hold the permission this action needs`);
+      if (row.status !== "pending") throw new ActionError("not_pending", `proposal ${id} is not waiting for a decision`);
       if (actor.name === row.proposed_by) throw new ActionError("self_approval", "whoever proposed an action cannot decide it");
       return { client, row, action };
     } catch (error) {
@@ -327,16 +334,34 @@ export class ActionService {
     return (await this.get(id))!;
   }
 
+  /** Runs `change` and writes one event per row it returns, in the same transaction: a state change never exists without its event. */
+  async #withEvents<T extends { id: string; module_id: string; action_key: string; risk: string; proposed_by: string }>(
+    change: (client: pg.PoolClient) => Promise<T[]>,
+    type: (row: T) => string,
+  ): Promise<number> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      const rows = await change(client);
+      for (const row of rows) await this.#event(client, type(row), this.#facts({ ...row, id: Number(row.id) }));
+      await client.query("commit");
+      return rows.length;
+    } catch (error) {
+      await client.query("rollback").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   /** Marks the proposals nobody decided in time as expired, one event each. Returns how many. Safe to call any time, and more than once. */
   async expireDue(): Promise<number> {
-    const { rows } = await this.pool.query(
-      "update core.action_proposals set status = 'expired' where status = 'pending' and expires_at <= $1 returning id, module_id, action_key, risk, proposed_by",
-      [this.#now()],
+    return this.#withEvents(
+      async (client) =>
+        (await client.query("update core.action_proposals set status = 'expired' where status = 'pending' and expires_at <= $1 returning id, module_id, action_key, risk, proposed_by", [this.#now()]))
+          .rows as { id: string; module_id: string; action_key: string; risk: string; proposed_by: string }[],
+      () => "expired",
     );
-    for (const row of rows as { id: string; module_id: string; action_key: string; risk: string; proposed_by: string }[]) {
-      await this.#event(this.pool, "expired", this.#facts({ ...row, id: Number(row.id) }));
-    }
-    return rows.length;
   }
 
   /**
@@ -344,20 +369,22 @@ export class ActionService {
    * each, and a settled action is never settled again. Returns how many were settled now.
    */
   async settle(): Promise<number> {
-    const { rows } = await this.pool.query(
-      `update core.action_proposals p
-          set outcome = case j.status when 'succeeded' then 'executed' else 'failed' end,
-              last_error = case when j.status = 'succeeded' then null else left(coalesce(j.last_error, j.status), ${MAX_ERROR_CHARS}) end,
-              settled_at = $1
-         from core.jobs j
-        where j.id = p.job_id and p.status = 'approved' and p.outcome is null and j.status in ('succeeded', 'dead', 'cancelled')
-        returning p.id, p.module_id, p.action_key, p.risk, p.proposed_by, p.outcome`,
-      [this.#now()],
+    return this.#withEvents(
+      async (client) =>
+        (
+          await client.query(
+            `update core.action_proposals p
+                set outcome = case j.status when 'succeeded' then 'executed' else 'failed' end,
+                    last_error = case when j.status = 'succeeded' then null else left(coalesce(j.last_error, j.status), ${MAX_ERROR_CHARS}) end,
+                    settled_at = $1
+               from core.jobs j
+              where j.id = p.job_id and p.status = 'approved' and p.outcome is null and j.status in ('succeeded', 'dead', 'cancelled')
+              returning p.id, p.module_id, p.action_key, p.risk, p.proposed_by, p.outcome`,
+            [this.#now()],
+          )
+        ).rows as { id: string; module_id: string; action_key: string; risk: string; proposed_by: string; outcome: string }[],
+      (row) => row.outcome,
     );
-    for (const row of rows as { id: string; module_id: string; action_key: string; risk: string; proposed_by: string; outcome: string }[]) {
-      await this.#event(this.pool, row.outcome, this.#facts({ ...row, id: Number(row.id) }));
-    }
-    return rows.length;
   }
 
   async get(id: number): Promise<Proposal | null> {

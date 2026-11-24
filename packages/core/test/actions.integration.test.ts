@@ -42,6 +42,7 @@ before(async () => {
     { key: "find_notes", label: "Find notes", description: "Notes whose text contains the given text.", risk: "read", permission: "acts.read", input: { text: { type: "text", maxLength: 50, required: true } }, sql: "select id, body from notes where body ilike '%' || $1 || '%' order by id" },
     { key: "all_notes", label: "All notes", description: "Every note.", risk: "read", permission: "acts.read", sql: "select id, body from notes order by id" },
     { key: "broken", label: "Broken", description: "A statement that fails.", risk: "read", permission: "acts.read", sql: "select 1 / 0 as boom" },
+    { key: "many", label: "Many", description: "A million rows.", risk: "read", permission: "acts.read", sql: "select g as n from generate_series(1, 1000000) g order by g" },
     { key: "add_note", label: "Add a note", description: "Adds a note.", risk: "write", permission: "acts.write", input: { text: { type: "text", maxLength: 100, required: true } }, job: "add_note" },
     { key: "close_deal", label: "Close a deal", description: "Marks a deal as won.", risk: "sensitive", permission: "acts.close", job: "close_deal" },
   ];
@@ -97,7 +98,7 @@ describe("the catalog", () => {
   test("lists the actions of the enabled modules, each with its module and reference, and none of a disabled one", async () => {
     const catalog = await service.catalog();
     const mine = catalog.filter((entry) => entry.moduleId === moduleId);
-    assert.deepEqual(mine.map((entry) => entry.ref), [`${moduleId}.find_notes`, `${moduleId}.all_notes`, `${moduleId}.broken`, `${moduleId}.add_note`, `${moduleId}.close_deal`]);
+    assert.deepEqual(mine.map((entry) => entry.ref), [`${moduleId}.find_notes`, `${moduleId}.all_notes`, `${moduleId}.broken`, `${moduleId}.many`, `${moduleId}.add_note`, `${moduleId}.close_deal`]);
     assert.equal(mine.find((entry) => entry.key === "add_note")?.action.risk, "write");
     assert.equal(catalog.some((entry) => entry.moduleId === offId), false, "a disabled module offers nothing");
     assert.equal(catalog.some((entry) => entry.moduleId === "core"), false);
@@ -127,6 +128,16 @@ describe("a read action", () => {
     await rejects(service.run({ moduleId: offId, key: "do_it" }, {}, person("x")), "disabled");
     await rejects(service.run({ moduleId, key: "find_notes" }, {}, person("x")), "invalid_input");
     await assert.rejects(service.run({ moduleId, key: "broken" }, {}, person("x")), (error: unknown) => error instanceof ActionError && error.code === "failed" && !/division|zero|1 \/ 0/i.test(error.message));
+  });
+});
+
+describe("what a read action may cost", () => {
+  test("returns at most one hundred rows and does not pull the rest into the server", async () => {
+    const started = Date.now();
+    const result = await service.run({ moduleId, key: "many" }, {}, person("ada@example.test"));
+    assert.equal(result.kind === "rows" && result.rows.length, 100);
+    assert.deepEqual(result.kind === "rows" && result.rows.slice(0, 2).map((row) => row.n), [1, 2], "the statement's own order is kept");
+    assert.ok(Date.now() - started < 3000, "bounded by the limit, not by the size of the table");
   });
 });
 
@@ -171,6 +182,13 @@ describe("an agent proposing", () => {
     assert.deepEqual(Object.keys(event!.payload).sort(), ["action", "id", "module", "proposedBy", "risk"]);
   });
 
+  test("never lets more proposals wait than the limit, even when they all arrive at the same moment", async () => {
+    const outcomes = await Promise.allSettled(Array.from({ length: 10 }, (_, i) => service.propose({ moduleId, key: "add_note" }, { text: `race ${i}` }, agent(`agent-${i}`))));
+    assert.equal(outcomes.filter((outcome) => outcome.status === "fulfilled").length, 4);
+    assert.equal(outcomes.filter((outcome) => outcome.status === "rejected" && (outcome.reason as ActionError).code === "too_many_pending").length, 6);
+    assert.equal((await pool!.query("select count(*)::int as n from core.action_proposals where status = 'pending'")).rows[0].n, 4);
+  });
+
   test("refuses a read action (it runs), a bad input, an unknown or disabled action, and more pending than the limit", async () => {
     await rejects(service.propose({ moduleId, key: "all_notes" }, {}, agent()), "not_proposable");
     await rejects(service.propose({ moduleId, key: "add_note" }, { text: 5 }, agent()), "invalid_input");
@@ -193,6 +211,13 @@ describe("approving and rejecting", () => {
     await rejects(service.approve(proposal.id, person("boss@example.test")), "not_pending");
     assert.equal((await jobs()).length, 1, "a second approval cannot queue it again");
     assert.deepEqual((await events()).map((event) => event.type), ["core.action.proposed", "core.action.approved"]);
+  });
+
+  test("tells a caller without the permission nothing about the proposal: not whether it is still waiting", async () => {
+    const proposal = await service.propose({ moduleId, key: "add_note" }, { text: "x" }, agent());
+    await service.approve(proposal.id, person("boss@example.test"));
+    await rejects(service.approve(proposal.id, person("x", [perm("read")])), "forbidden");
+    await rejects(service.reject(proposal.id, agent("another")), "forbidden");
   });
 
   test("needs the action's permission, and an agent can never approve", async () => {
@@ -257,6 +282,33 @@ describe("expiry and outcome", () => {
     assert.equal((await service.get(old.id))?.status, "expired");
     assert.equal((await service.get(fresh.id))?.status, "pending");
     assert.equal((await events()).filter((event) => event.type === "core.action.expired").length, 1);
+  });
+
+  test("keeps a state change and its event together: when the event cannot be written, nothing is expired or settled", async () => {
+    const waiting = await service.propose({ moduleId, key: "add_note" }, { text: "w" }, agent());
+    advance(8 * DAY);
+    await pool!.query("alter table core.events add constraint no_expired_events check (type <> 'core.action.expired') not valid");
+    try {
+      await assert.rejects(service.expireDue());
+    } finally {
+      await pool!.query("alter table core.events drop constraint no_expired_events");
+    }
+    assert.equal((await service.get(waiting.id))?.status, "pending", "the proposal was not expired without its event");
+    assert.equal(await service.expireDue(), 1, "and it is expired, with its event, once the event can be written");
+    assert.equal((await events()).filter((event) => event.type === "core.action.expired").length, 1);
+
+    clock = new Date("2026-11-24T12:00:00Z");
+    const done = await service.propose({ moduleId, key: "add_note" }, { text: "d" }, agent());
+    const job = (await service.approve(done.id, person("boss@example.test"))).jobId;
+    await pool!.query("update core.jobs set status = 'succeeded', finished_at = now() where id = $1", [job]);
+    await pool!.query("alter table core.events add constraint no_executed_events check (type <> 'core.action.executed') not valid");
+    try {
+      await assert.rejects(service.settle());
+    } finally {
+      await pool!.query("alter table core.events drop constraint no_executed_events");
+    }
+    assert.equal((await service.get(done.id))?.outcome, null, "it is not settled without its event");
+    assert.equal(await service.settle(), 1);
   });
 
   test("settles an approved action once its job finished: executed or failed with the job's error, an event each, never twice", async () => {
