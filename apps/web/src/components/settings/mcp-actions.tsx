@@ -21,14 +21,18 @@ export function McpActions({ view }: { view: McpActionsView }) {
         </p>
       </div>
 
-      <p className="text-sm" role="status">
+      <p className="text-sm" role="status" hidden={view.unavailable}>
         {view.waiting === 0 ? "Nothing is waiting for a decision." : `${view.waiting} proposal${view.waiting === 1 ? " is" : "s are"} waiting for a decision.`}{" "}
         <Link href="/actions" className="underline">
           Open the Actions screen
         </Link>
       </p>
 
-      {view.total === 0 ? (
+      {view.unavailable ? (
+        <p role="alert" className="notice notice-error text-sm">
+          The actions could not be read right now. Try again in a moment.
+        </p>
+      ) : view.total === 0 ? (
         <p className="empty">No enabled module offers an action yet.</p>
       ) : (
         <ul className="flex flex-col gap-3">

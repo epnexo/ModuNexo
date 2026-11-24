@@ -24,7 +24,7 @@ import { SecurityForm } from "../../../components/settings/security-form";
 import { modules } from "../../../generated/modules";
 import { resolvePublicUrl } from "../../../server/launch";
 import { buildAccessView, buildTokenViews } from "../../../server/api-access-view";
-import { buildMcpActionsView } from "../../../server/mcp-actions-view";
+import { loadMcpActions } from "../../../server/mcp-actions-view";
 import { actionService } from "../../../server/actions-deps";
 import { buildChecksView } from "../../../server/connection-checks";
 import { mcpConnection } from "../../../server/mcp-connection";
@@ -95,7 +95,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const now = new Date();
   const mcpKeys = buildTokenViews(await tokens.list("core"), now);
   const actions = actionService();
-  const mcpActions = buildMcpActionsView({ catalog: await actions.catalog(), waiting: (await actions.list({ status: "pending", limit: 100 })).filter((proposal) => proposal.expiresAt.getTime() > now.getTime()).length });
+  const mcpActions = await loadMcpActions(actions, now);
   // Only the module that is open is described and rendered: its settings, its token list and its HTML are the cost of one
   // module, however many are installed. The id comes from the address, so it is checked against the enabled modules.
   const enabledModules = modules.filter((manifest) => enabled.has(manifest.id)).map((manifest) => ({ id: manifest.id, name: manifest.name }));
