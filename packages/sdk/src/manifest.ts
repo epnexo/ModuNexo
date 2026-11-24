@@ -248,6 +248,43 @@ export interface DashboardChart {
   sql: string;
 }
 
+/** How much an action can change: a read changes nothing; a write or a sensitive action changes data and waits for a person when an agent asks for it. */
+export const ACTION_RISKS = ["read", "write", "sensitive"] as const;
+export type ActionRisk = (typeof ACTION_RISKS)[number];
+
+/** One thing an action asks for. A closed set of kinds: nothing free-form reaches the module's statement or job. */
+export type ActionInput =
+  | { type: "text"; maxLength: number; required?: boolean; description?: string }
+  | { type: "int"; min: number; max: number; required?: boolean; description?: string }
+  | { type: "enum"; values: string[]; required?: boolean; description?: string }
+  | { type: "boolean"; required?: boolean; description?: string };
+
+/**
+ * Something an agent (over MCP) or a person (in the portal) may ask the module to do, with the module's own permission, risk and
+ * inputs. The platform generates the MCP tool and the portal screen from this; the module writes no code for either.
+ * - `read`: runs at once, as one read-only `select` of the module's schema. The inputs are `$1`, `$2`... in the order they are declared.
+ * - `write` and `sensitive`: an agent's request becomes a proposal a person approves; once approved, the platform queues the module's
+ *   own job `job` with the validated inputs as its payload. A person using the portal is already the decision (no second approval).
+ * Since SDK 0.1.5.
+ */
+export interface ActionDeclaration {
+  /** Stable identifier, unique among the module's actions. */
+  key: string;
+  /** What it is called to the person who approves it and to the agent. At most 80 characters. */
+  label: string;
+  /** What it does, in a sentence or two; shown with the proposal and to the agent. At most 300 characters. */
+  description: string;
+  risk: ActionRisk;
+  /** A permission declared in `permissions`; whoever runs or approves the action must hold it. Required for every action, reads included. */
+  permission: string;
+  /** What the action asks for, by name (lowercase letters, digits and underscores), at most 12. */
+  input?: Record<string, ActionInput>;
+  /** `read` only: one `select` (or `with`) statement, no `;`, at most 2000 characters. */
+  sql?: string;
+  /** `write` and `sensitive` only: the name of one of the module's `jobs`. */
+  job?: string;
+}
+
 /** What the module contributes to the platform's dashboard. At least one stat, alert or chart. */
 export interface DashboardDeclaration {
   stats?: DashboardStat[];
@@ -291,6 +328,8 @@ export interface ModuleManifest {
   llm?: LlmDeclaration;
   /** Optional: figures and alerts the module contributes to the dashboard. */
   dashboard?: DashboardDeclaration;
+  /** Optional: what an agent or a person may ask the module to do (see `ActionDeclaration`). Needs SDK 0.1.5 or later. */
+  actions?: ActionDeclaration[];
   /** Relative path (starting with "./") to a file exporting `onInstall`, `onEnable`, `onDisable`, `onUpgrade`, `onUninstall`. */
   hooks?: string;
 }
@@ -315,7 +354,7 @@ const SCHEMA_NAME = /^[a-z][a-z0-9_]{0,62}$/;
 // "core" belongs to the platform itself.
 const RESERVED_SCHEMAS = new Set(["public", "information_schema", "core"]);
 const KNOWN_FIELDS = new Set([
-  "id", "version", "name", "platform", "dependsOn", "schema", "migrationsDir", "nav", "pages", "settings", "checks", "permissions", "scopes", "jobs", "events", "subscriptions", "files", "llm", "dashboard", "hooks",
+  "id", "version", "name", "platform", "dependsOn", "schema", "migrationsDir", "nav", "pages", "settings", "checks", "permissions", "scopes", "jobs", "events", "subscriptions", "files", "llm", "dashboard", "actions", "hooks",
 ]);
 const KNOWN_DASHBOARD_FIELDS = new Set(["stats", "alerts", "charts"]);
 const KNOWN_STAT_FIELDS = new Set(["key", "label", "href", "permission", "sql"]);
@@ -341,6 +380,20 @@ export function chartBarHref(href: string, label: string): string {
 
 const DASHBOARD_HREF = /^\/(?![/\\])[^\s\\\u0000-\u001f\u007f\u200b-\u200f\u2028\u2029\ufeff]*$/;
 const DASHBOARD_SQL = /^(select|with)[\s(]/i;
+const KNOWN_ACTION_FIELDS = new Set(["key", "label", "description", "risk", "permission", "input", "sql", "job"]);
+const KNOWN_ACTION_INPUT_FIELDS: Record<string, Set<string>> = {
+  text: new Set(["type", "required", "description", "maxLength"]),
+  int: new Set(["type", "required", "description", "min", "max"]),
+  enum: new Set(["type", "required", "description", "values"]),
+  boolean: new Set(["type", "required", "description"]),
+};
+const MAX_ACTIONS = 20;
+const MAX_ACTION_INPUTS = 12;
+const MAX_ACTION_DESCRIPTION_CHARS = 300;
+const MAX_ACTION_INPUT_DESCRIPTION_CHARS = 120;
+const MAX_ACTION_TEXT_CHARS = 2000;
+const MAX_ACTION_ENUM_VALUES = 20;
+const ACTION_INPUT_NAME = /^[a-z][a-z0-9_]*$/;
 const KNOWN_NAV_FIELDS = new Set(["label", "href", "icon", "group", "order", "permission"]);
 const KNOWN_PAGE_FIELDS = new Set(["path", "entry", "kind", "dynamic", "methods", "permission", "public", "scope"]);
 const KNOWN_PUBLIC_FIELDS = new Set(["signature", "ratePerMinute", "maxBodyBytes"]);
@@ -781,6 +834,88 @@ function checkDashboardEntries(list: unknown, name: string, known: Set<string>, 
   if (Array.isArray(list) && list.length > MAX_DASHBOARD_ENTRIES) problems.push(`${name} must have at most ${MAX_DASHBOARD_ENTRIES} entries`);
 }
 
+function checkActionInput(input: unknown, name: string, where: string, problems: string[]): void {
+  const at = `${where} input "${name}"`;
+  if (!ACTION_INPUT_NAME.test(name)) problems.push(`${where} input name "${name}" must be lowercase letters, digits and underscores, starting with a letter`);
+  if (!isPlainObject(input)) {
+    problems.push(`${at} must be an object`);
+    return;
+  }
+  const type = input.type;
+  const known = typeof type === "string" ? KNOWN_ACTION_INPUT_FIELDS[type] : undefined;
+  if (known === undefined) {
+    problems.push(`${at} type must be one of text, int, enum, boolean`);
+    return;
+  }
+  checkUnknownFields(input, known, at, problems);
+  if (input.required !== undefined && typeof input.required !== "boolean") problems.push(`${at} required must be true or false`);
+  if (input.description !== undefined && (!isNonEmptyString(input.description) || input.description.length > MAX_ACTION_INPUT_DESCRIPTION_CHARS)) {
+    problems.push(`${at} description must be a non-empty string of at most ${MAX_ACTION_INPUT_DESCRIPTION_CHARS} characters`);
+  }
+  if (type === "text" && !(Number.isInteger(input.maxLength) && (input.maxLength as number) >= 1 && (input.maxLength as number) <= MAX_ACTION_TEXT_CHARS)) {
+    problems.push(`${at} maxLength must be an integer from 1 to ${MAX_ACTION_TEXT_CHARS}`);
+  }
+  if (type === "int") {
+    if (!Number.isSafeInteger(input.min) || !Number.isSafeInteger(input.max)) problems.push(`${at} min and max must be integers`);
+    else if ((input.min as number) > (input.max as number)) problems.push(`${at} min cannot be above max`);
+  }
+  if (type === "enum") {
+    const values = input.values;
+    const ok = Array.isArray(values) && values.length >= 1 && values.length <= MAX_ACTION_ENUM_VALUES && values.every(isNonEmptyString) && new Set(values).size === values.length;
+    if (!ok) problems.push(`${at} values must be a list of 1 to ${MAX_ACTION_ENUM_VALUES} distinct non-empty strings`);
+  }
+}
+
+function checkActions(actions: unknown, permissionKeys: Set<string>, jobNames: Set<string>, problems: string[]): void {
+  eachItem(actions, "actions", problems, (action, where, index) => {
+    checkUnknownFields(action, KNOWN_ACTION_FIELDS, where, problems);
+    if (typeof action.key !== "string" || !KEY.test(action.key)) {
+      problems.push(`${where}.key must be a stable identifier (lowercase a-z, 0-9, _ and dot-separated segments)`);
+    } else if ((actions as Record<string, unknown>[]).findIndex((other) => other.key === action.key) !== index) {
+      problems.push(`${where}.key "${action.key}" is duplicated`);
+    }
+    if (!isNonEmptyString(action.label) || action.label.length > MAX_DASHBOARD_LABEL_CHARS) {
+      problems.push(`${where}.label must be a non-empty string of at most ${MAX_DASHBOARD_LABEL_CHARS} characters`);
+    }
+    if (!isNonEmptyString(action.description) || action.description.length > MAX_ACTION_DESCRIPTION_CHARS) {
+      problems.push(`${where}.description must be a non-empty string of at most ${MAX_ACTION_DESCRIPTION_CHARS} characters`);
+    }
+    if (!ACTION_RISKS.includes(action.risk as ActionRisk)) problems.push(`${where}.risk must be one of ${ACTION_RISKS.join(", ")}`);
+    if (!(typeof action.permission === "string" && permissionKeys.has(action.permission))) {
+      problems.push(`${where}.permission must be the key of a permission declared in "permissions"`);
+    }
+
+    let inputCount = 0;
+    if (action.input !== undefined) {
+      if (!isPlainObject(action.input)) problems.push(`${where}.input must be an object`);
+      else {
+        const names = Object.keys(action.input);
+        inputCount = names.length;
+        if (names.length > MAX_ACTION_INPUTS) problems.push(`${where}.input must have at most ${MAX_ACTION_INPUTS} inputs`);
+        for (const name of names) checkActionInput(action.input[name], name, where, problems);
+      }
+    }
+
+    if (action.risk === "read") {
+      if (action.job !== undefined) problems.push(`${where}: a read action cannot name a "job"`);
+      if (typeof action.sql !== "string" || action.sql.trim() === "") problems.push(`${where}: a read action needs "sql", one select statement`);
+      else if (action.sql.length > MAX_DASHBOARD_SQL_CHARS) problems.push(`${where}.sql must be at most ${MAX_DASHBOARD_SQL_CHARS} characters`);
+      else if (!DASHBOARD_SQL.test(action.sql.trim()) || action.sql.includes(";")) problems.push(`${where}.sql must be one select (or with) statement with no ";"`);
+      else {
+        const used = [...action.sql.matchAll(/\$(\d+)/g)].map((match) => Number(match[1]));
+        if (used.includes(0)) problems.push(`${where}.sql uses $0, but the inputs start at $1`);
+        const highest = Math.max(0, ...used);
+        if (highest > inputCount) problems.push(`${where}.sql uses $${highest} but the action declares ${inputCount} input${inputCount === 1 ? "" : "s"}`);
+      }
+    } else if (action.risk === "write" || action.risk === "sensitive") {
+      if (action.sql !== undefined) problems.push(`${where}: a ${action.risk} action cannot name an "sql"; it runs one of the module's jobs`);
+      if (typeof action.job !== "string" || action.job === "") problems.push(`${where}: a ${action.risk} action needs "job", the name of one of the module's jobs`);
+      else if (!jobNames.has(action.job)) problems.push(`${where}.job "${action.job}" is not a job this module declares in "jobs"`);
+    }
+  });
+  if (Array.isArray(actions) && actions.length > MAX_ACTIONS) problems.push(`actions must have at most ${MAX_ACTIONS} entries`);
+}
+
 function checkDashboard(dashboard: unknown, permissionKeys: Set<string>, problems: string[]): void {
   if (!isPlainObject(dashboard)) {
     problems.push("dashboard must be an object");
@@ -962,6 +1097,10 @@ export function validateManifest(input: unknown, options: ValidateOptions = {}):
   if (raw.events !== undefined) checkEvents(raw.events, permissionKeys, problems);
   if (raw.files !== undefined) checkFiles(raw.files, permissionKeys, problems);
   if (raw.dashboard !== undefined) checkDashboard(raw.dashboard, permissionKeys, problems);
+  if (raw.actions !== undefined) {
+    const declaredJobs = new Set(Array.isArray(raw.jobs) ? raw.jobs.flatMap((job) => (isPlainObject(job) && typeof job.name === "string" ? [job.name] : [])) : []);
+    checkActions(raw.actions, permissionKeys, declaredJobs, problems);
+  }
   if (raw.llm !== undefined) checkLlm(raw.llm, settingTypes(raw.settings), problems);
   if (raw.subscriptions !== undefined) {
     const jobNames = new Set(Array.isArray(raw.jobs) ? raw.jobs.flatMap((job) => (isPlainObject(job) && typeof job.name === "string" ? [job.name] : [])) : []);

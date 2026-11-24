@@ -6,6 +6,12 @@ root, `packages/core` and `apps/web`); the SDK keeps its own (`SDK_VERSION`), th
 checked against, and it changes only when the contract with modules changes. See "Versioning" in the README.
 
 ## [Unreleased]
+### Added
+
+- **`actions` in the manifest** (SDK 0.1.5): what an agent or a person may ask a module to do, with its own permission, risk and inputs. A `read` action is one
+  read-only `select` of the module (inputs bound as `$1`, `$2`...); a `write` or `sensitive` action names one of the module's own `jobs`, which receives the validated
+  inputs as its payload. Inputs are a closed set (`text`, `int`, `enum`, `boolean`). The manifest is only validated for now: the platform does not run, propose or
+  show actions yet, so a module that declares them is unchanged until that lands.
 
 ## [0.10.1] - 2026-11-24
 ### Fixed
