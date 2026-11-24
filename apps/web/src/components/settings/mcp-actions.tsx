@@ -29,7 +29,7 @@ export function McpActions({ view }: { view: McpActionsView }) {
       </p>
 
       {view.unavailable ? (
-        <p role="alert" className="notice notice-error text-sm">
+        <p role="alert" data-guard className="notice notice-error text-sm">
           The actions could not be read right now. Try again in a moment.
         </p>
       ) : view.total === 0 ? (
