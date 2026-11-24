@@ -29,7 +29,7 @@ export function CustomCssForm({ initial, canWrite, safeMode }: { initial: string
       const data = (await response.json().catch(() => ({}))) as { error?: string; css?: string };
       if (response.ok) {
         if (method === "DELETE") setText("");
-        setStatus({ kind: "ok", text: method === "DELETE" ? "Removed." : text.trim() === "" ? "Removed." : "Saved." });
+        setStatus({ kind: "ok", text: method === "DELETE" || text.trim() === "" ? "Removed." : "Saved." });
         router.refresh();
       } else {
         setStatus({ kind: "error", text: data.error ?? "Could not save the custom CSS." });

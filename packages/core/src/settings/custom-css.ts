@@ -117,7 +117,7 @@ const PROPERTIES: Record<string, Check> = {
   "background-color": color("background-color"),
   "border-color": color("border-color"),
   "border-width": bounded("border-width", "0 and 0.5rem (8px)", { rem: [0, 0.5], px: [0, 8], none: [0, 0] }),
-  "border-radius": bounded("border-radius", "0 and 4rem (999px, 50%)", { rem: [0, 62], px: [0, 999], pct: [0, 50], none: [0, 0] }),
+  "border-radius": bounded("border-radius", "0 and 999px (62rem, 50%)", { rem: [0, 62], px: [0, 999], pct: [0, 50], none: [0, 0] }),
   padding: spacing("padding"),
   "padding-top": spacing("padding-top"),
   "padding-right": spacing("padding-right"),
@@ -131,15 +131,15 @@ const PROPERTIES: Record<string, Check> = {
   gap: spacing("gap"),
   "row-gap": spacing("row-gap"),
   "column-gap": spacing("column-gap"),
-  "font-size": bounded("font-size", "10px and 40px (0.625rem and 2.5rem)", { rem: [0.625, 2.5], px: [10, 40], pct: [60, 200] }),
+  "font-size": bounded("font-size", "10px and 40px (0.625rem and 2.5rem, 60% and 200%)", { rem: [0.625, 2.5], px: [10, 40], pct: [60, 200] }),
   "font-weight": (value) => (/^\s*(?:[1-9]00|normal|bold|lighter|bolder)\s*$/i.test(value) ? null : `font-weight: "${value}" must be 100 to 900, normal or bold`),
-  "line-height": bounded("line-height", "1 and 2.5", { rem: [1, 2.5], px: [10, 40], pct: [100, 250], none: [1, 2.5] }, ["normal"]),
+  "line-height": bounded("line-height", "1 and 2.5 (10px and 40px, 100% and 250%, with a unit)", { rem: [1, 2.5], px: [10, 40], pct: [100, 250], none: [1, 2.5] }, ["normal"]),
   "letter-spacing": bounded("letter-spacing", "-0.2em and 0.2em", { rem: [-0.2, 0.2], px: [-4, 4], none: [0, 0] }),
   opacity: (value) => {
     const n = /^\s*(\d*\.?\d+)\s*$/.exec(value);
     return n !== null && Number(n[1]) >= 0.3 && Number(n[1]) <= 1 ? null : `opacity: "${value}" must be between 0.3 and 1`;
   },
-  "box-shadow": bounded("box-shadow", "-64px and 64px", { rem: [-4, 4], px: [-64, 64], none: [0, 0] }, ["inset", "none"]),
+  "box-shadow": bounded("box-shadow", "-64px and 64px (-4rem and 4rem; 0 takes no unit)", { rem: [-4, 4], px: [-64, 64], none: [0, 0] }, ["inset", "none"]),
   "transition-duration": duration("transition-duration"),
   "animation-duration": duration("animation-duration"),
 };
