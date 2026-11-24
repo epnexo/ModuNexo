@@ -121,6 +121,15 @@ describe("JobService.enqueue", () => {
     await enqueue("x".repeat(64 * 1024 - 2));
   });
 
+  test("refuses a payload holding a lone surrogate with a clear error, and keeps a real emoji", async () => {
+    for (const payload of ["\ud800", { note: "a\udc00b" }, ["ok", { deep: "\ud83d" }], { "\ud800": 1 }]) {
+      await assert.rejects(enqueue(payload), (e: unknown) => e instanceof JobError && /lone surrogate/.test(e.message), JSON.stringify(payload));
+    }
+    await assert.rejects(enqueue("\u0000"), (e: unknown) => e instanceof JobError, "the NUL character keeps its own refusal");
+    const kept = await enqueue({ mood: "\ud83d\ude00" });
+    assert.ok(kept.id > 0);
+  });
+
   test("schedules a run later with runAt or delaySeconds, and refuses bad options", async () => {
     const later = await enqueue(null, { delaySeconds: 90 });
     assert.deepEqual((await row(later.id)).run_at, at(90));
