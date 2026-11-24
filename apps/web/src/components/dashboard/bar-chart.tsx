@@ -90,7 +90,7 @@ export function BarChart({ chart }: { chart: ChartRow }) {
               return (
                 <li key={bar.label} data-bar className="flex h-full min-w-10 flex-1 flex-col justify-end">
                   <Link
-                    href={chart.href}
+                    href={bar.href}
                     aria-label={`${barReadout(bar.label, bar.value, chart.average)}. Open ${chart.label}`}
                     onMouseEnter={() => setActive(index)}
                     onMouseLeave={() => setActive(null)}

@@ -101,10 +101,23 @@ describe("buildDashboard: figures, silent modules and the platform block", () =>
 
 const chartCard = (over: Record<string, unknown> = {}) => ({ moduleId: "ai-usage", moduleName: "AI usage", key: "tokens_by_day", label: "Tokens per day", href: "/ai-usage", points: [{ label: "08 Nov", value: 10 }, { label: "09 Nov", value: 31 }] as { label: string; value: number }[] | null, ...over });
 
+describe("buildDashboard: the link of each bar", () => {
+  it("opens the detail of the bar that was clicked when the chart's link says where its label goes", () => {
+    const [chart] = buildDashboard({ cards: cards({ enabled: 1, charts: [chartCard({ href: "/ai-usage?day={label}" })] }), overview: null, now: NOW }).charts;
+    assert.deepEqual(chart?.bars.map((bar) => bar.href), ["/ai-usage?day=08%20Nov", "/ai-usage?day=09%20Nov"]);
+    assert.equal(chart?.href, "/ai-usage?day={label}", "the chart keeps its declaration");
+  });
+
+  it("encodes a label that tries to be more than a value, so the link stays on the page the module named", () => {
+    const [chart] = buildDashboard({ cards: cards({ enabled: 1, charts: [chartCard({ href: "/ai-usage?day={label}", points: [{ label: "x&y=1/../#z", value: 1 }] })] }), overview: null, now: NOW }).charts;
+    assert.equal(chart?.bars[0]?.href, "/ai-usage?day=x%26y%3D1%2F..%2F%23z");
+  });
+});
+
 describe("buildDashboard: charts", () => {
   it("lists a chart with its source, its bars and the rounded average of them", () => {
     const view = buildDashboard({ cards: cards({ enabled: 1, charts: [chartCard()] }), overview: null, now: NOW });
-    assert.deepEqual(view.charts, [{ key: "ai-usage:tokens_by_day", label: "Tokens per day", source: "AI usage", href: "/ai-usage", bars: [{ label: "08 Nov", value: 10 }, { label: "09 Nov", value: 31 }], average: 21, max: 31, available: true }]);
+    assert.deepEqual(view.charts, [{ key: "ai-usage:tokens_by_day", label: "Tokens per day", source: "AI usage", href: "/ai-usage", bars: [{ label: "08 Nov", value: 10, href: "/ai-usage" }, { label: "09 Nov", value: 31, href: "/ai-usage" }], average: 21, max: 31, available: true }]);
   });
 
   it("marks a chart that could not be read as not available, with no bars and no average", () => {

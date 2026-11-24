@@ -25,6 +25,9 @@ checked against, and it changes only when the contract with modules changes. See
   now platform, module, company (`custom`), person (`person`). `PUT|DELETE /api/settings/appearance/my-css` take the person from the session,
   never from the request. Safe mode (`?nocss=1`) switches off both. Only administrators can open Settings today, so only they have an editor
   for now; the endpoint already works for any signed-in user.
+- **Drill-down on a dashboard bar** (SDK 0.1.4): a chart's `href` can carry `{label}` once in its query string, and each bar opens that link with
+  its own label, encoded as one value (`/usage?day={label}`). Without it every bar opens the same screen, as before. A module that uses it asks
+  for `platform: "^0.1.4"`. `chartBarHref` and `CHART_LABEL_PLACEHOLDER` are in the SDK.
 - The cascade has two new layers after Tailwind's, `module` and `custom`. A module's stylesheet is written inside `@layer module { ... }`, so
   what a company or a person customizes later beats it without `!important`.
 - Shared classes for what modules kept repeating: `card-link` (a card that lifts on hover and shows the focus ring), `rise` (an

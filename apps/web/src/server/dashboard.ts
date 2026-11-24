@@ -1,4 +1,4 @@
-import type { DashboardSeverity } from "@modunexo/sdk";
+import { type DashboardSeverity, chartBarHref } from "@modunexo/sdk";
 import type { ModuleCards, PlatformOverview } from "@modunexo/core/dashboard";
 import { type IconName, resolveIcon } from "./nav.ts";
 import { formatAgo } from "./status.ts";
@@ -41,7 +41,8 @@ export interface ChartRow {
   label: string;
   source: string;
   href: string;
-  bars: { label: string; value: number }[];
+  /** Each bar carries its own link: the chart's `href` with the bar's label where the declaration put `{label}`. */
+  bars: { label: string; value: number; href: string }[];
   /** The rounded mean of the bars; null when there are none or the chart could not be read. */
   average: number | null;
   /** The tallest bar, the scale the bars are drawn against (0 when there are none). */
@@ -112,7 +113,7 @@ export function buildDashboard({ cards, overview, workerLine = null, icons, now 
   }
 
   const charts: ChartRow[] = cards.charts.map((chart) => {
-    const bars = chart.points ?? [];
+    const bars = (chart.points ?? []).map((point) => ({ ...point, href: chartBarHref(chart.href, point.label) }));
     return {
       key: `${chart.moduleId}:${chart.key}`,
       label: chart.label,
