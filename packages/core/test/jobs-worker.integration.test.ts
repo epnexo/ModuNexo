@@ -487,6 +487,50 @@ describe("Worker.run", () => {
     assert.equal(logged.at(-1)!.fields?.abandoned, 1);
   });
 
+  test("when the grace period ends it tells a running handler to stop, and does not count that as the job failing", async () => {
+    let told: unknown;
+    const { worker, logged } = makeWorker(
+      { sync: (ctx) => new Promise<void>((_, reject) => ctx.signal.addEventListener("abort", () => { told = ctx.signal.reason; reject(ctx.signal.reason); }, { once: true })) },
+      { graceMs: 100 },
+    );
+    const { id } = await enqueue("sync");
+    const controller = new AbortController();
+    const done = worker.run(controller.signal);
+    for (let i = 0; i < 100 && worker.running === 0; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+    controller.abort();
+    assert.equal(await done, 0, "it stopped, so nothing is left running");
+    assert.match(String((told as Error | undefined)?.message), /shutting down/);
+    const after = await row(id);
+    assert.equal(after.status, "running", "its lease is left to expire so another worker retries it: not failed, not dead");
+    assert.equal(logged.some((entry) => entry.event === "worker.job_failed" || entry.event === "worker.job_dead"), false);
+    assert.ok(logged.some((entry) => entry.event === "worker.job_interrupted"));
+  });
+
+  test("an error a handler throws of its own after being told to stop is the shutdown too, not the job failing", async () => {
+    const { worker, logged } = makeWorker({ sync: (ctx) => new Promise<void>((_, reject) => ctx.signal.addEventListener("abort", () => reject(new DOMException("This operation was aborted", "AbortError")), { once: true })) }, { graceMs: 100 });
+    const { id } = await enqueue("sync");
+    const controller = new AbortController();
+    const done = worker.run(controller.signal);
+    for (let i = 0; i < 100 && worker.running === 0; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+    controller.abort();
+    assert.equal(await done, 0);
+    assert.equal((await row(id)).status, "running");
+    assert.ok(logged.some((entry) => entry.event === "worker.job_interrupted"));
+  });
+
+  test("a handler that finishes on its own during the grace period is recorded as done, and is never told to stop", async () => {
+    let aborted = false;
+    const { worker } = makeWorker({ sync: async (ctx) => { ctx.signal.addEventListener("abort", () => { aborted = true; }); await new Promise((resolve) => setTimeout(resolve, 60)); } }, { graceMs: 2000 });
+    const { id } = await enqueue("sync");
+    const controller = new AbortController();
+    const done = worker.run(controller.signal);
+    for (let i = 0; i < 100 && worker.running === 0; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+    controller.abort();
+    assert.equal(await done, 0);
+    assert.equal(aborted, false);
+    assert.equal((await row(id)).status, "succeeded");
+  });
+
   test("a second tick while a slot frees up starts the next job without waiting for the poll", async () => {
     const order: number[] = [];
     const { worker } = makeWorker({ sync: async (ctx) => { order.push(ctx.jobId); await new Promise((resolve) => setTimeout(resolve, 30)); } }, { concurrency: 1, pollMs: 5000 });

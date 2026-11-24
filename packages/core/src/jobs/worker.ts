@@ -36,6 +36,14 @@ export interface WorkerDeps {
 
 const DEFAULTS = { concurrency: 4, pollMs: 1000, graceMs: 30_000, scheduleEveryMs: 10_000, pruneEveryMs: 3_600_000 };
 
+/** What a running handler's signal carries when the worker gives up waiting for it at shutdown. */
+class WorkerShutdownError extends Error {
+  constructor() {
+    super("the worker is shutting down");
+    this.name = "WorkerShutdownError";
+  }
+}
+
 class JobTimeoutError extends Error {
   constructor(seconds: number) {
     super(`the job did not finish within ${seconds} s`);
@@ -58,6 +66,8 @@ export class Worker {
   private lastPrune = Number.NEGATIVE_INFINITY;
   private wake: (() => void) | undefined;
   private stopping = false;
+  /** Aborts, with a WorkerShutdownError, when the grace period ends and a job is still running. */
+  private readonly shutdown = new AbortController();
 
   constructor(private readonly deps: WorkerDeps) {
     this.o = {
@@ -180,8 +190,18 @@ export class Worker {
     const expired = new Promise<"expired">((resolve) => {
       timer = setTimeout(() => resolve("expired"), this.o.graceMs);
     });
-    await Promise.race([Promise.all([...this.inFlight]).then(() => "drained" as const), expired]);
+    const outcome = await Promise.race([Promise.all([...this.inFlight]).then(() => "drained" as const), expired]);
     clearTimeout(timer);
+    if (outcome === "expired") {
+      // Tell what is still running to stop, and give it a moment to do so before counting what is left.
+      this.shutdown.abort(new WorkerShutdownError());
+      let settle: NodeJS.Timeout | undefined;
+      const settled = new Promise<void>((resolve) => {
+        settle = setTimeout(resolve, Math.min(1000, this.o.graceMs));
+      });
+      await Promise.race([Promise.all([...this.inFlight]).then(() => undefined), settled]);
+      clearTimeout(settle);
+    }
     return this.inFlight.size;
   }
 
@@ -220,6 +240,12 @@ export class Worker {
     try {
       await this.invoke(job);
     } catch (error) {
+      if (this.shutdown.signal.aborted) {
+        // It failed after the worker told it to stop (a handler may throw its own AbortError, as fetch does): that is the shutdown, not
+        // a fault of the job, so its lease is left to expire for another worker to retry it and the attempt is not spent as a failure.
+        log.warn("worker.job_interrupted", fields);
+        return;
+      }
       const outcome = await service.fail(job, workerId, error).catch((writeError: unknown) => {
         log.error("worker.job_write_failed", { ...fields, error: writeError });
         return "lost" as const;
@@ -251,6 +277,10 @@ export class Worker {
         reject(error);
       }, job.timeoutSeconds * 1000);
     });
+    // A shutdown reaches the handler through its own signal, with the shutdown as the reason.
+    const onShutdown = () => controller.abort(this.shutdown.signal.reason);
+    if (this.shutdown.signal.aborted) onShutdown();
+    else this.shutdown.signal.addEventListener("abort", onShutdown, { once: true });
     const context: JobContext = { moduleId: job.moduleId, jobName: job.name, jobId: job.id, attempt: job.attempt, payload: job.payload, signal: controller.signal };
     // The import is part of the run, so a handler file that never settles is cut by the timeout too.
     const running = (async () => (await this.deps.loadHandler(job.moduleId, declared.entry))(context))();
@@ -260,6 +290,7 @@ export class Worker {
       await Promise.race([running, timeout]);
     } finally {
       clearTimeout(timer);
+      this.shutdown.signal.removeEventListener("abort", onShutdown);
     }
   }
 }
