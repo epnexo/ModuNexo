@@ -47,9 +47,13 @@ describe("loadMcpActions", () => {
       throw new Error("database is down");
     };
     for (const service of [{ catalog: down, list: async () => [] }, { catalog: async () => [], list: down }]) {
-      const view = await loadMcpActions(service, new Date());
+      const logged: { event: string; fields?: Record<string, unknown> }[] = [];
+      const view = await loadMcpActions(service, new Date(), { warn: (event, fields) => void logged.push({ event, fields }) });
       assert.deepEqual([view.unavailable, view.total, view.waiting], [true, 0, 0]);
       assert.doesNotMatch(JSON.stringify(view), /database is down/);
+      assert.equal(logged.length, 1, "the operator is told once, in the server's log, even though the page is not");
+      assert.equal(logged[0]!.event, "settings.mcp_actions_failed");
+      assert.match(String((logged[0]!.fields?.error as Error).message), /database is down/);
     }
   });
 });
