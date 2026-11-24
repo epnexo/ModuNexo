@@ -92,13 +92,13 @@ describe("resolveIcon", () => {
 });
 
 describe("the Admin block", () => {
-  it("holds Apps, Status and Settings, each pointing at the page it always had", () => {
-    assert.deepEqual(ADMIN_ENTRIES.map((item) => [item.label, item.href]), [["Apps", "/apps"], ["Groups", "/groups"], ["Status", "/status"], ["Settings", "/settings"]]);
+  it("holds Apps, Groups, Actions, Status and Settings, each pointing at its page", () => {
+    assert.deepEqual(ADMIN_ENTRIES.map((item) => [item.label, item.href]), [["Apps", "/apps"], ["Groups", "/groups"], ["Actions", "/actions"], ["Status", "/status"], ["Settings", "/settings"]]);
   });
 
   it("is open on any page inside it, below it included, and closed elsewhere", () => {
-    for (const path of ["/apps", "/groups", "/status", "/settings", "/settings/anything", "/apps/x"]) assert.equal(isAdminPath(path), true, path);
-    for (const path of ["/", "/inbox", "/applications", "/statuses", "/groupsx"]) assert.equal(isAdminPath(path), false, path);
+    for (const path of ["/apps", "/groups", "/actions", "/status", "/settings", "/settings/anything", "/apps/x"]) assert.equal(isAdminPath(path), true, path);
+    for (const path of ["/", "/inbox", "/applications", "/statuses", "/groupsx", "/actionsx"]) assert.equal(isAdminPath(path), false, path);
   });
 });
 

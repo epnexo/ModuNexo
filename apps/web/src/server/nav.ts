@@ -110,6 +110,7 @@ export function toggleCollapsed(collapsed: readonly string[], label: string): st
 export const ADMIN_ENTRIES: { label: string; href: string; icon: IconName }[] = [
   { label: "Apps", href: "/apps", icon: "apps" },
   { label: "Groups", href: "/groups", icon: "folder" },
+  { label: "Actions", href: "/actions", icon: "megaphone" },
   { label: "Status", href: "/status", icon: "chart" },
   { label: "Settings", href: "/settings", icon: "settings" },
 ];
