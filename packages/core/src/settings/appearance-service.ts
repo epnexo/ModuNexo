@@ -39,10 +39,21 @@ export async function readCustomCss(pool: pg.Pool): Promise<string> {
  * every read, not only on write, so a value put in the database by hand never reaches a page as text.
  */
 export async function readServedCustomCss(pool: pg.Pool): Promise<string> {
-  const text = await readCustomCss(pool);
+  return servedCustomCss(await readCustomCss(pool));
+}
+
+// The text and what it was rewritten to, from the last time. A page reads the stylesheet on every request and the text almost never
+// changes, so the check (12 to 28 ms for a 16 KB stylesheet on a Raspberry Pi) is paid once per change instead of once per page.
+let lastServed: { text: string; css: string } | undefined;
+
+/** What a page may serve for this text: the stylesheet rewritten from the rules that pass, or nothing. */
+export function servedCustomCss(text: string): string {
   if (text.trim() === "") return "";
+  if (lastServed?.text === text) return lastServed.css;
   const checked = sanitizeCustomCss(text);
-  return checked.ok ? checked.css : "";
+  const css = checked.ok ? checked.css : "";
+  lastServed = { text, css };
+  return css;
 }
 
 /** Reads and writes the platform appearance and the per-module overrides, in `core.platform_settings`. */
