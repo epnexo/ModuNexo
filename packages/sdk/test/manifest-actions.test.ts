@@ -129,3 +129,38 @@ describe("validateManifest: actions", () => {
     assert.ok(satisfies(SDK_VERSION, ">=0.1.5"), SDK_VERSION);
   });
 });
+
+describe("validateManifest: a dashboard alert that points at an action", () => {
+  const dashboardWith = (alert: Record<string, unknown>) => ({
+    dashboard: { alerts: [{ key: "stale", label: "Stale deals", href: "/crm", severity: "warning", permission: "crm.read", sql: "select count(*)::int from deals", ...alert }] },
+  });
+  const problems = (alert: Record<string, unknown>, extra: Record<string, unknown> = {}) => problemsOf({ ...base, ...extra, ...dashboardWith(alert), actions: [find, note] }).filter((problem) => /dashboard\.alerts/.test(problem));
+
+  it("accepts the key of one of the module's own actions", () => {
+    assert.deepEqual(problems({ action: "add_note" }), []);
+    assert.deepEqual(problems({ action: "find_contact" }), []);
+  });
+
+  it("is optional, and an alert without it is as it was", () => {
+    assert.deepEqual(problems({}), []);
+  });
+
+  it("refuses a key the module does not declare, and anything that is not a key", () => {
+    assert.match(problems({ action: "nope" }).join("\n"), /action must be the key of an action declared in "actions"/);
+    for (const action of [5, "", null, {}]) assert.match(problems({ action }).join("\n"), /action must be the key of an action declared in "actions"/, JSON.stringify(action));
+  });
+
+  it("refuses it when the module declares no actions at all", () => {
+    const result = problemsOf({ ...base, ...dashboardWith({ action: "add_note" }) }).filter((problem) => /dashboard\.alerts/.test(problem));
+    assert.match(result.join("\n"), /action must be the key of an action declared in "actions"/);
+  });
+
+  it("is only for alerts: a stat or a chart cannot name an action", () => {
+    const result = problemsOf({ ...base, actions: [find, note], dashboard: { stats: [{ key: "n", label: "N", href: "/crm", sql: "select 1", action: "add_note" }] } });
+    assert.match(result.join("\n"), /dashboard\.stats\[0\] has unknown field "action"/);
+  });
+
+  it("is in the SDK version that introduced it", () => {
+    assert.ok(satisfies(SDK_VERSION, ">=0.1.6"), SDK_VERSION);
+  });
+});

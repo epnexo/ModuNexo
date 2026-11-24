@@ -48,7 +48,7 @@ export function RunActionForm({ action }: { action: RunnableView }) {
   }
 
   return (
-    <form onSubmit={run} className="card flex flex-col gap-3">
+    <form id={`run-${action.ref}`} onSubmit={run} className="card flex scroll-mt-20 flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="section-title m-0">{action.label}</h3>
         <span className={`badge ${action.risk === "read" ? "badge-info" : "badge-warning"}`}>{action.risk}</span>

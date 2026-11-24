@@ -67,8 +67,10 @@ before(async () => {
       { key: "negative", label: "Negative", href: "/items", severity: "info", sql: "select -1" },
       { key: "text", label: "Text", href: "/items", severity: "info", sql: "select 'many'" },
       { key: "gone", label: "Gone", href: "/items", severity: "error", sql: "select count(*) from no_such_table" },
+      { key: "acting", label: "Act on it", href: "/items", severity: "warning", sql: "select count(*) from items", action: "list_items" },
     ],
   };
+  first.manifest.actions = [{ key: "list_items", label: "List items", description: "Lists the items.", risk: "read", permission: "items.read", sql: "select id, label from items" }];
   // Charts that cannot be drawn, and one behind a permission, live in modules of their own: a module declares at most four.
   fourth.manifest.dashboard = {
     charts: [
@@ -255,6 +257,14 @@ describe("DashboardService.overview: the platform's own signals", () => {
     await pool!.query("delete from core.module_operations where module_id = $1", [rich]);
     await insert(rich, "upgrade", "rolled_back", "now() - interval '30 days'");
     assert.equal((await service.overview()).alerts.some((alert) => alert.kind === "operation_failed" && alert.moduleId === rich), false, "older than a week");
+  });
+
+  guard("offers an alert's action only when the viewer may run it", async () => {
+    const all = (await service.cards(everyone)).alerts.filter((alert) => alert.moduleId === rich);
+    assert.equal(all.find((alert) => alert.key === "acting")?.action, `${rich}.list_items`);
+    assert.equal(all.find((alert) => alert.key === "many")?.action, null, "an alert that names no action");
+    const without = (await service.cards((_module, permission) => permission !== "items.read")).alerts.filter((alert) => alert.moduleId === rich);
+    assert.equal(without.find((alert) => alert.key === "acting")?.action, null, "the alert is still listed, but without a button the viewer could not use");
   });
 
   guard("raises alerts for what agents asked: proposals waiting, an approved action that failed and proposals that expired, never the input or the error text", async () => {
