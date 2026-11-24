@@ -791,6 +791,10 @@ npm run modunexo -- jobs retry <id>                                   # dead onl
 - **Trust.** Module code is trusted, and `enqueueJob` takes any module id: a module can queue another module's declared
   job, set its payload or take its dedupe key. Install only packages whose source you trust.
 - **History.** Finished jobs stay 14 days and are pruned by the worker. `uninstall --purge` deletes the module's jobs.
+- **Shutdown.** On a stop signal the worker stops claiming, then waits up to 30 seconds for running jobs. If one is still running
+  then, its `ctx.signal` aborts (the reason is an error saying the worker is shutting down), so a handler that honours the signal
+  can stop cleanly. What a handler throws after that is not counted as the job failing: its lease is left to expire and another
+  worker retries it (the log line is `worker.job_interrupted`), which is one more reason to keep handlers idempotent.
 - **Docker.** The `worker` service in `docker-compose.yml` (profile `app`) runs the same image with `modunexo worker`.
 - **Not here yet.** Cron expressions, a per-job concurrency limit, a screen to see jobs, a worker health endpoint, and
   hot reload of handler code.
