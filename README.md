@@ -355,6 +355,9 @@ with a **key**: a service token of the module `core` with the scope `mcp.read` (
 - **Reachable on the local network only**: the route is as open as the platform's address. Exposing it outside is a
   decision for your reverse proxy and TLS, not something the platform does. A leaked `mcp.write` key can disable modules and
   queue jobs, hence the short default expiry and the one-click revoke.
+  Revoking stops the key's next call at once, but it does not take back what it already did: a job it queued stays in the
+  queue and runs unless someone cancels it (`modunexo jobs list`, then `jobs cancel <id>`), and so does a proposal it left, which
+  a person can still approve until it expires, so reject it on the Actions screen if the key should not have made it.
 - **Limits**: 120 requests a minute per client address, a 1 MiB body, one command at a time. At most 4 commands run or
   wait; the next one answers `exit 75: the server is busy`. The CLI runs as a child process with a 30 second limit and
   1 MiB of output, and it inherits only the variables it needs (`PATH`, `HOME`, `NODE_ENV`, `LOG_FORMAT`, `DATABASE_URL`,

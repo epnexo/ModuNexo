@@ -7,6 +7,8 @@ checked against, and it changes only when the contract with modules changes. See
 
 ## [Unreleased]
 
+- **README says what revoking an MCP key does not undo**: a job it already queued, or a proposal it already left, stays until someone cancels or rejects it.
+
 - **Settings > MCP warns when the address was guessed**: an address taken from the request's Host header may not be reachable from another machine, so the screen says so and how to fix it (save the address in a module's API access, or set `WEB_PUBLIC_URL`).
 
 - **Read actions give ids and counts as numbers**: a bigint column (an id, `count(*)`) comes out as `1` and not `"1"` when the number is exact; a value too large to be exact stays text, and no other column is touched.
