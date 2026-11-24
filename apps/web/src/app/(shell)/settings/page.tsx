@@ -24,6 +24,7 @@ import { SecurityForm } from "../../../components/settings/security-form";
 import { modules } from "../../../generated/modules";
 import { resolvePublicUrl } from "../../../server/launch";
 import { buildAccessView, buildTokenViews } from "../../../server/api-access-view";
+import { addressNote } from "../../../server/mcp-address-note";
 import { loadMcpActions } from "../../../server/mcp-actions-view";
 import { actionService } from "../../../server/actions-deps";
 import { buildChecksView } from "../../../server/connection-checks";
@@ -195,7 +196,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           </>) },
           { id: "mcp", label: "MCP", content: (<>
           <McpPanel view={mcpConnection()} />
-          <McpRemote keys={mcpKeys} address={address.address} canWrite={viewer.canWrite} />
+          <McpRemote keys={mcpKeys} address={address.address} note={addressNote(address.source)} canWrite={viewer.canWrite} />
           <McpActions view={mcpActions} />
         </>) },
           { id: "modules", label: "Modules", content: (<>
