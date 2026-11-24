@@ -1,3 +1,4 @@
+import { log } from "@modunexo/core/log";
 import type { ActionDeclaration } from "@modunexo/sdk";
 import type { CatalogEntry } from "@modunexo/core/actions";
 
@@ -51,13 +52,16 @@ export interface McpActionsSource {
 
 /**
  * Reads the catalog and the waiting proposals for Settings > MCP. A failure of either leaves the page standing, with the block
- * saying it could not read them: one broken query must not take the whole Settings screen down, and nothing of the error is shown.
+ * saying it could not read them: one broken query must not take the whole Settings screen down, and nothing of the error is shown to the
+ * viewer (it is logged for the operator).
  */
-export async function loadMcpActions(source: McpActionsSource, now: Date): Promise<McpActionsView> {
+export async function loadMcpActions(source: McpActionsSource, now: Date, logger: { warn: (event: string, fields?: Record<string, unknown>) => void } = log): Promise<McpActionsView> {
   try {
     const [catalog, pending] = await Promise.all([source.catalog(), source.list({ status: "pending", limit: 100 })]);
     return buildMcpActionsView({ catalog, waiting: pending.filter((proposal) => proposal.expiresAt.getTime() > now.getTime()).length });
-  } catch {
+  } catch (error) {
+    // The page says only that it could not read them; the reason goes where an operator looks.
+    logger.warn("settings.mcp_actions_failed", { error });
     return { ...buildMcpActionsView({ catalog: [], waiting: 0 }), unavailable: true };
   }
 }
