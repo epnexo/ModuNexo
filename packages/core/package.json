@@ -49,7 +49,7 @@
     "pg": "^8.23.1",
     "postcss": "^8.5.30",
     "semver": "^7.8.6",
-    "tar": "^7.5.22"
+    "tar": "^7.5.23"
   },
   "devDependencies": {
     "@types/pg": "^8.23.1",
